@@ -540,6 +540,30 @@ FAIL foundational/authentication/authentication.yaml:
 - **CONSISTENCY** — Internal reference mismatch (decision tree → patterns, checklist → verified_by, etc.)
 - **INDEX** — Mismatch between `_index.yaml` listings and actual YAML files on disk
 
+## Claude Code Hooks
+
+The repository includes [Claude Code hooks](https://code.claude.com/docs/en/hooks) that automatically integrate the cookbook's MCP tools and skill into every session. Hooks are configured in `.claude/settings.json` and fire as lifecycle events — no manual invocation needed.
+
+### What the hooks do
+
+| Hook | Event | Trigger | Effect |
+|------|-------|---------|--------|
+| `session-context.sh` | SessionStart | Session begins or resumes | Injects `additionalContext` with MCP tool catalog, standard count, skill location, and usage workflow |
+| `architecture-advisor.sh` | UserPromptSubmit | Every user prompt | Detects architecture-related keywords (auth, API, security, testing, etc.) and suggests specific MCP tool calls |
+| `post-mcp-guidance.sh` | PostToolUse | After any `mcp__ai-architecture-cookbook__*` tool returns | Injects next-step guidance (evaluate decision tree → apply pattern → verify checklist) |
+
+### How it works
+
+1. **SessionStart** — Claude receives the full MCP tool catalog and skill reference at session start, so it knows the cookbook is available.
+2. **UserPromptSubmit** — When you ask about authentication, API design, testing, etc., the hook detects the domain and injects a reminder with the exact MCP tool call to run (e.g., `query_standard {"domain":"authentication"}`).
+3. **PostToolUse** — After an MCP tool returns results, the hook tells Claude what to do next: evaluate the decision tree, apply the pattern, or walk the checklist.
+
+### Enabling the hooks
+
+The hooks are committed to the repo and activate automatically when you open the project in Claude Code. No additional setup is required — Claude Code reads `.claude/settings.json` on session start.
+
+> **Note**: These hooks are specific to Claude Code. For other AI assistants, use the git pre-commit hook installed by `scripts/setup.sh`, which provides equivalent validation at commit time.
+
 ## Contributing
 
 This repository was created alongside [awslabs/aidlc-workflows](https://github.com/awslabs/aidlc-workflows), an AI-assisted development lifecycle workflow toolkit. Using aidlc-workflows is recommended when adding new standards or making significant contributions — it provides structured inception, requirements analysis, design, and code-generation phases that keep contributions consistent and well-documented.
