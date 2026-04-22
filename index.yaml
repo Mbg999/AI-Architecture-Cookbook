@@ -1,0 +1,924 @@
+# =============================================================================
+# AI Architecture Cookbook — Master Index
+# Auto-generated from entry metadata. Regenerate with: python tools/generate-index.py
+# =============================================================================
+
+schema_version: 1
+name: AI Architecture Cookbook
+description: Architectural standards and decision frameworks for AI code assistants
+total_entries: 33
+categories:
+- id: foundational
+  name: Foundational Standards
+  description: Core cross-cutting concerns every system needs
+  path: foundational/
+  entry_count: 8
+  entries:
+  - domain: api-design
+    path: foundational/api-design/api-design.yaml
+    version: 1.0.0
+    description: API design decision framework covering REST, GraphQL, gRPC, and WebSocket protocols. Provides context-aware
+      recommendations based on client types, data complexity, performance needs, and team expertise.
+    tags:
+    - api
+    - rest
+    - graphql
+    - grpc
+    - websocket
+    - http
+    - communication
+    prerequisites: []
+  - domain: authentication
+    path: foundational/authentication/authentication.yaml
+    version: 2.0.0
+    description: Authentication and authorization decision framework including federated identity, token-based auth, proof-of-possession
+      mechanisms, mTLS, and compliance mapping.
+    tags:
+    - security
+    - authentication
+    - authorization
+    - identity
+    - oauth
+    - oidc
+    - tokens
+    prerequisites: []
+  - domain: configuration-management
+    path: foundational/configuration-management/configuration-management.yaml
+    version: 1.0.0
+    description: Configuration management patterns for externalizing configuration, managing secrets, feature flags, and environment-specific
+      settings. Covers the spectrum from static config files to dynamic runtime configuration.
+    tags:
+    - configuration
+    - secrets
+    - feature-flags
+    - environment
+    - twelve-factor
+    - config-management
+    prerequisites: []
+  - domain: data-persistence
+    path: foundational/data-persistence/data-persistence.yaml
+    version: 1.0.0
+    description: Data persistence decision framework covering relational databases, document stores, key-value stores, caching
+      layers, and event stores. Provides context-aware recommendations based on data shape, consistency needs, scale, and
+      query patterns.
+    tags:
+    - database
+    - persistence
+    - sql
+    - nosql
+    - caching
+    - event-store
+    - data
+    prerequisites: []
+  - domain: error-handling
+    path: foundational/error-handling/error-handling.yaml
+    version: 1.0.0
+    description: Error handling and resilience decision framework covering circuit breakers, retries, fallbacks, bulkheads,
+      and structured error responses for building fault-tolerant distributed systems.
+    tags:
+    - resilience
+    - errors
+    - circuit-breaker
+    - retry
+    - fallback
+    - bulkhead
+    - fault-tolerance
+    prerequisites: []
+  - domain: input-validation
+    path: foundational/input-validation/input-validation.yaml
+    version: 1.0.0
+    description: Input validation and sanitization decision framework for preventing injection attacks, ensuring data integrity,
+      and maintaining system security at all system boundaries.
+    tags:
+    - security
+    - validation
+    - sanitization
+    - injection
+    - xss
+    - input
+    prerequisites: []
+  - domain: logging-observability
+    path: foundational/logging-observability/logging-observability.yaml
+    version: 1.0.0
+    description: Structured logging, distributed tracing, metrics collection, and alerting framework for production observability.
+      Covers the three pillars of observability and their integration.
+    tags:
+    - logging
+    - observability
+    - tracing
+    - metrics
+    - monitoring
+    - alerting
+    - structured-logging
+    prerequisites: []
+  - domain: messaging-events
+    path: foundational/messaging-events/messaging-events.yaml
+    version: 1.0.0
+    description: Asynchronous messaging and event-driven communication patterns including message queues, pub/sub, event streaming,
+      and choreography. Covers delivery guarantees, ordering, and failure handling.
+    tags:
+    - messaging
+    - events
+    - async
+    - queue
+    - pub-sub
+    - streaming
+    - event-driven
+    prerequisites: []
+- id: application-architecture
+  name: Application Architecture
+  description: Structural and design patterns for applications
+  path: application-architecture/
+  entry_count: 7
+  entries:
+  - domain: dependency-injection
+    path: application-architecture/dependency-injection/dependency-injection.yaml
+    version: 1.0.0
+    description: Dependency injection and inversion of control patterns for building testable, modular applications. Covers
+      constructor injection, composition root, service locator (anti-pattern recognition), and DI container usage.
+    tags:
+    - di
+    - ioc
+    - dependency-injection
+    - composition-root
+    - service-locator
+    - testability
+    - modularity
+    prerequisites: []
+  - domain: design-patterns
+    path: application-architecture/design-patterns/design-patterns.yaml
+    version: 1.0.0
+    description: "SOLID principles and essential Gang of Four design patterns for AI-assisted development. Focuses on the\
+      \ most impactful patterns for modern software: strategy, observer, factory, decorator, and adapter \u2014 with SOLID\
+      \ as the guiding foundation."
+    tags:
+    - solid
+    - design-patterns
+    - gof
+    - creational
+    - structural
+    - behavioral
+    - object-oriented
+    prerequisites: []
+  - domain: domain-driven-design
+    path: application-architecture/domain-driven-design/domain-driven-design.yaml
+    version: 1.0.0
+    description: Domain-Driven Design strategic and tactical patterns for modeling complex business domains. Covers bounded
+      contexts, aggregates, entities, value objects, domain events, and context mapping.
+    tags:
+    - ddd
+    - domain
+    - bounded-context
+    - aggregate
+    - event-storming
+    - ubiquitous-language
+    - strategic-design
+    prerequisites: []
+  - domain: layered-architecture
+    path: application-architecture/layered-architecture/layered-architecture.yaml
+    version: 1.0.0
+    description: Layered architecture patterns that separate concerns into horizontal or dependency-inverted layers. Covers
+      traditional N-tier, clean architecture, hexagonal (ports & adapters), and onion architecture.
+    tags:
+    - architecture
+    - layers
+    - clean-architecture
+    - hexagonal
+    - onion
+    - ports-adapters
+    - separation-of-concerns
+    prerequisites: []
+  - domain: repository-pattern
+    path: application-architecture/repository-pattern/repository-pattern.yaml
+    version: 1.0.0
+    description: Repository and data access patterns that abstract persistence from domain logic. Covers generic repository,
+      specification pattern, unit of work, and query object patterns.
+    tags:
+    - repository
+    - data-access
+    - unit-of-work
+    - query-object
+    - specification
+    - persistence-abstraction
+    prerequisites:
+    - data-persistence
+  - domain: service-architecture
+    path: application-architecture/service-architecture/service-architecture.yaml
+    version: 1.0.0
+    description: "Service decomposition strategies \u2014 microservices, modular monolith, distributed monolith, and hybrid\
+      \ approaches. Covers when to decompose, how to define service boundaries, and communication patterns."
+    tags:
+    - microservices
+    - monolith
+    - modular
+    - service-mesh
+    - decomposition
+    - distributed-systems
+    prerequisites:
+    - api-design
+  - domain: state-management
+    path: application-architecture/state-management/state-management.yaml
+    version: 1.0.0
+    description: State management patterns for client, server, and distributed systems. Covers server-side session, client-side
+      state, distributed caching, and event-sourced state reconstruction.
+    tags:
+    - state
+    - session
+    - cache
+    - distributed-state
+    - event-sourcing
+    - cqrs
+    - stateless
+    prerequisites:
+    - data-persistence
+- id: infrastructure
+  name: Infrastructure & Deployment
+  description: Container, orchestration, CI/CD, and cloud patterns
+  path: infrastructure/
+  entry_count: 6
+  entries:
+  - domain: ci-cd
+    path: infrastructure/ci-cd/ci-cd.yaml
+    version: 1.0.0
+    description: Continuous integration and delivery pipelines, artifact management, and release strategies. Covers pipeline
+      design, build caching, deployment patterns (blue-green, canary, rolling), and release governance.
+    tags:
+    - ci-cd
+    - pipelines
+    - automation
+    - deployment
+    - release
+    - github-actions
+    - gitlab-ci
+    prerequisites: []
+  - domain: cloud-architecture
+    path: infrastructure/cloud-architecture/cloud-architecture.yaml
+    version: 1.0.0
+    description: Cloud-native design patterns, well-architected principles, multi-cloud strategies, and managed service selection.
+      Covers the architectural decisions that determine how workloads run in cloud environments.
+    tags:
+    - cloud
+    - aws
+    - azure
+    - gcp
+    - well-architected
+    - multi-cloud
+    - serverless
+    prerequisites: []
+  - domain: containerization
+    path: infrastructure/containerization/containerization.yaml
+    version: 1.0.0
+    description: Container image construction, runtime configuration, and security hardening. Covers Dockerfile best practices,
+      multi-stage builds, image scanning, and production-ready container configurations for AI-assisted development.
+    tags:
+    - docker
+    - containers
+    - oci
+    - images
+    - runtime
+    - security
+    prerequisites: []
+  - domain: database-migration
+    path: infrastructure/database-migration/database-migration.yaml
+    version: 1.0.0
+    description: Schema evolution, data migration strategies, and zero-downtime database changes. Covers migration tooling,
+      expand-contract pattern, backward- compatible changes, and rollback strategies for production databases.
+    tags:
+    - database
+    - migration
+    - schema
+    - evolution
+    - zero-downtime
+    - flyway
+    - liquibase
+    prerequisites:
+    - data-persistence
+  - domain: infrastructure-as-code
+    path: infrastructure/infrastructure-as-code/infrastructure-as-code.yaml
+    version: 1.0.0
+    description: Declarative infrastructure provisioning, state management, and drift detection. Covers Terraform, Pulumi,
+      Bicep, CloudFormation, and general IaC patterns for reproducible, auditable infrastructure.
+    tags:
+    - iac
+    - terraform
+    - pulumi
+    - bicep
+    - cloudformation
+    - infrastructure
+    prerequisites: []
+  - domain: orchestration
+    path: infrastructure/orchestration/orchestration.yaml
+    version: 1.0.0
+    description: Container orchestration platforms, service mesh, and workload management. Covers Kubernetes patterns, service
+      discovery, scaling strategies, and production-grade deployment topologies.
+    tags:
+    - kubernetes
+    - orchestration
+    - service-mesh
+    - scheduling
+    - scaling
+    - helm
+    prerequisites:
+    - containerization
+- id: security-quality
+  name: Security & Quality
+  description: Security hardening, testing, and quality assurance
+  path: security-quality/
+  entry_count: 6
+  entries:
+  - domain: accessibility
+    path: security-quality/accessibility/accessibility.yaml
+    version: 1.0.0
+    description: Accessibility standards, inclusive design, and assistive technology compatibility. Covers WCAG compliance,
+      ARIA patterns, keyboard navigation, and automated accessibility testing.
+    tags:
+    - accessibility
+    - a11y
+    - wcag
+    - aria
+    - inclusive-design
+    - screen-reader
+    prerequisites: []
+  - domain: code-quality
+    path: security-quality/code-quality/code-quality.yaml
+    version: 1.0.0
+    description: Code quality standards, linting, static analysis, and maintainability practices. Covers automated code quality
+      enforcement, code review standards, and architectural fitness functions.
+    tags:
+    - code-quality
+    - linting
+    - static-analysis
+    - maintainability
+    - readability
+    - refactoring
+    prerequisites: []
+  - domain: encryption
+    path: security-quality/encryption/encryption.yaml
+    version: 1.0.0
+    description: Data encryption at rest and in transit, key management lifecycle, and cryptographic best practices. Covers
+      TLS configuration, symmetric/asymmetric encryption, envelope encryption, and secrets rotation.
+    tags:
+    - encryption
+    - tls
+    - cryptography
+    - key-management
+    - data-protection
+    - security
+    prerequisites:
+    - authentication
+  - domain: performance-optimization
+    path: security-quality/performance-optimization/performance-optimization.yaml
+    version: 1.0.0
+    description: Performance profiling, optimization patterns, caching strategies, and scalability. Covers the measure-first
+      approach to performance, common optimization patterns, and when to apply them.
+    tags:
+    - performance
+    - optimization
+    - caching
+    - profiling
+    - scalability
+    - latency
+    prerequisites: []
+  - domain: rate-limiting
+    path: security-quality/rate-limiting/rate-limiting.yaml
+    version: 1.0.0
+    description: Rate limiting, throttling, and abuse prevention for APIs and services. Covers token bucket, sliding window,
+      distributed rate limiting, and quota management strategies.
+    tags:
+    - rate-limiting
+    - throttling
+    - api-protection
+    - dos-prevention
+    - quotas
+    - resilience
+    prerequisites:
+    - api-design
+  - domain: testing-strategies
+    path: security-quality/testing-strategies/testing-strategies.yaml
+    version: 1.0.0
+    description: Testing pyramids, strategies, and patterns for comprehensive quality assurance. Covers unit testing, integration
+      testing, end-to-end testing, contract testing, and test architecture decisions for AI-assisted development.
+    tags:
+    - testing
+    - unit-tests
+    - integration-tests
+    - e2e
+    - tdd
+    - quality
+    - contract-testing
+    prerequisites: []
+- id: integration-data
+  name: Integration & Data
+  description: External integrations, data pipelines, and versioning
+  path: integration-data/
+  entry_count: 6
+  entries:
+  - domain: data-transformation
+    path: integration-data/data-transformation/data-transformation.yaml
+    version: 1.0.0
+    description: Data transformation patterns including ETL/ELT pipelines, schema evolution, data mapping, validation, and
+      format conversion. Covers both batch and streaming data transformation for integration, migration, and analytics use
+      cases.
+    tags:
+    - data-transformation
+    - etl
+    - elt
+    - data-pipeline
+    - schema-evolution
+    - data-mapping
+    prerequisites:
+    - data-persistence
+    - error-handling
+    - logging-observability
+  - domain: file-storage
+    path: integration-data/file-storage/file-storage.yaml
+    version: 1.0.0
+    description: File and object storage patterns including upload handling, CDN integration, access control, lifecycle management,
+      and secure presigned URLs. Covers both cloud object storage and structured file management.
+    tags:
+    - file-storage
+    - object-storage
+    - upload
+    - cdn
+    - s3
+    - blob-storage
+    - presigned-url
+    prerequisites:
+    - authentication
+    - encryption
+    - input-validation
+  - domain: search
+    path: integration-data/search/search.yaml
+    version: 1.0.0
+    description: Search infrastructure patterns including full-text search engines, indexing strategies, query optimization,
+      faceted search, and search relevance tuning. Covers both dedicated search engines and database full-text search capabilities.
+    tags:
+    - search
+    - full-text-search
+    - elasticsearch
+    - indexing
+    - relevance
+    - faceted-search
+    prerequisites:
+    - data-persistence
+    - performance-optimization
+  - domain: third-party-integration
+    path: integration-data/third-party-integration/third-party-integration.yaml
+    version: 1.0.0
+    description: Patterns for integrating with external APIs and third-party services. Covers vendor abstraction, resilience
+      (circuit breakers, retries, bulkheads), contract management, and graceful degradation when dependencies fail.
+    tags:
+    - integration
+    - third-party
+    - circuit-breaker
+    - resilience
+    - vendor-abstraction
+    - external-api
+    prerequisites:
+    - error-handling
+    - logging-observability
+  - domain: versioning
+    path: integration-data/versioning/versioning.yaml
+    version: 1.0.0
+    description: API versioning strategies, backward compatibility enforcement, deprecation policies, and migration planning.
+      Covers URL-based, header-based, and content-negotiation versioning with lifecycle management for evolving APIs.
+    tags:
+    - versioning
+    - api-versioning
+    - backward-compatibility
+    - deprecation
+    - migration
+    - semver
+    prerequisites:
+    - api-design
+  - domain: webhooks
+    path: integration-data/webhooks/webhooks.yaml
+    version: 1.0.0
+    description: Webhook design patterns for both producing and consuming event notifications over HTTP. Covers delivery guarantees,
+      signature verification, idempotent processing, retry policies, and security hardening for webhook endpoints.
+    tags:
+    - webhooks
+    - events
+    - callbacks
+    - http
+    - event-driven
+    - integration
+    prerequisites:
+    - authentication
+    - input-validation
+    - messaging-events
+tag_index:
+  a11y:
+  - accessibility
+  accessibility:
+  - accessibility
+  aggregate:
+  - domain-driven-design
+  alerting:
+  - logging-observability
+  api:
+  - api-design
+  api-protection:
+  - rate-limiting
+  api-versioning:
+  - versioning
+  architecture:
+  - layered-architecture
+  aria:
+  - accessibility
+  async:
+  - messaging-events
+  authentication:
+  - authentication
+  authorization:
+  - authentication
+  automation:
+  - ci-cd
+  aws:
+  - cloud-architecture
+  azure:
+  - cloud-architecture
+  backward-compatibility:
+  - versioning
+  behavioral:
+  - design-patterns
+  bicep:
+  - infrastructure-as-code
+  blob-storage:
+  - file-storage
+  bounded-context:
+  - domain-driven-design
+  bulkhead:
+  - error-handling
+  cache:
+  - state-management
+  caching:
+  - data-persistence
+  - performance-optimization
+  callbacks:
+  - webhooks
+  cdn:
+  - file-storage
+  ci-cd:
+  - ci-cd
+  circuit-breaker:
+  - error-handling
+  - third-party-integration
+  clean-architecture:
+  - layered-architecture
+  cloud:
+  - cloud-architecture
+  cloudformation:
+  - infrastructure-as-code
+  code-quality:
+  - code-quality
+  communication:
+  - api-design
+  composition-root:
+  - dependency-injection
+  config-management:
+  - configuration-management
+  configuration:
+  - configuration-management
+  containers:
+  - containerization
+  contract-testing:
+  - testing-strategies
+  cqrs:
+  - state-management
+  creational:
+  - design-patterns
+  cryptography:
+  - encryption
+  data:
+  - data-persistence
+  data-access:
+  - repository-pattern
+  data-mapping:
+  - data-transformation
+  data-pipeline:
+  - data-transformation
+  data-protection:
+  - encryption
+  data-transformation:
+  - data-transformation
+  database:
+  - data-persistence
+  - database-migration
+  ddd:
+  - domain-driven-design
+  decomposition:
+  - service-architecture
+  dependency-injection:
+  - dependency-injection
+  deployment:
+  - ci-cd
+  deprecation:
+  - versioning
+  design-patterns:
+  - design-patterns
+  di:
+  - dependency-injection
+  distributed-state:
+  - state-management
+  distributed-systems:
+  - service-architecture
+  docker:
+  - containerization
+  domain:
+  - domain-driven-design
+  dos-prevention:
+  - rate-limiting
+  e2e:
+  - testing-strategies
+  elasticsearch:
+  - search
+  elt:
+  - data-transformation
+  encryption:
+  - encryption
+  environment:
+  - configuration-management
+  errors:
+  - error-handling
+  etl:
+  - data-transformation
+  event-driven:
+  - messaging-events
+  - webhooks
+  event-sourcing:
+  - state-management
+  event-store:
+  - data-persistence
+  event-storming:
+  - domain-driven-design
+  events:
+  - messaging-events
+  - webhooks
+  evolution:
+  - database-migration
+  external-api:
+  - third-party-integration
+  faceted-search:
+  - search
+  fallback:
+  - error-handling
+  fault-tolerance:
+  - error-handling
+  feature-flags:
+  - configuration-management
+  file-storage:
+  - file-storage
+  flyway:
+  - database-migration
+  full-text-search:
+  - search
+  gcp:
+  - cloud-architecture
+  github-actions:
+  - ci-cd
+  gitlab-ci:
+  - ci-cd
+  gof:
+  - design-patterns
+  graphql:
+  - api-design
+  grpc:
+  - api-design
+  helm:
+  - orchestration
+  hexagonal:
+  - layered-architecture
+  http:
+  - api-design
+  - webhooks
+  iac:
+  - infrastructure-as-code
+  identity:
+  - authentication
+  images:
+  - containerization
+  inclusive-design:
+  - accessibility
+  indexing:
+  - search
+  infrastructure:
+  - infrastructure-as-code
+  injection:
+  - input-validation
+  input:
+  - input-validation
+  integration:
+  - third-party-integration
+  - webhooks
+  integration-tests:
+  - testing-strategies
+  ioc:
+  - dependency-injection
+  key-management:
+  - encryption
+  kubernetes:
+  - orchestration
+  latency:
+  - performance-optimization
+  layers:
+  - layered-architecture
+  linting:
+  - code-quality
+  liquibase:
+  - database-migration
+  logging:
+  - logging-observability
+  maintainability:
+  - code-quality
+  messaging:
+  - messaging-events
+  metrics:
+  - logging-observability
+  microservices:
+  - service-architecture
+  migration:
+  - database-migration
+  - versioning
+  modular:
+  - service-architecture
+  modularity:
+  - dependency-injection
+  monitoring:
+  - logging-observability
+  monolith:
+  - service-architecture
+  multi-cloud:
+  - cloud-architecture
+  nosql:
+  - data-persistence
+  oauth:
+  - authentication
+  object-oriented:
+  - design-patterns
+  object-storage:
+  - file-storage
+  observability:
+  - logging-observability
+  oci:
+  - containerization
+  oidc:
+  - authentication
+  onion:
+  - layered-architecture
+  optimization:
+  - performance-optimization
+  orchestration:
+  - orchestration
+  performance:
+  - performance-optimization
+  persistence:
+  - data-persistence
+  persistence-abstraction:
+  - repository-pattern
+  pipelines:
+  - ci-cd
+  ports-adapters:
+  - layered-architecture
+  presigned-url:
+  - file-storage
+  profiling:
+  - performance-optimization
+  pub-sub:
+  - messaging-events
+  pulumi:
+  - infrastructure-as-code
+  quality:
+  - testing-strategies
+  query-object:
+  - repository-pattern
+  queue:
+  - messaging-events
+  quotas:
+  - rate-limiting
+  rate-limiting:
+  - rate-limiting
+  readability:
+  - code-quality
+  refactoring:
+  - code-quality
+  release:
+  - ci-cd
+  relevance:
+  - search
+  repository:
+  - repository-pattern
+  resilience:
+  - error-handling
+  - rate-limiting
+  - third-party-integration
+  rest:
+  - api-design
+  retry:
+  - error-handling
+  runtime:
+  - containerization
+  s3:
+  - file-storage
+  sanitization:
+  - input-validation
+  scalability:
+  - performance-optimization
+  scaling:
+  - orchestration
+  scheduling:
+  - orchestration
+  schema:
+  - database-migration
+  schema-evolution:
+  - data-transformation
+  screen-reader:
+  - accessibility
+  search:
+  - search
+  secrets:
+  - configuration-management
+  security:
+  - authentication
+  - input-validation
+  - containerization
+  - encryption
+  semver:
+  - versioning
+  separation-of-concerns:
+  - layered-architecture
+  serverless:
+  - cloud-architecture
+  service-locator:
+  - dependency-injection
+  service-mesh:
+  - service-architecture
+  - orchestration
+  session:
+  - state-management
+  solid:
+  - design-patterns
+  specification:
+  - repository-pattern
+  sql:
+  - data-persistence
+  state:
+  - state-management
+  stateless:
+  - state-management
+  static-analysis:
+  - code-quality
+  strategic-design:
+  - domain-driven-design
+  streaming:
+  - messaging-events
+  structural:
+  - design-patterns
+  structured-logging:
+  - logging-observability
+  tdd:
+  - testing-strategies
+  terraform:
+  - infrastructure-as-code
+  testability:
+  - dependency-injection
+  testing:
+  - testing-strategies
+  third-party:
+  - third-party-integration
+  throttling:
+  - rate-limiting
+  tls:
+  - encryption
+  tokens:
+  - authentication
+  tracing:
+  - logging-observability
+  twelve-factor:
+  - configuration-management
+  ubiquitous-language:
+  - domain-driven-design
+  unit-of-work:
+  - repository-pattern
+  unit-tests:
+  - testing-strategies
+  upload:
+  - file-storage
+  validation:
+  - input-validation
+  vendor-abstraction:
+  - third-party-integration
+  versioning:
+  - versioning
+  wcag:
+  - accessibility
+  webhooks:
+  - webhooks
+  websocket:
+  - api-design
+  well-architected:
+  - cloud-architecture
+  xss:
+  - input-validation
+  zero-downtime:
+  - database-migration

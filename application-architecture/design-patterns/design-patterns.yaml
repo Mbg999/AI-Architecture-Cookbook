@@ -1,0 +1,757 @@
+# =============================================================================
+# AI Architecture Cookbook — Design Patterns (SOLID + GoF)
+# Schema: v3 | Domain: design-patterns
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: design-patterns
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    SOLID principles and essential Gang of Four design patterns for AI-assisted
+    development. Focuses on the most impactful patterns for modern software:
+    strategy, observer, factory, decorator, and adapter — with SOLID as the
+    guiding foundation.
+
+  tags:
+    - solid
+    - design-patterns
+    - gof
+    - creational
+    - structural
+    - behavioral
+    - object-oriented
+
+  categories:
+    - application-architecture
+
+  prerequisites: []
+
+  related_standards:
+    - id: dependency-injection
+      relationship: complementary
+      context: "DI implements the Dependency Inversion Principle from SOLID"
+    - id: layered-architecture
+      relationship: complementary
+      context: "SOLID principles guide how responsibilities are distributed across layers"
+    - id: domain-driven-design
+      relationship: complementary
+      context: "DDD tactical patterns (entities, value objects) apply SOLID principles to domain modeling"
+
+context_inputs:
+  - name: design_concern
+    type: enum
+    description: "What design problem are you trying to solve?"
+    required: true
+    default: behavior_variation
+    enum_values:
+      - behavior_variation
+      - object_creation
+      - interface_adaptation
+      - cross_cutting_concerns
+      - event_notification
+      - solid_violations
+
+  - name: language_paradigm
+    type: enum
+    description: "Primary language paradigm"
+    required: true
+    default: object_oriented
+    enum_values:
+      - object_oriented
+      - functional
+      - multi_paradigm
+
+  - name: codebase_maturity
+    type: enum
+    description: "Maturity of the existing codebase"
+    required: true
+    default: established
+    enum_values:
+      - greenfield
+      - established
+      - legacy
+
+decision_tree:
+  - id: behavior_variation
+    priority: 1
+    if:
+      - design_concern == behavior_variation
+    then:
+      pattern: strategy_pattern
+      standards:
+        - "GoF Strategy Pattern"
+      notes: >
+        Strategy pattern encapsulates interchangeable algorithms behind a common
+        interface. Preferred over switch/if chains for behavior selection.
+    else:
+      pattern: solid_principles
+      notes: "Start with SOLID principles to identify the right design approach"
+
+  - id: object_creation_complexity
+    priority: 2
+    if:
+      - design_concern == object_creation
+    then:
+      pattern: factory_pattern
+      standards:
+        - "GoF Factory Method / Abstract Factory"
+      notes: >
+        Factory patterns encapsulate complex creation logic, returning the right
+        implementation based on context.
+
+  - id: cross_cutting
+    priority: 3
+    if:
+      - design_concern == cross_cutting_concerns
+    then:
+      pattern: decorator_pattern
+      standards:
+        - "GoF Decorator Pattern"
+      notes: >
+        Decorator adds behavior (logging, caching, auth) without modifying
+        the original class — perfect for cross-cutting concerns.
+
+  - id: event_notification
+    priority: 4
+    if:
+      - design_concern == event_notification
+    then:
+      pattern: observer_pattern
+      standards:
+        - "GoF Observer Pattern"
+      notes: >
+        Observer decouples event producers from consumers — one-to-many
+        notification without tight coupling.
+
+  - id: interface_mismatch
+    priority: 5
+    if:
+      - design_concern == interface_adaptation
+    then:
+      pattern: adapter_pattern
+      standards:
+        - "GoF Adapter Pattern"
+      notes: >
+        Adapter translates between incompatible interfaces — essential for
+        integrating third-party libraries and legacy systems.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: low
+  fallback:
+    pattern: solid_principles
+    description: "Start with SOLID principles — they guide you to the right pattern"
+
+patterns:
+  - id: solid_principles
+    name: "SOLID Principles"
+    description: >
+      Five foundational principles for maintainable object-oriented design:
+      Single Responsibility (SRP), Open/Closed (OCP), Liskov Substitution (LSP),
+      Interface Segregation (ISP), and Dependency Inversion (DIP). These
+      principles prevent design rot and guide pattern selection.
+    use_when:
+      - "Always — SOLID applies to any object-oriented or multi-paradigm codebase"
+      - "Code review criteria for design quality"
+      - "Deciding whether a class needs refactoring"
+      - "Choosing between design pattern options"
+    avoid_when:
+      - "Trivial scripts or one-off tools where design longevity is irrelevant"
+    tradeoffs:
+      pros:
+        - "Code is easier to test, maintain, and extend"
+        - "Changes are localized — one change, one place"
+        - "Interfaces are focused and cohesive"
+        - "Dependencies point toward abstractions, not implementations"
+      cons:
+        - "Over-application creates excessive abstraction for simple problems"
+        - "More interfaces and classes than a naïve implementation"
+        - "Learning curve for teams new to the principles"
+    implementation:
+      guidelines:
+        - "SRP: A class should have one reason to change — one responsibility"
+        - "OCP: Open for extension, closed for modification — use strategy/decorator to add behavior"
+        - "LSP: Subtypes must be substitutable for their base types without breaking behavior"
+        - "ISP: Clients should not depend on interfaces they don't use — split fat interfaces"
+        - "DIP: Depend on abstractions, not concretions — use constructor injection"
+      common_errors:
+        - error: "God class with multiple responsibilities (SRP violation)"
+          impact: "Every change risks breaking unrelated functionality"
+          fix: "Extract each responsibility into its own class with a focused interface"
+        - error: "Modifying existing classes to add new behavior (OCP violation)"
+          impact: "Existing behavior may break; shotgun surgery across the codebase"
+          fix: "Use strategy or decorator to add behavior without modifying existing code"
+        - error: "Subclass that throws NotImplementedException (LSP violation)"
+          impact: "Code using the base type breaks when it encounters the subclass"
+          fix: "Redesign the hierarchy; use composition over inheritance if the subtype can't fulfill the contract"
+    maturity:
+      level: standard
+    standards:
+      - name: "SOLID Principles (Robert C. Martin)"
+        type: pattern
+        role: "Foundational design principles for OOP"
+        status: recommended
+
+  - id: strategy_pattern
+    name: "Strategy Pattern"
+    description: >
+      Defines a family of algorithms, encapsulates each in a class, and makes
+      them interchangeable. The client selects the strategy at runtime. Eliminates
+      conditional logic (if/switch) for behavior selection.
+    use_when:
+      - "Multiple algorithms or behaviors that vary by context"
+      - "Want to replace if/else or switch chains with polymorphism"
+      - "Algorithm selection should be configurable at runtime"
+      - "Need to add new behaviors without modifying existing code (OCP)"
+    avoid_when:
+      - "Only two simple options — an if/else may be clearer"
+      - "Behavior never varies — no need for indirection"
+    tradeoffs:
+      pros:
+        - "Algorithms independently testable"
+        - "New algorithms added without modifying existing code"
+        - "Runtime algorithm swapping"
+        - "Eliminates complex conditional logic"
+      cons:
+        - "More classes than a simple conditional"
+        - "Client must know about available strategies"
+    implementation:
+      guidelines:
+        - "Define strategy interface with a single method matching the algorithm contract"
+        - "Each concrete strategy implements one algorithm variation"
+        - "Context class accepts a strategy via constructor injection"
+        - "In functional languages, use function parameters instead of strategy objects"
+      common_errors:
+        - error: "Strategy interface with too many methods"
+          impact: "Strategies become coupled; violates ISP"
+          fix: "One method per strategy interface; compose multiple strategies if needed"
+        - error: "Context class choosing strategy internally (factory inside context)"
+          impact: "Strategy pattern's flexibility negated; conditional logic just moved"
+          fix: "Strategy injected from outside; selection logic in a factory or configuration"
+    maturity:
+      level: standard
+    standards:
+      - name: "GoF Strategy Pattern"
+        type: pattern
+        role: "Behavioral pattern for algorithm interchangeability"
+        status: recommended
+
+  - id: factory_pattern
+    name: "Factory Pattern"
+    description: >
+      Encapsulates object creation logic, returning the appropriate implementation
+      based on input parameters or configuration. Includes Factory Method (subclass
+      decides) and Abstract Factory (family of related objects).
+    use_when:
+      - "Object creation involves complex logic or conditional branching"
+      - "The concrete type to create depends on runtime context"
+      - "Want to decouple client code from specific implementations"
+      - "Creating families of related objects that must be used together"
+    avoid_when:
+      - "Simple construction — just use the constructor"
+      - "Only one implementation exists"
+    tradeoffs:
+      pros:
+        - "Creation logic centralized in one place"
+        - "Client code decoupled from concrete types"
+        - "Easy to add new implementations without changing client code"
+        - "Enforces consistent creation (validation, defaults, logging)"
+      cons:
+        - "Additional indirection for simple cases"
+        - "Factory can become a God class if it creates too many types"
+    implementation:
+      guidelines:
+        - "Factory returns interface type, not concrete type"
+        - "Factory Method: define creation in base class, override in subclasses"
+        - "Abstract Factory: create families of related objects together"
+        - "Simple Factory (static method): pragmatic starting point before full pattern"
+        - "Register implementations for Open/Closed compliance"
+      common_errors:
+        - error: "Factory that requires modification for every new type (OCP violation)"
+          impact: "Adding new types requires changing the factory"
+          fix: "Use registration-based factory or dependency injection"
+        - error: "Factory returning concrete types instead of interfaces"
+          impact: "Client coupled to implementation; factory provides no abstraction"
+          fix: "Factory signature returns the interface; concrete type is internal"
+    maturity:
+      level: standard
+    standards:
+      - name: "GoF Factory Method / Abstract Factory"
+        type: pattern
+        role: "Creational pattern for encapsulated object creation"
+        status: recommended
+
+  - id: decorator_pattern
+    name: "Decorator Pattern"
+    description: >
+      Wraps an object to add behavior without modifying the original. Decorators
+      implement the same interface as the wrapped object. Perfect for cross-cutting
+      concerns like logging, caching, retry, and authorization.
+    use_when:
+      - "Adding cross-cutting concerns (logging, caching, timing, auth)"
+      - "Need to compose behaviors dynamically at runtime"
+      - "Want to add behavior without modifying existing classes (OCP)"
+      - "Middleware or pipeline patterns"
+    avoid_when:
+      - "Decoration depth makes debugging difficult"
+      - "Performance-critical code where wrapper overhead matters"
+    tradeoffs:
+      pros:
+        - "Original class unchanged — follows OCP"
+        - "Behaviors composable: logging + caching + retry stacked"
+        - "Each decorator independently testable"
+        - "Applied selectively — not all instances need decoration"
+      cons:
+        - "Deep nesting makes debugging harder (wrapper inside wrapper)"
+        - "Lots of small classes for each concern"
+        - "Must implement entire interface even for wrapping one method"
+    implementation:
+      guidelines:
+        - "Decorator implements same interface as the wrapped object"
+        - "Accepts the wrapped object via constructor"
+        - "Delegates to wrapped object, adding behavior before/after"
+        - "Stack decorators for multiple concerns: cache(log(service))"
+        - "In DI containers, use decorator registration support"
+      common_errors:
+        - error: "Decorator modifying the wrapped object's state"
+          impact: "Side effects leak across decorators; unpredictable behavior"
+          fix: "Decorators should only add behavior around delegation, not mutate the wrapped object"
+        - error: "Ordering-dependent decorators without clear documentation"
+          impact: "Wrong ordering produces incorrect behavior (e.g., caching before auth)"
+          fix: "Document decorator order requirements; enforce in composition root"
+    maturity:
+      level: standard
+    standards:
+      - name: "GoF Decorator Pattern"
+        type: pattern
+        role: "Structural pattern for composable behavior addition"
+        status: recommended
+
+  - id: adapter_pattern
+    name: "Adapter Pattern"
+    description: >
+      Translates one interface into another that a client expects. Allows
+      incompatible interfaces to work together. Essential for integrating
+      third-party libraries, legacy systems, and external APIs.
+    use_when:
+      - "Integrating third-party library with incompatible interface"
+      - "Wrapping legacy code behind a modern interface"
+      - "Converting between domain and infrastructure types"
+      - "Implementing ports in hexagonal architecture"
+    avoid_when:
+      - "Interfaces are already compatible"
+      - "Adapter would just pass through without translation"
+    tradeoffs:
+      pros:
+        - "Decouples client from third-party or legacy interfaces"
+        - "Client code stable even when external library changes"
+        - "Adapters independently testable"
+        - "Natural fit for hexagonal architecture driven/secondary adapters"
+      cons:
+        - "Additional indirection for every external integration"
+        - "Must maintain adapter when either interface changes"
+    implementation:
+      guidelines:
+        - "Adapter implements the target interface (what the client expects)"
+        - "Adapter holds a reference to the adaptee (the incompatible object)"
+        - "Translation logic lives in the adapter — domain stays clean"
+        - "One adapter per external system; multiple adapters for same port allowed"
+      common_errors:
+        - error: "Business logic in the adapter"
+          impact: "Logic split between domain and infrastructure; untestable without external system"
+          fix: "Adapter only translates interfaces; business logic stays in domain/application layer"
+        - error: "Adapter exposing adaptee types to the client"
+          impact: "Abstraction leaks; client coupled to external system types"
+          fix: "Adapter methods accept and return domain types only"
+    maturity:
+      level: standard
+    standards:
+      - name: "GoF Adapter Pattern"
+        type: pattern
+        role: "Structural pattern for interface translation"
+        status: recommended
+
+  - id: observer_pattern
+    name: "Observer Pattern"
+    description: >
+      Defines a one-to-many dependency between objects so that when one object
+      changes state, all dependents are notified automatically. Decouples event
+      producers from consumers. Foundation for event-driven architectures,
+      reactive programming, and pub/sub systems.
+    use_when:
+      - "One-to-many notification when an object changes state"
+      - "Decoupling event producers from consumers"
+      - "UI event handling or reactive data binding"
+      - "Domain events within an application"
+    avoid_when:
+      - "Simple direct method calls suffice and there is only one consumer"
+      - "Notification order matters and is hard to control"
+      - "Distributed systems where messaging infrastructure is more appropriate"
+    tradeoffs:
+      pros:
+        - "Loose coupling — subject doesn't know concrete observers"
+        - "New observers added without modifying the subject"
+        - "Supports broadcast communication"
+        - "Foundation for reactive and event-driven patterns"
+      cons:
+        - "Notification order may be unpredictable"
+        - "Memory leaks if observers are not unsubscribed"
+        - "Debugging event flows can be difficult"
+        - "Cascade of updates if observers trigger further notifications"
+    implementation:
+      guidelines:
+        - "Subject maintains a list of observers and notifies them on state change"
+        - "Observers implement a common interface (e.g., on_event, update)"
+        - "Provide subscribe and unsubscribe methods on the subject"
+        - "In modern languages, use built-in event/signal mechanisms or reactive libraries"
+        - "For distributed systems, graduate to messaging infrastructure (pub/sub, event bus)"
+      common_errors:
+        - error: "Observers not unsubscribed when no longer needed"
+          impact: "Memory leak; ghost observers receive notifications and may fail"
+          fix: "Use weak references or explicit lifecycle management; unsubscribe on disposal"
+        - error: "Observer modifying subject state during notification"
+          impact: "Infinite notification loops; unpredictable state"
+          fix: "Observers should react to events, not mutate the subject; use command pattern for state changes"
+    maturity:
+      level: standard
+    standards:
+      - name: "GoF Observer Pattern"
+        type: pattern
+        role: "Behavioral pattern for event notification"
+        status: recommended
+
+examples:
+  - id: solid_srp_example
+    title: "Single Responsibility Principle — Extracting Responsibilities"
+    context: "Refactoring a class that handles validation, persistence, and notification"
+    correct: |
+      # Each class has one responsibility
+      class OrderValidator:
+          def validate(self, order):
+              if not order.items:
+                  raise ValidationError("Order must have items")
+              if order.total <= 0:
+                  raise ValidationError("Order total must be positive")
+
+      class OrderRepository:
+          def save(self, order):
+              self.db.insert("orders", order.to_dict())
+
+      class OrderNotifier:
+          def notify_placed(self, order):
+              self.email.send(order.customer_email, "Order placed", order.summary)
+
+      # Orchestrator composes single-responsibility classes
+      class PlaceOrderUseCase:
+          def __init__(self, validator, repo, notifier):
+              self.validator = validator
+              self.repo = repo
+              self.notifier = notifier
+
+          def execute(self, order):
+              self.validator.validate(order)
+              self.repo.save(order)
+              self.notifier.notify_placed(order)
+    incorrect: |
+      # WRONG: God class with multiple responsibilities
+      class OrderService:
+          def place_order(self, order):
+              # Validation (responsibility 1)
+              if not order.items:
+                  raise Error("No items")
+              # Persistence (responsibility 2)
+              self.db.insert("orders", order.to_dict())
+              # Notification (responsibility 3)
+              self.email.send(order.customer_email, "Order placed", order.summary)
+              # Logging (responsibility 4)
+              self.logger.info(f"Order placed: {order.id}")
+              # Any change to validation, persistence, or notification touches THIS class
+    explanation: >
+      The correct version separates each responsibility into its own class. Changes
+      to validation logic don't risk breaking persistence or notification. Each
+      class is independently testable. The incorrect version mixes all concerns
+      in one class, making it fragile and hard to test in isolation.
+
+  - id: strategy_pattern_example
+    title: "Strategy Pattern — Replacing Conditional Logic"
+    context: "Pricing calculator with different discount strategies"
+    correct: |
+      # Strategy interface
+      class DiscountStrategy(Protocol):
+          def calculate(self, order_total: float) -> float: ...
+
+      # Concrete strategies
+      class NoDiscount:
+          def calculate(self, order_total):
+              return order_total
+
+      class PercentageDiscount:
+          def __init__(self, percent):
+              self.percent = percent
+          def calculate(self, order_total):
+              return order_total * (1 - self.percent / 100)
+
+      class TieredDiscount:
+          def calculate(self, order_total):
+              if order_total > 1000:
+                  return order_total * 0.85
+              if order_total > 500:
+                  return order_total * 0.90
+              return order_total
+
+      # Context uses strategy — no conditional logic
+      class PricingService:
+          def __init__(self, discount: DiscountStrategy):
+              self.discount = discount
+
+          def calculate_total(self, order):
+              subtotal = sum(item.price * item.qty for item in order.items)
+              return self.discount.calculate(subtotal)
+
+      # New discount types added without modifying PricingService
+    incorrect: |
+      # WRONG: Conditional logic for every discount type
+      class PricingService:
+          def calculate_total(self, order, discount_type):
+              subtotal = sum(item.price * item.qty for item in order.items)
+              if discount_type == "none":
+                  return subtotal
+              elif discount_type == "percentage":
+                  return subtotal * 0.9
+              elif discount_type == "tiered":
+                  if subtotal > 1000: return subtotal * 0.85
+                  if subtotal > 500: return subtotal * 0.90
+                  return subtotal
+              # Every new discount type = modify this method (OCP violation)
+    explanation: >
+      The correct version encapsulates each discount algorithm in a strategy class.
+      New discount types are added by creating new classes, not by modifying
+      PricingService. The incorrect version uses a growing switch/if chain that
+      violates OCP and requires modification for every new discount type.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Adapter pattern implementations validate all external data before translation"
+  data_protection:
+    requirements:
+      - "Strategy implementations handling sensitive data follow data protection standards"
+      - "Decorator chains do not log sensitive data in cross-cutting decorators"
+  access_control:
+    requirements:
+      - "Factory pattern enforces authorization before creating privileged objects"
+      - "Strategy selection validated against allowed strategies per user role"
+  input_output:
+    requirements:
+      - "Adapter pattern sanitizes all input from external systems"
+      - "Factory pattern validates creation parameters"
+  secrets:
+    requirements:
+      - "Pattern implementations receive secrets via injection, never hardcoded"
+  monitoring:
+    requirements:
+      - "Decorator pattern ideal for adding monitoring without modifying business code"
+      - "Factory creation events logged for audit trail"
+
+compliance:
+  standards:
+    - name: "ISO/IEC 25010"
+      relevance: "Design patterns directly support maintainability, reusability, and modularity"
+    - name: "SOLID Principles"
+      relevance: "SOLID is the foundation — patterns are implementations of these principles"
+
+  requirements_mapping:
+    - control: single_responsibility
+      description: "Each class and module has one reason to change"
+      maps_to:
+        - "ISO/IEC 25010 — Modularity"
+    - control: open_closed
+      description: "System extensible without modifying existing code"
+      maps_to:
+        - "ISO/IEC 25010 — Reusability"
+
+prompt_recipes:
+  - id: pattern_greenfield
+    scenario: greenfield
+    description: "Apply SOLID principles when designing new classes"
+    prompt: |
+      Design {class_description} following SOLID principles:
+
+      1. **SRP**: Identify distinct responsibilities — one class per responsibility
+      2. **OCP**: Identify variation points — use strategy or decorator for extensibility
+      3. **LSP**: If using inheritance, ensure subtypes are fully substitutable
+      4. **ISP**: Define focused interfaces — clients depend only on what they use
+      5. **DIP**: Depend on abstractions — accept interfaces via constructor injection
+
+      Show the class design, interfaces, and how to compose them.
+
+  - id: pattern_refactor
+    scenario: migration
+    description: "Refactor existing code to apply design patterns"
+    prompt: |
+      Refactor this {language} code to address design pattern violations:
+
+      1. Identify SOLID violations (God classes, switch chains, broken substitution)
+      2. For each violation, recommend the appropriate pattern:
+         - Switch/if chains → Strategy pattern
+         - Cross-cutting concerns → Decorator pattern
+         - Complex creation → Factory pattern
+         - Interface mismatch → Adapter pattern
+      3. Apply the pattern incrementally — one refactoring at a time
+      4. Ensure all tests pass after each refactoring
+
+  - id: pattern_audit
+    scenario: audit
+    description: "Audit codebase for SOLID violations and pattern opportunities"
+    prompt: |
+      Audit this {language} codebase for design quality:
+
+      1. **SRP violations**: Classes with >1 responsibility (look for "and" in descriptions)
+      2. **OCP violations**: Places where adding features requires modifying existing code
+      3. **LSP violations**: Subclasses throwing NotImplemented or breaking base contracts
+      4. **ISP violations**: Fat interfaces forcing clients to depend on unused methods
+      5. **DIP violations**: Classes instantiating their own dependencies
+
+      For each violation, recommend the fix and appropriate design pattern.
+
+  - id: pattern_selection
+    scenario: architecture
+    description: "Select the right design pattern for a specific problem"
+    prompt: |
+      I need a design pattern for: {problem_description}
+
+      Analyze the problem and recommend the most appropriate pattern:
+      1. What is the core design concern? (variation, creation, adaptation, cross-cutting, notification)
+      2. Which GoF pattern addresses this concern?
+      3. Show the pattern applied to my specific problem
+      4. Show the before (without pattern) and after (with pattern)
+      5. Explain when this pattern would be over-engineering
+
+  - id: pattern_debugging
+    scenario: debugging
+    description: "Debug design pattern implementation issues"
+    prompt: |
+      Debug this {pattern_name} implementation in {language}:
+
+      1. Verify the pattern is implemented correctly (interface contracts, delegation)
+      2. Check for common mistakes specific to this pattern
+      3. Verify SOLID principles are followed in the implementation
+      4. Suggest simplification if the pattern is over-applied
+      5. Show corrected implementation with tests
+
+anti_patterns:
+  - name: "God Class"
+    description: >
+      A single class with too many responsibilities — hundreds of methods,
+      thousands of lines, touching every part of the system. Violates SRP.
+    fix: "Extract responsibilities into focused classes; compose them in a use case or facade"
+    severity: critical
+    related_pattern: solid_principles
+
+  - name: "Shotgun Surgery"
+    description: >
+      A single logical change requires modifications in many different classes
+      scattered across the codebase. Indicates poor cohesion and responsibility
+      distribution.
+    fix: "Move related logic into a single class or module; apply SRP to group by reason-to-change"
+    severity: high
+    related_pattern: solid_principles
+
+  - name: "Premature Pattern Application"
+    description: >
+      Applying complex design patterns to simple problems that don't warrant
+      the indirection. Creates unnecessary abstraction that obscures intent.
+    fix: "Start with the simplest implementation; introduce patterns when complexity demands them"
+    severity: medium
+    related_pattern: strategy_pattern
+
+  - name: "Inheritance Abuse"
+    description: >
+      Using inheritance for code reuse instead of polymorphism. Deep inheritance
+      hierarchies that violate LSP and create fragile base class problems.
+    fix: "Prefer composition over inheritance; use interfaces and delegation"
+    severity: high
+    related_pattern: decorator_pattern
+
+  - name: "Feature Envy"
+    description: >
+      A method that uses more features of another class than its own.
+      Indicates the method belongs in the other class.
+    fix: "Move the method to the class whose data it primarily uses"
+    severity: medium
+    related_pattern: solid_principles
+
+checklist:
+  - id: DP-01
+    category: design
+    description: "Classes follow SRP — each class has one reason to change"
+    severity: high
+    verified_by: solid_principles
+
+  - id: DP-02
+    category: design
+    description: "New features added by extension, not modification (OCP)"
+    severity: high
+    verified_by: solid_principles
+
+  - id: DP-03
+    category: correctness
+    description: "Subtypes fully substitutable for base types (LSP)"
+    severity: high
+    verified_by: solid_principles
+
+  - id: DP-04
+    category: design
+    description: "Interfaces focused — clients don't depend on methods they don't use (ISP)"
+    severity: medium
+    verified_by: solid_principles
+
+  - id: DP-05
+    category: design
+    description: "Dependencies on abstractions, not concretions (DIP)"
+    severity: high
+    verified_by: solid_principles
+
+  - id: DP-06
+    category: maintainability
+    description: "Conditional logic (switch/if chains) replaced with strategy pattern where appropriate"
+    severity: medium
+    verified_by: strategy_pattern
+
+  - id: DP-07
+    category: maintainability
+    description: "Cross-cutting concerns (logging, caching) applied via decorator, not scattered"
+    severity: medium
+    verified_by: decorator_pattern
+
+  - id: DP-08
+    category: design
+    description: "Complex object creation encapsulated in factories"
+    severity: low
+    verified_by: factory_pattern
+
+  - id: DP-09
+    category: maintainability
+    description: "Third-party integrations wrapped in adapters"
+    severity: high
+    verified_by: adapter_pattern
+
+  - id: DP-10
+    category: design
+    description: "Composition preferred over inheritance for code reuse"
+    severity: high
+    verified_by: decorator_pattern
+
+  - id: DP-11
+    category: correctness
+    description: "No God classes — maximum class size enforced by code quality tools"
+    severity: high
+    verified_by: solid_principles
+
+  - id: DP-12
+    category: design
+    description: "Patterns applied only when complexity warrants — no premature abstraction"
+    severity: medium
+    verified_by: solid_principles

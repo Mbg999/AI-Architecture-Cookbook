@@ -1,0 +1,63 @@
+category: application-architecture
+name: "Application Architecture Standards"
+description: >
+  Structural and design patterns that define how application code is organized,
+  layered, and composed. These standards guide module boundaries, dependency
+  management, and domain modeling.
+
+entries:
+  - domain: layered-architecture
+    version: "1.0.0"
+    description: "Layered architecture patterns including clean architecture, hexagonal, and onion"
+    tags: ["architecture", "layers", "clean-architecture", "hexagonal", "onion", "ports-adapters"]
+    prerequisites: []
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: service-architecture
+    version: "1.0.0"
+    description: "Service decomposition patterns — microservices, modular monolith, and hybrid approaches"
+    tags: ["microservices", "monolith", "modular", "service-mesh", "decomposition"]
+    prerequisites: ["api-design"]
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: domain-driven-design
+    version: "1.0.0"
+    description: "Domain-Driven Design tactical and strategic patterns for complex business domains"
+    tags: ["ddd", "domain", "bounded-context", "aggregate", "event-storming", "ubiquitous-language"]
+    prerequisites: []
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: state-management
+    version: "1.0.0"
+    description: "State management patterns for client, server, and distributed state"
+    tags: ["state", "session", "cache", "distributed-state", "event-sourcing", "cqrs"]
+    prerequisites: ["data-persistence"]
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: dependency-injection
+    version: "1.0.0"
+    description: "Dependency injection and inversion of control patterns for testable, modular code"
+    tags: ["di", "ioc", "dependency-injection", "composition-root", "service-locator"]
+    prerequisites: []
+    pattern_count: 3
+    anti_pattern_count: 4
+
+  - domain: repository-pattern
+    version: "1.0.0"
+    description: "Repository and data access patterns abstracting persistence from domain logic"
+    tags: ["repository", "data-access", "unit-of-work", "query-object", "specification"]
+    prerequisites: ["data-persistence"]
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: design-patterns
+    version: "1.0.0"
+    description: "SOLID principles and essential GoF design patterns for AI-assisted development"
+    tags: ["solid", "design-patterns", "gof", "creational", "structural", "behavioral"]
+    prerequisites: []
+    pattern_count: 6
+    anti_pattern_count: 5

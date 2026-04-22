@@ -1,0 +1,691 @@
+# =============================================================================
+# AI Architecture Cookbook — Testing Strategies
+# Schema: v3 | Domain: testing-strategies
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: testing-strategies
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Testing pyramids, strategies, and patterns for comprehensive quality assurance.
+    Covers unit testing, integration testing, end-to-end testing, contract testing,
+    and test architecture decisions for AI-assisted development.
+
+  tags:
+    - testing
+    - unit-tests
+    - integration-tests
+    - e2e
+    - tdd
+    - quality
+    - contract-testing
+
+  categories:
+    - security-quality
+
+  prerequisites: []
+
+  related_standards:
+    - id: code-quality
+      relationship: complementary
+      context: "Code quality standards ensure testable, maintainable code"
+    - id: ci-cd
+      relationship: complementary
+      context: "Tests are executed as part of CI/CD pipelines"
+    - id: api-design
+      relationship: complementary
+      context: "API contracts are validated through contract testing"
+
+context_inputs:
+  - name: application_type
+    type: enum
+    description: "Type of application under test"
+    required: true
+    default: api_service
+    enum_values:
+      - api_service
+      - web_frontend
+      - mobile
+      - library
+      - cli_tool
+      - data_pipeline
+      - microservices
+
+  - name: test_maturity
+    type: enum
+    description: "Current testing maturity of the project"
+    required: true
+    default: developing
+    enum_values:
+      - none
+      - developing
+      - established
+      - advanced
+
+  - name: team_size
+    type: enum
+    description: "Size of the development team"
+    required: false
+    default: small
+    enum_values:
+      - solo
+      - small
+      - medium
+      - large
+
+  - name: deployment_frequency
+    type: enum
+    description: "How often code is deployed to production"
+    required: false
+    default: daily
+    enum_values:
+      - weekly
+      - daily
+      - multiple_daily
+      - continuous
+
+decision_tree:
+  - id: microservices_contract_testing
+    priority: 1
+    if:
+      - application_type == microservices
+    then:
+      pattern: contract_testing
+      standards:
+        - "Consumer-Driven Contract Testing"
+      notes: >
+        Microservices require contract testing to verify service interactions
+        without requiring all services to be running.
+    else:
+      pattern: test_pyramid
+      notes: "Test pyramid is the default strategy for most application types"
+
+  - id: no_tests_bootstrap
+    priority: 2
+    if:
+      - test_maturity == none
+    then:
+      pattern: test_pyramid
+      standards:
+        - "Testing Pyramid"
+      notes: >
+        Start with the testing pyramid: heavy unit tests, moderate integration
+        tests, minimal E2E tests. Establish the foundation first.
+
+  - id: frontend_integration_focus
+    priority: 3
+    if:
+      - application_type in [web_frontend, mobile]
+    then:
+      pattern: integration_testing
+      standards:
+        - "Testing Library"
+      notes: >
+        Frontend applications benefit from integration-level tests that test
+        user interactions with rendered components, not implementation details.
+
+  - id: high_deployment_frequency
+    priority: 4
+    if:
+      - deployment_frequency in [multiple_daily, continuous]
+    then:
+      pattern: test_pyramid
+      standards:
+        - "Continuous Testing"
+      notes: >
+        High deployment frequency requires fast, reliable test suites.
+        Optimize for speed: heavy unit, moderate integration, minimal E2E.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: test_pyramid
+    description: "Test pyramid with unit-heavy distribution is safe default for all applications"
+
+patterns:
+  - id: test_pyramid
+    name: "Testing Pyramid"
+    description: >
+      The testing pyramid distributes tests across three layers: many fast unit
+      tests at the base, fewer integration tests in the middle, and minimal
+      end-to-end tests at the top. This distribution optimizes for speed,
+      reliability, and cost of maintenance.
+    use_when:
+      - "Starting a new project's test strategy"
+      - "API services and backend applications"
+      - "Libraries and shared packages"
+      - "Need fast feedback loops in CI/CD"
+    avoid_when:
+      - "Heavily UI-driven applications (consider testing trophy)"
+      - "Prototype or throwaway code"
+    tradeoffs:
+      pros:
+        - "Fast feedback — unit tests run in seconds"
+        - "Reliable — unit tests rarely flake"
+        - "Cheap to maintain — isolated, focused tests"
+        - "Good fault localization — failures point to specific units"
+      cons:
+        - "Unit tests alone miss integration issues"
+        - "May create false confidence if integration layer is thin"
+        - "Requires testable architecture (dependency injection, interfaces)"
+    implementation:
+      guidelines:
+        - "Target: 70-80% unit, 15-25% integration, 5-10% E2E"
+        - "Unit tests: test pure logic, business rules, calculations in isolation"
+        - "Mock external dependencies in unit tests (databases, APIs, file system)"
+        - "Integration tests: test real interactions (database queries, API calls, message handling)"
+        - "E2E tests: cover critical user journeys only (login, checkout, core workflow)"
+        - "All tests must be deterministic — no flaky tests tolerated"
+        - "Measure code coverage but target meaningful coverage (branch coverage over line coverage)"
+      common_errors:
+        - error: "Ice cream cone — many E2E tests, few unit tests"
+          impact: "Slow CI, flaky tests, expensive maintenance, poor fault localization"
+          fix: "Invert the pyramid: refactor E2E scenarios into unit and integration tests"
+        - error: "100% line coverage target without quality consideration"
+          impact: "Tests assert implementation details, not behavior; brittle to refactoring"
+          fix: "Target 80% branch coverage; focus on testing behavior and edge cases"
+        - error: "Mocking everything in integration tests"
+          impact: "Integration tests don't actually test integration — miss real bugs"
+          fix: "Integration tests use real dependencies (test database, test containers)"
+    maturity:
+      level: standard
+    standards:
+      - name: "Test Pyramid (Martin Fowler)"
+        type: practice
+        role: "Foundational test distribution strategy"
+        status: recommended
+        reference: "https://martinfowler.com/articles/practical-test-pyramid.html"
+
+  - id: integration_testing
+    name: "Integration Testing with Real Dependencies"
+    description: >
+      Tests that verify interactions between components using real (or
+      near-real) dependencies: test databases, test containers, HTTP servers,
+      message brokers. Catches bugs that unit tests with mocks cannot.
+    use_when:
+      - "Database query logic needs verification"
+      - "API client/server interaction testing"
+      - "Message producer/consumer verification"
+      - "Frontend component interaction testing"
+    avoid_when:
+      - "Testing pure business logic (use unit tests)"
+      - "Test environment cannot support real dependencies"
+    tradeoffs:
+      pros:
+        - "Catches real integration bugs (query errors, serialization, protocol issues)"
+        - "Higher confidence than mocked tests"
+        - "Test containers make environment setup reproducible"
+      cons:
+        - "Slower than unit tests (seconds vs milliseconds)"
+        - "Requires more infrastructure (containers, test databases)"
+        - "Can be flaky if not carefully managed (network, timing)"
+    implementation:
+      guidelines:
+        - "Use test containers (Testcontainers) for databases, message brokers, caches"
+        - "Each test gets a clean database state (transaction rollback or truncation)"
+        - "Frontend: use Testing Library to test user interactions, not implementation"
+        - "API tests: start real HTTP server, send real requests, assert responses"
+        - "Use separate test configuration (test database, test queues)"
+        - "Parallelize with isolated resources (separate DB schema per test suite)"
+      common_errors:
+        - error: "Shared mutable state between integration tests"
+          impact: "Tests pass individually but fail when run together — order-dependent"
+          fix: "Each test creates and tears down its own state; use transactions or truncation"
+        - error: "Testing frontend implementation details (CSS classes, component internals)"
+          impact: "Tests break on every refactor even when behavior is unchanged"
+          fix: "Test user-visible behavior: what the user sees, clicks, and types"
+    maturity:
+      level: standard
+    standards:
+      - name: "Testcontainers"
+        type: tool
+        role: "Disposable test environments using Docker containers"
+        status: recommended
+        reference: "https://testcontainers.com/"
+      - name: "Testing Library"
+        type: framework
+        role: "User-centric DOM testing utilities"
+        status: recommended
+        reference: "https://testing-library.com/"
+
+  - id: contract_testing
+    name: "Consumer-Driven Contract Testing"
+    description: >
+      Verifies that services conform to the expectations (contracts) defined
+      by their consumers. Each consumer defines what it expects from a provider;
+      the provider verifies it can fulfill all consumer contracts. Enables
+      independent service deployment.
+    use_when:
+      - "Microservices communicating via HTTP or messaging"
+      - "Multiple teams developing services independently"
+      - "Need to deploy services independently without E2E tests"
+      - "API versioning and backward compatibility verification"
+    avoid_when:
+      - "Monolithic application"
+      - "Single team owning both consumer and provider"
+    tradeoffs:
+      pros:
+        - "Services can deploy independently — no need for integrated test environment"
+        - "Catches breaking changes before deployment"
+        - "Tests are fast (no network calls, mock provider/consumer)"
+        - "Living documentation of service expectations"
+      cons:
+        - "Requires buy-in from both consumer and provider teams"
+        - "Contract broker infrastructure needed (Pact Broker, etc.)"
+        - "Additional test maintenance overhead"
+    implementation:
+      guidelines:
+        - "Consumer writes contract defining expected request/response"
+        - "Provider verifies it can fulfill all consumer contracts"
+        - "Store contracts in a broker (Pact Broker) for versioning"
+        - "Run contract verification in provider's CI pipeline"
+        - "Use can-i-deploy check before production deployment"
+        - "Include contract tests for message-based interactions (async)"
+      common_errors:
+        - error: "Provider-driven contracts instead of consumer-driven"
+          impact: "Contracts don't reflect what consumers actually need; miss real incompatibilities"
+          fix: "Consumers define contracts based on their actual usage; provider verifies"
+        - error: "Not running contract verification in CI"
+          impact: "Breaking changes deployed to production; runtime failures"
+          fix: "Contract verification runs on every provider build; can-i-deploy gates deployment"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Pact"
+        type: framework
+        role: "Consumer-driven contract testing framework"
+        status: recommended
+        reference: "https://pact.io/"
+
+  - id: property_based_testing
+    name: "Property-Based Testing"
+    description: >
+      Instead of testing specific input/output pairs, define properties that
+      must hold for all valid inputs. The testing framework generates random
+      inputs and checks that properties are satisfied, discovering edge cases
+      that manual test cases miss.
+    use_when:
+      - "Functions with well-defined properties (encode/decode, serialize/deserialize)"
+      - "Mathematical or algorithmic correctness"
+      - "Parser and validator testing"
+      - "State machine verification"
+    avoid_when:
+      - "UI/UX testing"
+      - "Simple CRUD operations with no complex logic"
+    tradeoffs:
+      pros:
+        - "Discovers edge cases humans wouldn't think of"
+        - "Compact — one property test replaces many example tests"
+        - "Shrinking finds minimal failing input automatically"
+        - "Forces clear thinking about invariants and contracts"
+      cons:
+        - "Harder to write — must identify meaningful properties"
+        - "Slower than example-based tests (many generated inputs)"
+        - "Flaky if properties are not deterministic with random seed"
+    implementation:
+      guidelines:
+        - "Identify properties: roundtrip (encode then decode = identity), invariants, oracle"
+        - "Use language-appropriate framework (Hypothesis for Python, fast-check for JS/TS, QuickCheck for Haskell)"
+        - "Set deterministic seed for reproducible CI runs"
+        - "Start with simple properties; add complexity as patterns emerge"
+        - "Combine with example-based tests — they complement each other"
+        - "Use shrinking to find minimal failing inputs"
+      common_errors:
+        - error: "Non-deterministic property tests in CI"
+          impact: "Random seed changes between runs; test passes then fails without code change"
+          fix: "Fix seed in CI; use random seed only in local exploration"
+        - error: "Property tests that re-implement the function under test"
+          impact: "Test always passes because it mirrors the implementation bugs"
+          fix: "Test properties and invariants, not the implementation algorithm"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Hypothesis (Python)"
+        type: framework
+        role: "Property-based testing for Python"
+        status: recommended
+        reference: "https://hypothesis.readthedocs.io/"
+      - name: "fast-check (JavaScript/TypeScript)"
+        type: framework
+        role: "Property-based testing for JS/TS"
+        status: recommended
+        reference: "https://fast-check.dev/"
+
+examples:
+  - id: test_pyramid_structure
+    title: "Testing Pyramid — API Service"
+    context: "Structuring tests for a REST API service"
+    correct: |
+      # Test directory structure reflecting the pyramid
+      tests/
+        unit/                    # 70-80% of tests — fast, isolated
+          test_user_service.py   # Business logic with mocked dependencies
+          test_order_calculator.py
+          test_validators.py
+        integration/             # 15-25% — real dependencies
+          test_user_repository.py   # Real database (test container)
+          test_payment_client.py    # Real HTTP calls to mock server
+          test_event_publisher.py   # Real message broker (test container)
+        e2e/                     # 5-10% — critical paths only
+          test_checkout_flow.py     # Full user journey
+
+      # Unit test: fast, isolated, tests business logic
+      def test_order_total_applies_discount():
+        order = Order(items=[Item("widget", 100), Item("gadget", 50)])
+        discount = PercentageDiscount(10)
+        total = calculate_total(order, discount)
+        assert total == 135.0  # (100 + 50) * 0.9
+
+      # Integration test: real database, tests data layer
+      def test_user_repository_creates_and_finds(db_container):
+        repo = UserRepository(db_container.connection)
+        user = repo.create({"name": "Alice", "email": "alice@example.com"})
+        found = repo.find_by_id(user.id)
+        assert found.name == "Alice"
+        assert found.email == "alice@example.com"
+
+      # E2E test: full API, critical path only
+      def test_checkout_flow(api_server):
+        # Add item to cart
+        response = api_server.post("/cart/items", {"product_id": "P1", "qty": 2})
+        assert response.status == 200
+        # Checkout
+        response = api_server.post("/checkout", {"payment_method": "card_token"})
+        assert response.status == 201
+        assert response.json["order_id"] is not None
+    incorrect: |
+      # WRONG: Ice cream cone — heavy E2E, no unit tests
+      tests/
+        e2e/                            # 90% of tests — slow, flaky
+          test_login.py                 # 45 seconds
+          test_browse_products.py       # 30 seconds
+          test_add_to_cart.py           # 25 seconds
+          test_checkout.py              # 60 seconds
+          test_admin_dashboard.py       # 40 seconds
+          # Total: 3+ minutes, frequent flakes
+
+      # No unit tests — all logic tested through full stack
+      # No integration tests — database bugs found only in E2E
+      # CI takes 15 minutes, flakes 30% of the time
+      # Team ignores failures: "it's just a flaky test"
+    explanation: >
+      The correct structure follows the testing pyramid: many fast unit tests
+      for business logic, integration tests with real dependencies for data
+      layer, and minimal E2E for critical paths. The incorrect ice cream cone
+      tests everything through the UI/API, resulting in slow, flaky tests
+      that teams learn to ignore.
+
+  - id: contract_test_example
+    title: "Contract Testing — Consumer-Driven"
+    context: "Testing API contract between order service (consumer) and inventory service (provider)"
+    correct: |
+      # CONSUMER SIDE (Order Service)
+      # Defines what it expects from the Inventory Service
+
+      def test_inventory_check_contract():
+        pact = Pact("order-service", "inventory-service")
+
+        # Define expected interaction
+        pact.given("product P1 is in stock")
+          .upon_receiving("a stock check request")
+          .with_request("GET", "/inventory/P1")
+          .will_respond_with(200, body={
+            "product_id": "P1",
+            "available": True,
+            "quantity": Like(10)  # Any positive integer
+          })
+
+        # Run test against Pact mock server
+        with pact:
+          result = inventory_client.check_stock("P1")
+          assert result.available == True
+
+        # Publish contract to Pact Broker
+        pact.publish()
+
+      # PROVIDER SIDE (Inventory Service)
+      # Verifies it can fulfill ALL consumer contracts
+
+      def test_provider_fulfills_contracts():
+        verifier = PactVerifier("inventory-service")
+        verifier.verify_with_broker(
+          broker_url="https://pact-broker.internal",
+          provider_states_setup_url="/pact/setup"
+        )
+        # Pact fetches all consumer contracts from broker
+        # Replays each interaction against real provider
+        # Fails if any consumer expectation is not met
+    incorrect: |
+      # WRONG: No contract testing — using shared E2E environment
+      def test_order_checks_inventory():
+        # Requires inventory service to be running
+        # Requires shared test environment
+        # Breaks when inventory team deploys changes
+        response = http.get("https://test.inventory.internal/inventory/P1")
+        assert response.status == 200
+        # If inventory team changes response format, this breaks in staging
+        # No way to catch before deployment
+    explanation: >
+      Contract testing allows independent deployment by defining expectations
+      as contracts. The consumer defines what it needs; the provider verifies
+      it can deliver. The incorrect approach requires shared test environments
+      and breaks when any service changes.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Test credentials and tokens use dedicated test values, never production"
+  data_protection:
+    requirements:
+      - "Test data uses synthetic or anonymized data, never production PII"
+      - "Test databases are ephemeral and destroyed after test runs"
+  access_control:
+    requirements:
+      - "Test infrastructure access restricted to CI/CD service accounts"
+  input_output:
+    requirements:
+      - "Security tests included (dependency scanning, SAST, secret scanning)"
+  secrets:
+    requirements:
+      - "Test secrets stored in CI/CD secret management, not in code"
+  monitoring:
+    requirements:
+      - "Test failure trends tracked and alerted on"
+      - "Flaky test rate monitored (target: <1%)"
+
+compliance:
+  standards:
+    - name: "ISTQB Test Levels"
+      relevance: "Industry standard test level definitions"
+    - name: "ISO 25010 Software Quality"
+      relevance: "Quality characteristics that testing should cover"
+
+  requirements_mapping:
+    - control: test_coverage
+      description: "Meaningful test coverage across unit, integration, and E2E levels"
+      maps_to:
+        - "ISO 25010 — Functional Suitability"
+    - control: security_testing
+      description: "Security testing integrated into CI pipeline"
+      maps_to:
+        - "OWASP Testing Guide"
+
+prompt_recipes:
+  - id: testing_greenfield
+    scenario: greenfield
+    description: "Design testing strategy for a new project"
+    prompt: |
+      Design the testing strategy for a new project.
+
+      Context:
+      - Application type: [api_service/web_frontend/mobile/library/microservices]
+      - Test maturity: starting from scratch
+      - Deployment frequency: [daily/multiple_daily/continuous]
+
+      Requirements:
+      - Define test pyramid distribution (unit/integration/E2E percentages)
+      - Choose test frameworks for each level
+      - Set up test infrastructure (test containers, mock servers)
+      - Define CI test pipeline (which tests run when)
+      - Set coverage targets (branch coverage, not line coverage)
+      - Establish flaky test policy (quarantine, fix SLA)
+
+  - id: testing_audit
+    scenario: audit
+    description: "Audit existing testing practices"
+    prompt: |
+      Audit the testing strategy and practices:
+
+      1. What is the test distribution (unit/integration/E2E percentages)?
+      2. Is it a pyramid or ice cream cone?
+      3. Are unit tests truly isolated (mocked dependencies)?
+      4. Do integration tests use real dependencies (test containers)?
+      5. Are E2E tests limited to critical paths only?
+      6. What is the flaky test rate?
+      7. What is the CI test pipeline time?
+      8. Is test data synthetic (no production PII)?
+      9. Are security tests included (SAST, dependency scanning)?
+      10. Is code coverage meaningful (branch vs line)?
+
+  - id: testing_migration
+    scenario: migration
+    description: "Migrate from ice cream cone to testing pyramid"
+    prompt: |
+      Migrate from an ice cream cone (heavy E2E) to a testing pyramid.
+
+      Steps:
+      1. Inventory existing tests by level and execution time
+      2. Identify E2E tests that test business logic (should be unit tests)
+      3. Extract business logic into testable units with dependency injection
+      4. Write unit tests for extracted logic (replace E2E coverage)
+      5. Convert E2E database tests to integration tests with test containers
+      6. Keep only critical-path E2E tests
+      7. Measure: CI time should decrease, reliability should increase
+
+  - id: testing_edge_case
+    scenario: edge-case
+    description: "Test edge cases and error paths"
+    prompt: |
+      Design tests for edge cases and error paths.
+
+      Strategies:
+      - Boundary values: min, max, zero, negative, overflow
+      - Empty/null inputs: empty string, null, undefined, empty array
+      - Concurrent access: race conditions, deadlocks
+      - Network failures: timeout, connection refused, partial response
+      - Resource exhaustion: disk full, memory limit, connection pool
+      - Time-related: timezone boundaries, DST, leap seconds
+      - Character encoding: Unicode, emoji, RTL text, SQL special chars
+
+anti_patterns:
+  - name: "Ice Cream Cone Testing"
+    description: >
+      Inverted testing pyramid with most tests at the E2E level and few or no
+      unit tests. Results in slow, flaky, expensive test suites that teams
+      learn to ignore.
+    fix: "Extract business logic into testable units; convert E2E to unit and integration tests"
+    severity: high
+    related_pattern: test_pyramid
+
+  - name: "Testing Implementation Details"
+    description: >
+      Tests that assert on internal state, private methods, CSS classes, or
+      component structure rather than observable behavior. These tests break
+      on every refactor even when behavior is unchanged.
+    fix: "Test behavior and outcomes, not implementation. Ask: what does the user see/get?"
+    severity: medium
+    related_pattern: integration_testing
+
+  - name: "Flaky Tests Ignored"
+    description: >
+      Tests that intermittently fail due to timing, shared state, or external
+      dependencies. Team disables or ignores failures, eroding trust in the
+      test suite. Eventually, real failures are also ignored.
+    fix: "Quarantine flaky tests immediately; fix within SLA (48h); track flaky rate metric"
+    severity: high
+    related_pattern: test_pyramid
+
+  - name: "Production Data in Tests"
+    description: >
+      Using copies of production databases for testing, containing real PII,
+      credentials, and sensitive data. Violates privacy regulations and
+      creates security risk in test environments.
+    fix: "Use synthetic test data generators; anonymize if production data structure needed"
+    severity: critical
+    related_pattern: integration_testing
+
+checklist:
+  - id: TST-01
+    category: correctness
+    description: "Testing pyramid distribution: 70-80% unit, 15-25% integration, 5-10% E2E"
+    severity: high
+    verified_by: test_pyramid
+
+  - id: TST-02
+    category: correctness
+    description: "Unit tests are truly isolated (mocked external dependencies)"
+    severity: high
+    verified_by: test_pyramid
+
+  - id: TST-03
+    category: correctness
+    description: "Integration tests use real dependencies (test containers)"
+    severity: high
+    verified_by: integration_testing
+
+  - id: TST-04
+    category: correctness
+    description: "E2E tests limited to critical user journeys"
+    severity: medium
+    verified_by: test_pyramid
+
+  - id: TST-05
+    category: performance
+    description: "CI test pipeline completes in under 10 minutes"
+    severity: medium
+    verified_by: test_pyramid
+
+  - id: TST-06
+    category: reliability
+    description: "Flaky test rate below 1%"
+    severity: high
+    verified_by: test_pyramid
+
+  - id: TST-07
+    category: security
+    description: "Test data is synthetic — no production PII"
+    severity: critical
+    verified_by: integration_testing
+
+  - id: TST-08
+    category: security
+    description: "Security tests included in CI (SAST, dependency scanning)"
+    severity: high
+    verified_by: test_pyramid
+
+  - id: TST-09
+    category: correctness
+    description: "All tests are deterministic — no random failures"
+    severity: high
+    verified_by: test_pyramid
+
+  - id: TST-10
+    category: maintainability
+    description: "Tests assert behavior, not implementation details"
+    severity: medium
+    verified_by: integration_testing
+
+  - id: TST-11
+    category: correctness
+    description: "Contract tests verify service interactions (if microservices)"
+    severity: high
+    verified_by: contract_testing
+
+  - id: TST-12
+    category: correctness
+    description: "Branch coverage target ≥80% for business logic"
+    severity: medium
+    verified_by: test_pyramid

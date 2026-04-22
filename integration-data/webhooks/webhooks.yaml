@@ -1,0 +1,709 @@
+# =============================================================================
+# AI Architecture Cookbook — Webhooks
+# Schema: v3 | Domain: webhooks
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: webhooks
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Webhook design patterns for both producing and consuming event
+    notifications over HTTP. Covers delivery guarantees, signature
+    verification, idempotent processing, retry policies, and security
+    hardening for webhook endpoints.
+
+  tags:
+    - webhooks
+    - events
+    - callbacks
+    - http
+    - event-driven
+    - integration
+
+  categories:
+    - integration-data
+
+  prerequisites:
+    - id: authentication
+      reason: "Webhook signature verification is an authentication concern"
+    - id: input-validation
+      reason: "Webhook payloads must be validated as untrusted input"
+    - id: messaging-events
+      reason: "Webhooks are HTTP-based event delivery; shares event design principles"
+
+  related_standards:
+    - id: third-party-integration
+      relationship: complementary
+      context: "Webhooks are the inbound side of third-party integration"
+    - id: rate-limiting
+      relationship: complementary
+      context: "Webhook consumers may need to throttle high-volume producers"
+    - id: error-handling
+      relationship: complementary
+      context: "Webhook delivery failures need structured retry and dead-letter handling"
+
+context_inputs:
+  - name: webhook_role
+    type: enum
+    description: "Are you producing or consuming webhooks"
+    required: true
+    default: consumer
+    enum_values:
+      - producer
+      - consumer
+      - both
+
+  - name: delivery_guarantee
+    type: enum
+    description: "Required delivery guarantee level"
+    required: true
+    default: at_least_once
+    enum_values:
+      - best_effort
+      - at_least_once
+      - exactly_once
+
+  - name: volume
+    type: enum
+    description: "Expected webhook volume"
+    required: false
+    default: moderate
+    enum_values:
+      - low
+      - moderate
+      - high
+      - burst
+
+  - name: security_requirement
+    type: enum
+    description: "Security level for webhook verification"
+    required: false
+    default: hmac_signature
+    enum_values:
+      - none
+      - shared_secret
+      - hmac_signature
+      - mutual_tls
+
+decision_tree:
+  - id: producer_design
+    priority: 1
+    if:
+      - webhook_role in [producer, both]
+    then:
+      pattern: webhook_producer
+      standards:
+        - "Standard Webhooks"
+        - "CloudEvents"
+      notes: >
+        Webhook producers must implement reliable delivery with retries,
+        signature signing, and event type registration.
+    else:
+      pattern: webhook_consumer
+      notes: "Consumer-side focuses on verification, idempotency, and async processing"
+
+  - id: high_volume
+    priority: 2
+    if:
+      - volume in [high, burst]
+    then:
+      pattern: async_webhook_processing
+      notes: >
+        High-volume webhook consumers should enqueue payloads immediately
+        and process asynchronously to avoid back-pressure failures.
+
+  - id: exactly_once
+    priority: 3
+    if:
+      - delivery_guarantee == exactly_once
+    then:
+      pattern: idempotent_processing
+      notes: >
+        Exactly-once semantics require idempotent processing since at-least-once
+        delivery is the foundation — consumers deduplicate.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: webhook_consumer
+    description: "Most applications consume webhooks; focus on verification and idempotency"
+
+patterns:
+  - id: webhook_producer
+    name: "Reliable Webhook Producer"
+    description: >
+      Design a webhook delivery system that reliably notifies subscribers
+      of events. Implements the outbox pattern for reliable publishing,
+      cryptographic signature signing, exponential backoff retries, and
+      event type registration for subscribers.
+    use_when:
+      - "Your service needs to notify external systems of events"
+      - "Building a platform with partner/developer integrations"
+      - "Replacing polling-based integrations with push notifications"
+    avoid_when:
+      - "Internal service-to-service events (use message broker instead)"
+      - "Real-time bidirectional communication needed (use WebSockets)"
+    tradeoffs:
+      pros:
+        - "Push-based — consumers get events immediately"
+        - "HTTP-based — consumers don't need special infrastructure"
+        - "Event type filtering — consumers subscribe to relevant events only"
+      cons:
+        - "Delivery reliability is your responsibility"
+        - "Must handle consumer unavailability gracefully"
+        - "Signature verification adds complexity"
+    implementation:
+      guidelines:
+        - "Use outbox pattern: write event to DB in same transaction as domain change"
+        - "Sign payloads with HMAC-SHA256 using per-subscriber secrets"
+        - "Include timestamp in signature to prevent replay attacks"
+        - "Retry with exponential backoff: 1min, 5min, 30min, 2hr, 24hr"
+        - "Disable endpoint after N consecutive failures (e.g., 5 days)"
+        - "Provide webhook event log / delivery dashboard for subscribers"
+        - "Include event type, event ID, and timestamp in every payload"
+        - "Use POST with JSON body; return 2xx to acknowledge"
+      common_errors:
+        - error: "Sending webhook outside the database transaction"
+          impact: "Event published but domain change rolled back — phantom event"
+          fix: "Use transactional outbox: write to outbox table in same transaction"
+        - error: "No signature on webhook payloads"
+          impact: "Consumers cannot verify payload authenticity — spoofing risk"
+          fix: "Sign all payloads with HMAC-SHA256; include signature in header"
+        - error: "Blocking on webhook delivery in the request path"
+          impact: "User request latency depends on webhook consumer response time"
+          fix: "Deliver webhooks asynchronously — never in the user request path"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Standard Webhooks"
+        type: spec
+        role: "Specification for webhook signatures and delivery"
+        status: recommended
+        reference: "https://www.standardwebhooks.com/"
+      - name: "CloudEvents"
+        type: spec
+        role: "Standard event envelope format"
+        status: recommended
+        reference: "https://cloudevents.io/"
+
+  - id: webhook_consumer
+    name: "Secure Webhook Consumer"
+    description: >
+      Safely receive and process webhook events from third-party services.
+      Verify signatures before processing, respond quickly to acknowledge
+      receipt, and process payloads asynchronously.
+    use_when:
+      - "Receiving events from third-party services (Stripe, GitHub, etc.)"
+      - "Any inbound webhook endpoint"
+    avoid_when:
+      - "You control both producer and consumer (use message broker)"
+    tradeoffs:
+      pros:
+        - "Real-time event notification from third parties"
+        - "No polling required — reduces API calls and latency"
+        - "Standard HTTP — no special client libraries needed"
+      cons:
+        - "Must handle duplicate deliveries (at-least-once semantics)"
+        - "Must secure the endpoint against spoofed payloads"
+        - "Consumer must be available (or miss events)"
+    implementation:
+      guidelines:
+        - "Verify signature BEFORE any payload processing"
+        - "Respond with 200/202 immediately — process asynchronously"
+        - "Use constant-time comparison for signature verification"
+        - "Validate payload schema after signature verification"
+        - "Store raw payload for replay/debugging before processing"
+        - "Implement idempotency — check event ID before processing"
+        - "Use allowlist of expected event types — ignore unknown types"
+      common_errors:
+        - error: "Processing payload without verifying signature"
+          impact: "Attacker can send forged events to trigger business logic"
+          fix: "Always verify HMAC signature before any processing"
+        - error: "Synchronous processing before responding"
+          impact: "Slow processing causes timeout; producer retries; duplicate events"
+          fix: "Return 202 Accepted immediately; process in background worker"
+        - error: "Using string equality for signature comparison"
+          impact: "Timing attack can recover signature byte-by-byte"
+          fix: "Use constant-time comparison (hmac.compare_digest in Python)"
+    maturity:
+      level: standard
+    standards:
+      - name: "Standard Webhooks"
+        type: spec
+        role: "Specification for webhook signature verification"
+        status: recommended
+
+  - id: idempotent_processing
+    name: "Idempotent Webhook Processing"
+    description: >
+      Ensure webhook events are processed exactly once even when delivered
+      multiple times. Uses event ID deduplication with a processed-events
+      store. Critical for financial transactions and state-changing operations.
+    use_when:
+      - "Processing webhooks that trigger state changes or financial operations"
+      - "At-least-once delivery where duplicates are possible"
+      - "Any webhook consumer that cannot safely reprocess events"
+    avoid_when:
+      - "Naturally idempotent operations (read-only, upserts)"
+    tradeoffs:
+      pros:
+        - "Exactly-once processing semantics"
+        - "Safe to retry failed webhook deliveries"
+        - "Prevents duplicate charges, notifications, state transitions"
+      cons:
+        - "Requires persistent deduplication store"
+        - "Event ID storage adds a DB query per webhook"
+        - "TTL management for the deduplication store"
+    implementation:
+      guidelines:
+        - "Store event ID + processing status in a deduplication table"
+        - "Check for existing event ID BEFORE processing"
+        - "Use database transaction: check + insert + process atomically"
+        - "Set TTL on deduplication records (e.g., 7-30 days)"
+        - "Return 200 for already-processed events (idempotent response)"
+        - "Log duplicate detections for monitoring"
+      common_errors:
+        - error: "Check-then-process race condition without transaction"
+          impact: "Two concurrent deliveries both pass the check, both process"
+          fix: "Use INSERT ... ON CONFLICT or transaction with SELECT FOR UPDATE"
+        - error: "No TTL on deduplication records"
+          impact: "Deduplication table grows unbounded"
+          fix: "Set TTL (e.g., 30 days); clean up expired records periodically"
+    maturity:
+      level: standard
+    standards:
+      - name: "IETF Idempotency-Key"
+        type: rfc
+        role: "Standard header for idempotent request handling"
+        status: recommended
+
+  - id: async_webhook_processing
+    name: "Async Webhook Processing with Queue"
+    description: >
+      Decouple webhook receipt from processing by immediately enqueuing
+      the verified payload and processing it asynchronously. Essential for
+      high-volume webhooks and operations that take longer than the producer's
+      timeout.
+    use_when:
+      - "High volume webhook traffic"
+      - "Processing takes longer than producer's timeout (typically 5-30s)"
+      - "Need to smooth traffic spikes from webhook bursts"
+    avoid_when:
+      - "Low-volume webhooks with fast processing (< 1s)"
+      - "Synchronous response to webhook producer is required"
+    tradeoffs:
+      pros:
+        - "Immediate acknowledgment — no timeout risk"
+        - "Queue buffers traffic spikes"
+        - "Processing failures don't affect receipt"
+        - "Independent scaling of receipt and processing"
+      cons:
+        - "Additional infrastructure (message queue)"
+        - "Increased latency between receipt and processing"
+        - "More complex error handling and monitoring"
+    implementation:
+      guidelines:
+        - "Verify signature → enqueue raw payload → return 202"
+        - "Include metadata in queue message: event type, received_at, source"
+        - "Process from queue with dead-letter handling for failures"
+        - "Idempotent processing in queue consumer (events may be requeued)"
+        - "Monitor queue depth and processing lag"
+        - "Set appropriate visibility timeout for processing time"
+      common_errors:
+        - error: "Enqueuing before signature verification"
+          impact: "Forged events enter your processing pipeline"
+          fix: "Always verify signature before enqueuing"
+        - error: "No dead-letter queue for processing failures"
+          impact: "Failed events disappear silently"
+          fix: "Configure DLQ; alert on DLQ depth; build replay tooling"
+    maturity:
+      level: advanced
+    standards:
+      - name: "CloudEvents"
+        type: spec
+        role: "Standard event format for queued webhook payloads"
+        status: recommended
+
+examples:
+  - id: webhook_consumer_example
+    title: "Secure Webhook Consumer with Signature Verification"
+    context: "Receiving Stripe payment webhooks"
+    correct: |
+      # Python/Flask — Secure webhook consumer
+      import hmac
+      import hashlib
+      from flask import Flask, request, jsonify
+
+      app = Flask(__name__)
+
+      @app.route("/webhooks/stripe", methods=["POST"])
+      def handle_stripe_webhook():
+          # 1. Get raw body BEFORE parsing (needed for signature)
+          raw_body = request.get_data()
+          signature = request.headers.get("Stripe-Signature", "")
+
+          # 2. Verify signature FIRST — reject forged payloads
+          if not verify_stripe_signature(raw_body, signature):
+              return jsonify({"error": "Invalid signature"}), 401
+
+          # 3. Parse and validate after verification
+          event = request.get_json()
+          event_id = event.get("id")
+          event_type = event.get("type")
+
+          # 4. Idempotency check — skip already-processed events
+          if is_already_processed(event_id):
+              return jsonify({"status": "already_processed"}), 200
+
+          # 5. Respond immediately — process async
+          enqueue_for_processing(event_id, event_type, raw_body)
+          return jsonify({"status": "accepted"}), 202
+
+      def verify_stripe_signature(payload: bytes, signature: str) -> bool:
+          """Constant-time signature verification."""
+          expected = hmac.new(
+              WEBHOOK_SECRET.encode(),
+              payload,
+              hashlib.sha256,
+          ).hexdigest()
+          # Constant-time comparison — prevents timing attacks
+          return hmac.compare_digest(expected, signature)
+    incorrect: |
+      # WRONG: Insecure webhook consumer
+      @app.route("/webhooks/stripe", methods=["POST"])
+      def handle_stripe_webhook():
+          event = request.get_json()  # No signature verification!
+
+          # Process synchronously — blocks response
+          if event["type"] == "payment_intent.succeeded":
+              process_payment(event["data"])  # Slow operation
+              send_confirmation_email(event["data"])  # Even slower
+
+          # No idempotency check — duplicates processed twice
+          return "OK", 200  # Returns after slow processing — timeout risk
+
+      # Problems:
+      # 1. No signature verification — accepts forged events
+      # 2. Synchronous processing — timeout risk
+      # 3. No idempotency — duplicate events processed twice
+      # 4. No event type allowlist — processes unknown events
+      # 5. Trusts event data without validation
+    explanation: >
+      The correct example verifies the signature first using constant-time
+      comparison, checks for duplicate events, and processes asynchronously.
+      The incorrect example has no signature verification, processes
+      synchronously (risking timeouts), and has no duplicate protection.
+
+  - id: webhook_producer_example
+    title: "Webhook Producer with Outbox Pattern"
+    context: "Platform sending order status webhooks to merchant integrations"
+    correct: |
+      # Transactional outbox pattern for reliable webhook delivery
+      class OrderService:
+          def complete_order(self, order_id: str) -> None:
+              with self.db.transaction() as tx:
+                  # Domain change and event in SAME transaction
+                  order = tx.query(Order).get(order_id)
+                  order.status = OrderStatus.COMPLETED
+
+                  # Write to outbox table — NOT directly to webhook
+                  tx.add(WebhookOutbox(
+                      event_id=uuid4(),
+                      event_type="order.completed",
+                      payload=json.dumps({
+                          "id": order.id,
+                          "status": "completed",
+                          "completed_at": datetime.utcnow().isoformat(),
+                      }),
+                      created_at=datetime.utcnow(),
+                  ))
+
+      # Separate delivery worker reads from outbox
+      class WebhookDeliveryWorker:
+          def deliver(self, outbox_entry: WebhookOutbox) -> None:
+              for subscriber in self.get_subscribers(outbox_entry.event_type):
+                  signature = hmac.new(
+                      subscriber.secret.encode(),
+                      outbox_entry.payload.encode(),
+                      hashlib.sha256,
+                  ).hexdigest()
+
+                  response = httpx.post(
+                      subscriber.url,
+                      content=outbox_entry.payload,
+                      headers={
+                          "Content-Type": "application/json",
+                          "X-Webhook-Signature": signature,
+                          "X-Event-Id": str(outbox_entry.event_id),
+                          "X-Event-Type": outbox_entry.event_type,
+                      },
+                      timeout=10.0,
+                  )
+
+                  if response.status_code >= 200 and response.status_code < 300:
+                      self.mark_delivered(outbox_entry, subscriber)
+                  else:
+                      self.schedule_retry(outbox_entry, subscriber)
+    incorrect: |
+      # WRONG: Sending webhook directly in request path
+      class OrderService:
+          def complete_order(self, order_id):
+              order = self.db.query(Order).get(order_id)
+              order.status = "completed"
+              self.db.commit()
+
+              # Webhook sent AFTER commit — if this fails, event is lost
+              # Also blocks the user request until all webhooks are sent
+              for subscriber in get_subscribers("order.completed"):
+                  requests.post(  # No timeout!
+                      subscriber.url,
+                      json={"id": order.id, "status": "completed"},
+                      # No signature — consumers can't verify authenticity
+                  )
+    explanation: >
+      The outbox pattern ensures the domain change and event are written
+      atomically. A separate worker handles delivery with retries and
+      signatures. The incorrect example sends webhooks synchronously in the
+      request path with no retry, no signature, and no transaction safety.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Webhook endpoints accept only HTTPS — reject plain HTTP"
+      - "Producer webhook delivery uses TLS 1.2+ with certificate verification"
+  data_protection:
+    requirements:
+      - "Minimize PII in webhook payloads — include IDs, not full records"
+      - "Store raw webhook payloads encrypted at rest for audit/replay"
+  access_control:
+    requirements:
+      - "Webhook endpoints are not publicly discoverable (unguessable URLs)"
+      - "Verify signature before any payload processing"
+  input_output:
+    requirements:
+      - "Validate webhook payload schema after signature verification"
+      - "Treat all webhook data as untrusted input — sanitize before use"
+  secrets:
+    requirements:
+      - "Webhook signing secrets stored in secrets manager"
+      - "Per-subscriber signing secrets — not a shared global secret"
+  monitoring:
+    requirements:
+      - "Monitor webhook delivery success rate and latency"
+      - "Alert on signature verification failures (potential spoofing)"
+
+compliance:
+  standards:
+    - name: "Standard Webhooks"
+      relevance: "Standardized webhook signature and delivery specification"
+      reference: "https://www.standardwebhooks.com/"
+    - name: "CloudEvents"
+      relevance: "Standard event envelope format for webhook payloads"
+      reference: "https://cloudevents.io/"
+
+  requirements_mapping:
+    - control: signature_verification
+      description: "All webhook payloads verified via HMAC signature before processing"
+      maps_to:
+        - "Standard Webhooks — Signature Verification"
+    - control: idempotent_processing
+      description: "Webhook consumers handle duplicate deliveries safely"
+      maps_to:
+        - "At-least-once delivery with idempotent consumers"
+    - control: reliable_delivery
+      description: "Webhook producers guarantee at-least-once delivery with retries"
+      maps_to:
+        - "Transactional outbox pattern"
+
+prompt_recipes:
+  - id: wh_greenfield
+    scenario: greenfield
+    description: "Design webhook system from scratch"
+    prompt: |
+      Design a webhook system for {application}.
+
+      Context:
+      - Role: [producer/consumer/both]
+      - Delivery guarantee: [best_effort/at_least_once/exactly_once]
+      - Expected volume: [low/moderate/high/burst]
+
+      Producer requirements:
+      - Transactional outbox for reliable event publishing
+      - HMAC-SHA256 payload signing with per-subscriber secrets
+      - Exponential backoff retries (1min, 5min, 30min, 2hr, 24hr)
+      - Event type subscription filtering
+      - Delivery dashboard for subscribers
+
+      Consumer requirements:
+      - Signature verification (constant-time comparison)
+      - Immediate 202 response + async processing
+      - Idempotent processing with event ID deduplication
+      - Dead-letter handling for processing failures
+
+  - id: wh_security
+    scenario: high-security
+    description: "Harden webhook security"
+    prompt: |
+      Harden webhook endpoint security for {service}.
+
+      Security checklist:
+      1. HMAC-SHA256 signature verification on every request
+      2. Constant-time comparison for signature validation
+      3. Timestamp in signature to prevent replay attacks (±5 min tolerance)
+      4. HTTPS-only endpoints (reject HTTP)
+      5. IP allowlisting for known webhook sources (if available)
+      6. Rate limiting on webhook endpoint
+      7. Request body size limit (e.g., 1MB max)
+      8. Event type allowlist — reject unexpected types
+      9. Payload validation after signature verification
+      10. Webhook secret rotation support
+
+  - id: wh_debugging
+    scenario: debugging
+    description: "Debug webhook delivery issues"
+    prompt: |
+      Debug webhook delivery failures.
+
+      Producer-side investigation:
+      1. Check outbox table — are events being written?
+      2. Check delivery worker — is it running and processing?
+      3. Review retry queue — are events stuck in retry?
+      4. Check subscriber endpoint health — returning 2xx?
+      5. Verify signing secret matches subscriber's expected secret
+
+      Consumer-side investigation:
+      1. Check signature verification — are valid webhooks being rejected?
+      2. Check idempotency store — are events being marked processed?
+      3. Review DLQ — are events failing during processing?
+      4. Check queue depth — is there a processing backlog?
+      5. Verify event type handling — are new event types being dropped?
+
+  - id: wh_migration
+    scenario: migration
+    description: "Migrate from polling to webhooks"
+    prompt: |
+      Migrate from polling-based integration to webhooks for {service}.
+
+      Steps:
+      1. Identify polling endpoints and their data needs
+      2. Map polled resources to webhook event types
+      3. Implement webhook consumer endpoint with signature verification
+      4. Register for relevant event types with the provider
+      5. Run webhooks and polling in parallel during migration
+      6. Verify webhook events match polled data
+      7. Remove polling once webhook reliability is confirmed
+      8. Implement catch-up mechanism for missed events (reconciliation job)
+
+anti_patterns:
+  - name: "No Signature Verification"
+    description: >
+      Processing webhook payloads without verifying the cryptographic
+      signature. Any attacker who discovers the webhook URL can send
+      forged events to trigger business logic (fraudulent payments,
+      fake order completions).
+    fix: "Always verify HMAC signature before any payload processing"
+    severity: critical
+    related_pattern: webhook_consumer
+
+  - name: "Synchronous Webhook Processing"
+    description: >
+      Performing all processing before responding to the webhook producer.
+      Slow processing causes timeout; producer retries; duplicate events
+      pile up; processing becomes slower — a downward spiral.
+    fix: "Return 202 immediately after verification; process in background worker"
+    severity: high
+    related_pattern: async_webhook_processing
+
+  - name: "No Idempotency in Consumer"
+    description: >
+      Processing every webhook delivery as if it were unique. Since producers
+      use at-least-once delivery, duplicate events are normal. Without
+      deduplication, payments are charged twice, emails sent twice, etc.
+    fix: "Check event ID in deduplication store before processing"
+    severity: critical
+    related_pattern: idempotent_processing
+
+  - name: "Webhook Delivery in Request Path"
+    description: >
+      Sending webhook notifications synchronously during user request
+      processing. User latency depends on webhook consumer response time.
+      If consumer is slow or down, user request fails.
+    fix: "Use transactional outbox + async delivery worker"
+    severity: high
+    related_pattern: webhook_producer
+
+checklist:
+  - id: WH-01
+    category: security
+    description: "Webhook payloads signed with HMAC-SHA256 (producer)"
+    severity: critical
+    verified_by: webhook_producer
+
+  - id: WH-02
+    category: security
+    description: "Signature verified before any processing (consumer)"
+    severity: critical
+    verified_by: webhook_consumer
+
+  - id: WH-03
+    category: security
+    description: "Constant-time comparison used for signature verification"
+    severity: high
+    verified_by: webhook_consumer
+
+  - id: WH-04
+    category: correctness
+    description: "Idempotent processing with event ID deduplication"
+    severity: critical
+    verified_by: idempotent_processing
+
+  - id: WH-05
+    category: reliability
+    description: "Transactional outbox for reliable event publishing (producer)"
+    severity: critical
+    verified_by: webhook_producer
+
+  - id: WH-06
+    category: performance
+    description: "Async processing — immediate 202 response (consumer)"
+    severity: high
+    verified_by: async_webhook_processing
+
+  - id: WH-07
+    category: reliability
+    description: "Exponential backoff retries for failed deliveries (producer)"
+    severity: high
+    verified_by: webhook_producer
+
+  - id: WH-08
+    category: reliability
+    description: "Dead-letter handling for processing failures"
+    severity: high
+    verified_by: async_webhook_processing
+
+  - id: WH-09
+    category: security
+    description: "HTTPS-only webhook endpoints"
+    severity: critical
+    verified_by: webhook_consumer
+
+  - id: WH-10
+    category: observability
+    description: "Delivery success rate and latency monitored"
+    severity: high
+    verified_by: webhook_producer
+
+  - id: WH-11
+    category: security
+    description: "Webhook payload validated after signature verification"
+    severity: high
+    verified_by: webhook_consumer
+
+  - id: WH-12
+    category: observability
+    description: "Signature verification failures alerted"
+    severity: high
+    verified_by: webhook_consumer

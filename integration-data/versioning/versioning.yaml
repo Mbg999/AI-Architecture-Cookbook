@@ -1,0 +1,644 @@
+# =============================================================================
+# AI Architecture Cookbook — Versioning
+# Schema: v3 | Domain: versioning
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: versioning
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    API versioning strategies, backward compatibility enforcement,
+    deprecation policies, and migration planning. Covers URL-based,
+    header-based, and content-negotiation versioning with lifecycle
+    management for evolving APIs.
+
+  tags:
+    - versioning
+    - api-versioning
+    - backward-compatibility
+    - deprecation
+    - migration
+    - semver
+
+  categories:
+    - integration-data
+
+  prerequisites:
+    - id: api-design
+      reason: "Versioning is a core API design concern"
+
+  related_standards:
+    - id: third-party-integration
+      relationship: complementary
+      context: "Third-party API consumers depend on version stability"
+    - id: data-transformation
+      relationship: complementary
+      context: "Schema evolution is the data-layer analog of API versioning"
+    - id: webhooks
+      relationship: complementary
+      context: "Webhook payloads need versioning for consumer compatibility"
+
+context_inputs:
+  - name: api_type
+    type: enum
+    description: "Type of API being versioned"
+    required: true
+    default: rest
+    enum_values:
+      - rest
+      - graphql
+      - grpc
+      - event_schema
+
+  - name: consumer_count
+    type: enum
+    description: "Number and type of API consumers"
+    required: true
+    default: multiple_internal
+    enum_values:
+      - single_internal
+      - multiple_internal
+      - external_partners
+      - public
+
+  - name: change_frequency
+    type: enum
+    description: "How often the API changes"
+    required: false
+    default: moderate
+    enum_values:
+      - rare
+      - moderate
+      - frequent
+
+  - name: breaking_change_tolerance
+    type: enum
+    description: "Consumer tolerance for breaking changes"
+    required: false
+    default: low
+    enum_values:
+      - none
+      - low
+      - moderate
+      - high
+
+decision_tree:
+  - id: public_api
+    priority: 1
+    if:
+      - consumer_count in [external_partners, public]
+    then:
+      pattern: url_path_versioning
+      standards:
+        - "Semantic Versioning"
+      notes: >
+        Public APIs should use URL path versioning for maximum visibility
+        and simplicity. Consumers can see the version in every request.
+        Maintain old versions for extended deprecation periods.
+    else:
+      pattern: url_path_versioning
+      notes: "URL path versioning is the most widely adopted approach"
+
+  - id: graphql_versioning
+    priority: 2
+    if:
+      - api_type == graphql
+    then:
+      pattern: evolutionary_api
+      notes: >
+        GraphQL APIs evolve by adding fields and deprecating old ones.
+        Avoid breaking changes; use @deprecated directive.
+
+  - id: grpc_versioning
+    priority: 3
+    if:
+      - api_type == grpc
+    then:
+      pattern: evolutionary_api
+      standards:
+        - "Protocol Buffers"
+      notes: >
+        gRPC/Protobuf APIs use package versioning and field numbering
+        for backward-compatible evolution.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: url_path_versioning
+    description: "URL path versioning is the safest, most widely adopted approach"
+
+patterns:
+  - id: url_path_versioning
+    name: "URL Path Versioning"
+    description: >
+      Include the API version in the URL path (e.g., /api/v1/users). The
+      most widely adopted versioning strategy. Version is visible in every
+      request, cacheable, and easy to understand. Multiple versions can
+      run simultaneously behind a gateway.
+    use_when:
+      - "Public or partner-facing REST APIs"
+      - "APIs with many external consumers"
+      - "Want maximum visibility and simplicity"
+    avoid_when:
+      - "GraphQL APIs (use evolutionary approach)"
+      - "Internal-only APIs that change frequently (overhead of maintaining versions)"
+    tradeoffs:
+      pros:
+        - "Most visible — version in every URL"
+        - "Simple to understand and implement"
+        - "Easy to route at gateway/load balancer level"
+        - "Cache-friendly — different versions are different URLs"
+        - "Widely adopted — consumers expect this pattern"
+      cons:
+        - "URL bloat when version changes are frequent"
+        - "Must maintain multiple API versions simultaneously"
+        - "Temptation to increment version for every change"
+    implementation:
+      guidelines:
+        - "Use major version only in URL path: /api/v1/, /api/v2/"
+        - "Non-breaking changes DO NOT increment the version"
+        - "Run multiple versions simultaneously during migration period"
+        - "Gateway routes to version-specific backend services"
+        - "Set maximum number of concurrent versions (e.g., 2-3)"
+        - "Sunset policy: announce deprecation → grace period → remove"
+        - "Return Sunset and Deprecation headers on deprecated versions"
+      common_errors:
+        - error: "Incrementing version for non-breaking changes"
+          impact: "Version proliferation — too many versions to maintain"
+          fix: "Only new major versions for breaking changes; additive changes are non-breaking"
+        - error: "No sunset policy for old versions"
+          impact: "Old versions maintained indefinitely — growing maintenance burden"
+          fix: "Define explicit sunset policy: 6-12 months notice, then remove"
+        - error: "Versioning internal APIs used by one consumer"
+          impact: "Overhead without benefit — just coordinate the deployment"
+          fix: "Version only when consumers can't be updated simultaneously"
+    maturity:
+      level: standard
+    standards:
+      - name: "Semantic Versioning"
+        type: spec
+        role: "Version numbering standard (MAJOR.MINOR.PATCH)"
+        status: recommended
+        reference: "https://semver.org/"
+      - name: "RFC 8594"
+        type: rfc
+        role: "The Sunset HTTP Header Field"
+        status: recommended
+
+  - id: header_versioning
+    name: "Header-Based Versioning"
+    description: >
+      Specify API version in a custom header (e.g., Api-Version: 2) or
+      Accept header with media type versioning (Accept: application/vnd.api.v2+json).
+      Keeps URLs clean but makes versioning less visible.
+    use_when:
+      - "Want to keep URLs clean and resource-oriented"
+      - "API evolution mostly additive with occasional breaking changes"
+      - "Sophisticated consumers that can set custom headers"
+    avoid_when:
+      - "Public APIs with diverse consumer sophistication"
+      - "Consumers that cannot easily set custom headers"
+    tradeoffs:
+      pros:
+        - "Clean URLs — resources identified without version clutter"
+        - "Same URL for different representations"
+        - "Aligns with REST content negotiation principles"
+      cons:
+        - "Less visible — version hidden in headers"
+        - "Harder to test in browser (can't just change URL)"
+        - "Some proxy/CDN layers don't vary on custom headers"
+    implementation:
+      guidelines:
+        - "Use custom header (Api-Version: 2) or Accept header versioning"
+        - "Default to latest stable version if no version header provided"
+        - "Return version in response headers for clarity"
+        - "Document header requirements prominently"
+        - "Configure CDN to vary on version header"
+      common_errors:
+        - error: "No default version when header is omitted"
+          impact: "Requests without header fail or get unpredictable version"
+          fix: "Default to latest stable version; return version in response header"
+        - error: "CDN doesn't vary on version header"
+          impact: "Cached v1 response served to v2 requester"
+          fix: "Add version header to Vary response header; configure CDN accordingly"
+    maturity:
+      level: advanced
+    standards:
+      - name: "RFC 9110"
+        type: rfc
+        role: "HTTP Semantics — Content Negotiation"
+        status: recommended
+
+  - id: evolutionary_api
+    name: "Evolutionary API (Additive Changes Only)"
+    description: >
+      Evolve the API by only making additive, backward-compatible changes.
+      Add new fields, endpoints, or operations without removing or changing
+      existing ones. Deprecated items are marked but remain functional.
+      Primary approach for GraphQL and gRPC APIs.
+    use_when:
+      - "GraphQL APIs (primary approach)"
+      - "gRPC/Protobuf APIs (field numbering enables this)"
+      - "Internal APIs with coordinated consumers"
+      - "APIs where breaking changes are too costly"
+    avoid_when:
+      - "Need to make fundamental structural changes"
+      - "Legacy field removal is necessary for security"
+    tradeoffs:
+      pros:
+        - "No version numbers to manage"
+        - "Consumers upgrade at their own pace"
+        - "No parallel version maintenance"
+        - "Continuous evolution without breaking changes"
+      cons:
+        - "API accumulates deprecated fields over time"
+        - "Cannot remove fundamentally flawed designs easily"
+        - "Requires discipline — easy to accidentally break compatibility"
+    implementation:
+      guidelines:
+        - "Add new fields — never remove existing ones"
+        - "New fields must have defaults or be optional"
+        - "Mark deprecated fields with @deprecated (GraphQL) or comments"
+        - "Monitor usage of deprecated fields before removal"
+        - "Use field aliases for renames (add new, deprecate old)"
+        - "Protobuf: never reuse field numbers; mark removed fields as reserved"
+        - "Run backward-compatibility checks in CI"
+      common_errors:
+        - error: "Removing a field that consumers still use"
+          impact: "Consumer applications break at runtime"
+          fix: "Monitor field usage; deprecate; wait until usage drops to zero; then remove"
+        - error: "Changing field type without new field"
+          impact: "Serialization/deserialization failures for consumers"
+          fix: "Add new field with new type; deprecate old field"
+        - error: "Reusing Protobuf field numbers"
+          impact: "Wire format corruption — data silently misinterpreted"
+          fix: "Mark removed field numbers as reserved; never reuse them"
+    maturity:
+      level: advanced
+    standards:
+      - name: "GraphQL"
+        type: spec
+        role: "Query language with built-in deprecation support"
+        status: recommended
+      - name: "Protocol Buffers"
+        type: format
+        role: "Binary serialization with field number based evolution"
+        status: recommended
+
+examples:
+  - id: url_versioning_example
+    title: "URL Path Versioning with Deprecation"
+    context: "Public REST API migrating from v1 to v2"
+    correct: |
+      # API Gateway configuration — run both versions simultaneously
+
+      # V1 — deprecated but still functional
+      # GET /api/v1/users/:id
+      # Response includes Sunset and Deprecation headers
+      @app.get("/api/v1/users/<user_id>")
+      def get_user_v1(user_id: str):
+          user = user_service.get(user_id)
+          response = jsonify({
+              "id": user.id,
+              "name": user.full_name,  # V1 flat name
+              "email": user.email,
+          })
+          # Sunset headers — inform consumers of deprecation
+          response.headers["Sunset"] = "Sat, 01 Nov 2026 00:00:00 GMT"
+          response.headers["Deprecation"] = "true"
+          response.headers["Link"] = '</api/v2/users>; rel="successor-version"'
+          return response
+
+      # V2 — current version with improved structure
+      # GET /api/v2/users/:id
+      @app.get("/api/v2/users/<user_id>")
+      def get_user_v2(user_id: str):
+          user = user_service.get(user_id)
+          return jsonify({
+              "id": user.id,
+              "name": {  # V2 structured name
+                  "first": user.first_name,
+                  "last": user.last_name,
+                  "display": user.display_name,
+              },
+              "email": user.email,
+              "created_at": user.created_at.isoformat(),
+          })
+
+      # Breaking change rules:
+      # - Adding new fields to response: NOT breaking (v1 can add fields)
+      # - Removing a field from response: BREAKING (requires v2)
+      # - Adding optional query parameter: NOT breaking
+      # - Changing field type: BREAKING (requires v2)
+      # - Adding required parameter: BREAKING (requires v2)
+    incorrect: |
+      # WRONG: No versioning — breaking change in-place
+      @app.get("/api/users/<user_id>")
+      def get_user(user_id: str):
+          user = user_service.get(user_id)
+          return jsonify({
+              "id": user.id,
+              # BREAKING: Changed from "name" (string) to structured object
+              "name": {
+                  "first": user.first_name,
+                  "last": user.last_name,
+              },
+              "email": user.email,
+          })
+
+      # All consumers expecting "name" as string break simultaneously
+      # No deprecation notice — consumers had no warning
+      # No way for consumers to migrate gradually
+      # No rollback path — old format gone
+    explanation: >
+      The correct example runs v1 and v2 simultaneously, includes Sunset
+      headers to warn consumers of deprecation, and links to the successor
+      version. Consumers can migrate at their own pace. The incorrect example
+      makes a breaking change in-place with no version, no warning, and
+      no migration path.
+
+  - id: evolutionary_api_example
+    title: "Evolutionary GraphQL API"
+    context: "Adding fields and deprecating old ones without breaking consumers"
+    correct: |
+      # GraphQL schema — evolutionary approach
+
+      type User {
+        id: ID!
+        email: String!
+
+        # Original field — deprecated but still functional
+        name: String @deprecated(reason: "Use firstName and lastName instead")
+
+        # New fields — additive change, non-breaking
+        firstName: String
+        lastName: String
+        displayName: String
+
+        # Added later — non-breaking (nullable by default)
+        avatarUrl: String
+        lastLoginAt: DateTime
+      }
+
+      # Query with both old and new fields works:
+      # query { user(id: "1") { name } }           ← still works
+      # query { user(id: "1") { firstName lastName } } ← new approach
+
+      # Deprecation lifecycle:
+      # 1. Add new fields (firstName, lastName)
+      # 2. Mark old field @deprecated
+      # 3. Monitor usage of deprecated field
+      # 4. When usage drops to zero → remove in future schema update
+    incorrect: |
+      # WRONG: Breaking change in GraphQL schema
+
+      type User {
+        id: ID!
+        email: String!
+        # Field removed without deprecation — consumers break
+        # name: String    ← deleted!
+        firstName: String!  # Was nullable, now required — breaking
+        lastName: String!
+      }
+
+      # Breaking changes:
+      # 1. Removed "name" field — queries using it fail
+      # 2. Changed nullability — clients not handling required break
+      # 3. No deprecation period — no migration warning
+    explanation: >
+      Evolutionary API adds new fields and deprecates old ones with the
+      @deprecated directive. Consumers are warned and can migrate at their
+      pace. The incorrect example removes fields and changes nullability
+      without deprecation, breaking all consumers.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All API versions served over TLS"
+  data_protection:
+    requirements:
+      - "Deprecated versions maintain same data protection as current"
+  access_control:
+    requirements:
+      - "Authentication required for all API versions equally"
+      - "Old API versions do not bypass newer security controls"
+  input_output:
+    requirements:
+      - "Input validation applied to all active API versions"
+      - "Version parameter itself validated (reject invalid version strings)"
+  secrets:
+    requirements:
+      - "API keys valid across versions — no version-specific secrets"
+  monitoring:
+    requirements:
+      - "Track usage by API version for deprecation planning"
+      - "Alert when deprecated version usage exceeds threshold"
+
+compliance:
+  standards:
+    - name: "Semantic Versioning 2.0.0"
+      relevance: "Standard for version numbering (MAJOR.MINOR.PATCH)"
+      reference: "https://semver.org/"
+    - name: "RFC 8594"
+      relevance: "Sunset HTTP header for API deprecation"
+      reference: "https://www.rfc-editor.org/rfc/rfc8594"
+
+  requirements_mapping:
+    - control: backward_compatibility
+      description: "Non-breaking changes do not require version increment"
+      maps_to:
+        - "Semantic Versioning — patch and minor changes"
+    - control: deprecation_notice
+      description: "Consumers notified of deprecation with timeline"
+      maps_to:
+        - "RFC 8594 — Sunset header"
+    - control: migration_path
+      description: "Consumers have clear migration path between versions"
+      maps_to:
+        - "API lifecycle management"
+
+prompt_recipes:
+  - id: ver_greenfield
+    scenario: greenfield
+    description: "Design API versioning strategy"
+    prompt: |
+      Design API versioning strategy for {api_name}.
+
+      Context:
+      - API type: [REST/GraphQL/gRPC/events]
+      - Consumers: [single_internal/multiple_internal/partners/public]
+      - Change frequency: [rare/moderate/frequent]
+
+      Deliver:
+      1. Versioning approach (URL path / header / evolutionary)
+      2. Breaking vs non-breaking change definition
+      3. Version lifecycle policy (deprecation notice, grace period, removal)
+      4. Sunset header implementation
+      5. Backward compatibility CI check
+      6. Version-by-version migration guide template
+      7. Consumer communication plan for version changes
+
+  - id: ver_migration
+    scenario: migration
+    description: "Migrate consumers between API versions"
+    prompt: |
+      Plan migration from {api_name} v{old} to v{new}.
+
+      Breaking changes in v{new}:
+      - [List breaking changes]
+
+      Migration plan:
+      1. Deploy v{new} alongside v{old}
+      2. Add Sunset header to v{old} with date
+      3. Publish migration guide with field-by-field mapping
+      4. Notify consumers with timeline
+      5. Monitor v{old} usage — track consumer migration progress
+      6. Follow up with remaining consumers before sunset
+      7. Remove v{old} after sunset date
+
+  - id: ver_audit
+    scenario: audit
+    description: "Audit API versioning practices"
+    prompt: |
+      Audit API versioning for {api_name}.
+
+      Checklist:
+      1. Versioning strategy documented and consistent?
+      2. Breaking change definition clear (team agrees)?
+      3. Backward compatibility checked in CI?
+      4. Sunset policy defined with timeline?
+      5. Deprecated versions have Sunset headers?
+      6. Consumer usage tracked per version?
+      7. Migration guides provided for version transitions?
+      8. Maximum concurrent versions enforced?
+      9. Security controls equal across all active versions?
+      10. Version parameter validated (reject invalid)?
+
+  - id: ver_breaking_change
+    scenario: architecture
+    description: "Handle a breaking API change"
+    prompt: |
+      Handle breaking change in {api_name}: {change_description}.
+
+      Steps:
+      1. Classify the change — is it truly breaking? Could it be additive instead?
+      2. If breaking: create new major version
+      3. Run both versions simultaneously
+      4. Add Sunset header to old version
+      5. Create migration guide (old → new field mapping)
+      6. Notify all known consumers
+      7. Monitor old version usage
+      8. Set sunset date (6-12 months for public APIs)
+
+anti_patterns:
+  - name: "Breaking Changes Without Version Bump"
+    description: >
+      Making breaking changes (removing fields, changing types, renaming
+      endpoints) without incrementing the API version. All consumers break
+      simultaneously with no migration path and no warning.
+    fix: "Breaking changes require a new major version with parallel deployment"
+    severity: critical
+    related_pattern: url_path_versioning
+
+  - name: "Version Proliferation"
+    description: >
+      Incrementing the API version for every change, including non-breaking
+      additive changes. Results in many concurrent versions (v1 through v12)
+      that must all be maintained, tested, and documented.
+    fix: "Only major versions for breaking changes; additive changes are non-breaking"
+    severity: high
+    related_pattern: url_path_versioning
+
+  - name: "No Sunset Policy"
+    description: >
+      Old API versions maintained indefinitely because there's no defined
+      deprecation timeline. The maintenance burden grows linearly with
+      each new version. Team spends more time on old versions than new features.
+    fix: "Define sunset policy: deprecation notice → grace period (6-12mo) → removal"
+    severity: high
+    related_pattern: url_path_versioning
+
+  - name: "Deprecated Versions With Weaker Security"
+    description: >
+      Old API versions missing newer security controls (rate limiting,
+      input validation, authentication improvements). Attackers target
+      deprecated versions to bypass modern protections.
+    fix: "Apply all security controls equally to every active API version"
+    severity: critical
+    related_pattern: url_path_versioning
+
+checklist:
+  - id: VER-01
+    category: design
+    description: "Versioning strategy defined and documented"
+    severity: high
+    verified_by: url_path_versioning
+
+  - id: VER-02
+    category: design
+    description: "Breaking vs non-breaking change definition documented"
+    severity: high
+    verified_by: url_path_versioning
+
+  - id: VER-03
+    category: correctness
+    description: "Backward compatibility checked in CI pipeline"
+    severity: high
+    verified_by: evolutionary_api
+
+  - id: VER-04
+    category: compliance
+    description: "Sunset policy defined with timeline"
+    severity: high
+    verified_by: url_path_versioning
+
+  - id: VER-05
+    category: compliance
+    description: "Deprecated versions include Sunset and Deprecation headers"
+    severity: medium
+    verified_by: url_path_versioning
+
+  - id: VER-06
+    category: observability
+    description: "API usage tracked per version for deprecation planning"
+    severity: high
+    verified_by: url_path_versioning
+
+  - id: VER-07
+    category: security
+    description: "All active versions have equal security controls"
+    severity: critical
+    verified_by: url_path_versioning
+
+  - id: VER-08
+    category: design
+    description: "Maximum concurrent active versions enforced (2-3)"
+    severity: medium
+    verified_by: url_path_versioning
+
+  - id: VER-09
+    category: correctness
+    description: "Migration guides provided for version transitions"
+    severity: high
+    verified_by: url_path_versioning
+
+  - id: VER-10
+    category: security
+    description: "Version parameter validated — invalid versions rejected"
+    severity: medium
+    verified_by: url_path_versioning
+
+  - id: VER-11
+    category: maintainability
+    description: "Non-breaking changes do not increment version"
+    severity: high
+    verified_by: evolutionary_api
+
+  - id: VER-12
+    category: observability
+    description: "Alerts configured when deprecated version usage exceeds threshold"
+    severity: medium
+    verified_by: url_path_versioning

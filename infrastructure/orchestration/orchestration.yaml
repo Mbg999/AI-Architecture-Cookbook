@@ -1,0 +1,690 @@
+# =============================================================================
+# AI Architecture Cookbook — Orchestration
+# Schema: v3 | Domain: orchestration
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: orchestration
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Container orchestration platforms, service mesh, and workload management.
+    Covers Kubernetes patterns, service discovery, scaling strategies, and
+    production-grade deployment topologies.
+
+  tags:
+    - kubernetes
+    - orchestration
+    - service-mesh
+    - scheduling
+    - scaling
+    - helm
+
+  categories:
+    - infrastructure
+
+  prerequisites:
+    - containerization
+
+  related_standards:
+    - id: containerization
+      relationship: complementary
+      context: "Orchestration manages the lifecycle of containerized workloads"
+    - id: ci-cd
+      relationship: complementary
+      context: "CI/CD pipelines deploy to orchestration platforms"
+    - id: cloud-architecture
+      relationship: complementary
+      context: "Orchestration is a core component of cloud-native architecture"
+
+context_inputs:
+  - name: workload_type
+    type: enum
+    description: "Primary workload type being orchestrated"
+    required: true
+    default: stateless_services
+    enum_values:
+      - stateless_services
+      - stateful_services
+      - batch_jobs
+      - event_driven
+      - mixed
+
+  - name: scale_requirements
+    type: enum
+    description: "Expected scale of the orchestrated workloads"
+    required: true
+    default: medium
+    enum_values:
+      - small
+      - medium
+      - large
+      - hyperscale
+
+  - name: deployment_target
+    type: enum
+    description: "Where the orchestration platform runs"
+    required: true
+    default: managed_cloud
+    enum_values:
+      - managed_cloud
+      - self_managed
+      - hybrid
+      - edge
+
+decision_tree:
+  - id: managed_kubernetes
+    priority: 1
+    if:
+      - deployment_target == managed_cloud
+    then:
+      pattern: managed_kubernetes
+      standards:
+        - "Kubernetes Documentation"
+        - "CNCF Best Practices"
+      notes: >
+        Managed Kubernetes (EKS, AKS, GKE) removes control plane overhead
+        and provides integrated cloud services.
+    else:
+      pattern: kubernetes_manifests
+      notes: "Standard Kubernetes manifests work across any Kubernetes distribution"
+
+  - id: service_mesh_needed
+    priority: 2
+    if:
+      - scale_requirements in [large, hyperscale]
+      - workload_type in [stateless_services, mixed]
+    then:
+      pattern: service_mesh
+      standards:
+        - "Istio Documentation"
+        - "Linkerd Documentation"
+      notes: >
+        Service mesh provides mTLS, observability, and traffic management
+        at scale without application code changes.
+
+  - id: stateful_workloads
+    priority: 3
+    if:
+      - workload_type == stateful_services
+    then:
+      pattern: stateful_orchestration
+      standards:
+        - "Kubernetes StatefulSet Documentation"
+      notes: >
+        StatefulSets provide stable network identities and persistent storage
+        for databases and stateful services.
+
+  - id: default_manifests
+    priority: 4
+    if:
+      - workload_type in [stateless_services, event_driven, batch_jobs]
+    then:
+      pattern: kubernetes_manifests
+      standards:
+        - "Kubernetes Documentation"
+      notes: >
+        Standard Kubernetes manifests (Deployments, Services, ConfigMaps) are
+        the foundation for all workloads.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: kubernetes_manifests
+    description: "Standard Kubernetes manifests are the universal foundation"
+
+patterns:
+  - id: kubernetes_manifests
+    name: "Kubernetes Manifests & Resource Management"
+    description: >
+      Declarative YAML manifests for Kubernetes workloads. Covers Deployments,
+      Services, ConfigMaps, Secrets, resource requests/limits, liveness/readiness
+      probes, and pod disruption budgets. The foundation of all orchestration.
+    use_when:
+      - "Any Kubernetes workload deployment"
+      - "Standardizing resource definitions across services"
+      - "Need declarative, version-controlled infrastructure"
+    avoid_when:
+      - "Simple single-container deployments where Docker Compose suffices"
+    tradeoffs:
+      pros:
+        - "Declarative, version-controlled, reproducible"
+        - "Self-healing with liveness/readiness probes"
+        - "Rolling updates with zero-downtime"
+        - "Resource limits prevent noisy neighbor problems"
+      cons:
+        - "YAML verbosity for complex deployments"
+        - "Learning curve for Kubernetes concepts"
+        - "Over-engineering for simple applications"
+    implementation:
+      guidelines:
+        - "Always set resource requests AND limits (CPU, memory)"
+        - "Define liveness, readiness, and startup probes"
+        - "Use PodDisruptionBudgets for high-availability services"
+        - "Namespace isolation for environments (dev, staging, prod)"
+        - "Use labels and annotations consistently for discoverability"
+        - "ConfigMaps for config, Secrets for sensitive data — never hardcode"
+      common_errors:
+        - error: "No resource limits set"
+          impact: "Single pod can consume all node resources, starving other workloads"
+          fix: "Set requests (scheduling guarantee) and limits (hard cap) for CPU and memory"
+        - error: "No readiness probe defined"
+          impact: "Traffic routed to pods before they're ready; user-facing errors during deploys"
+          fix: "Define readiness probe that checks application health (HTTP, TCP, or exec)"
+        - error: "Using default namespace for everything"
+          impact: "No isolation between services; accidental cross-service access"
+          fix: "Create namespaces per team/environment; use NetworkPolicies for isolation"
+    maturity:
+      level: standard
+    standards:
+      - name: "Kubernetes API Documentation"
+        type: standard
+        role: "Authoritative reference for all resource types"
+        status: recommended
+
+  - id: managed_kubernetes
+    name: "Managed Kubernetes (EKS / AKS / GKE)"
+    description: >
+      Cloud-managed Kubernetes services that handle control plane operations,
+      upgrades, and integration with cloud-native services (IAM, load balancers,
+      storage, monitoring). Reduces operational burden significantly.
+    use_when:
+      - "Running on a major cloud provider"
+      - "Team wants to focus on workloads, not cluster operations"
+      - "Need integrated IAM, networking, and monitoring"
+    avoid_when:
+      - "Multi-cloud portability is the primary concern"
+      - "Regulatory requirements mandate self-managed infrastructure"
+    tradeoffs:
+      pros:
+        - "Control plane managed — no etcd backups, API server maintenance"
+        - "Integrated with cloud IAM, networking, storage"
+        - "Automatic cluster upgrades and patching"
+        - "Reduced operational overhead"
+      cons:
+        - "Cloud vendor lock-in for cluster management features"
+        - "Less control over control plane configuration"
+        - "Managed services have their own limitations and quirks"
+    implementation:
+      guidelines:
+        - "Use node pools/groups for workload isolation (system vs application)"
+        - "Enable cluster autoscaler for dynamic scaling"
+        - "Use cloud-native ingress controllers (ALB, Application Gateway, GCE)"
+        - "Integrate with cloud IAM for pod-level identity (IRSA, Workload Identity)"
+        - "Use managed add-ons where available (monitoring, logging, policy)"
+      common_errors:
+        - error: "Single node pool for all workloads"
+          impact: "No isolation between system and application workloads; scaling inefficient"
+          fix: "Separate system node pool (taints for system pods) from application pools"
+        - error: "Not using pod identity (IRSA/Workload Identity)"
+          impact: "Pods use node-level IAM role; over-permissioned access"
+          fix: "Configure pod-level IAM identity for least-privilege access"
+    maturity:
+      level: standard
+    standards:
+      - name: "Cloud Provider Kubernetes Best Practices"
+        type: practice
+        role: "Provider-specific guidance for managed Kubernetes"
+        status: recommended
+
+  - id: service_mesh
+    name: "Service Mesh"
+    description: >
+      Infrastructure layer for service-to-service communication that provides
+      mTLS encryption, traffic management, observability, and resilience
+      without application code changes. Implemented via sidecar proxies
+      (Istio, Linkerd) or eBPF (Cilium).
+    use_when:
+      - "Large microservice deployments (>10 services)"
+      - "Need mTLS between all services without app code changes"
+      - "Complex traffic management (canary, A/B, fault injection)"
+      - "Deep observability into service-to-service communication"
+    avoid_when:
+      - "Small number of services (<5) where complexity doesn't justify mesh"
+      - "Performance-sensitive workloads where sidecar overhead matters"
+      - "Team lacks Kubernetes expertise for mesh operations"
+    tradeoffs:
+      pros:
+        - "Automatic mTLS — zero-trust networking without app changes"
+        - "Rich traffic management (canary, circuit breaking, retries)"
+        - "Deep observability (request traces, golden signals per service)"
+        - "Policy enforcement at the network level"
+      cons:
+        - "Significant operational complexity"
+        - "Sidecar resource overhead (CPU, memory per pod)"
+        - "Debugging network issues through proxy layers"
+        - "Latency added per hop"
+    implementation:
+      guidelines:
+        - "Start with mTLS and observability — add traffic management later"
+        - "Use progressive rollout — mesh one namespace at a time"
+        - "Linkerd for simplicity; Istio for features; Cilium for eBPF performance"
+        - "Monitor mesh control plane health and proxy resource usage"
+        - "Document exception namespaces that opt out of mesh injection"
+      common_errors:
+        - error: "Enabling mesh for all namespaces at once"
+          impact: "Network disruption across all services simultaneously"
+          fix: "Progressive rollout — mesh non-critical services first, validate, then expand"
+        - error: "Not budgeting for sidecar resource overhead"
+          impact: "Node capacity exceeded; pods evicted or stuck pending"
+          fix: "Account for ~50MB memory and 0.1 CPU per sidecar in capacity planning"
+    maturity:
+      level: advanced
+    standards:
+      - name: "CNCF Service Mesh Landscape"
+        type: reference
+        role: "Overview of service mesh options and trade-offs"
+        status: recommended
+
+  - id: stateful_orchestration
+    name: "Stateful Workload Orchestration"
+    description: >
+      Kubernetes patterns for stateful services including databases, message
+      brokers, and caches. Uses StatefulSets for stable identities, persistent
+      volumes for data, and operators for lifecycle management.
+    use_when:
+      - "Running databases on Kubernetes (Postgres, MySQL, Redis)"
+      - "Stateful services needing stable network identities"
+      - "Distributed systems requiring ordered deployment (Kafka, ZooKeeper)"
+    avoid_when:
+      - "Managed database services are available and preferred"
+      - "Simple stateless services"
+    tradeoffs:
+      pros:
+        - "Stable pod names and DNS (pod-0, pod-1, etc.)"
+        - "Persistent volume claims survive pod restarts"
+        - "Ordered, graceful deployment and scaling"
+        - "Operators automate complex lifecycle (backup, failover)"
+      cons:
+        - "More complex than managed cloud databases"
+        - "Storage provisioning and backup are your responsibility"
+        - "Stateful workloads harder to migrate between clusters"
+    implementation:
+      guidelines:
+        - "Use StatefulSets for stable identity and ordered deployment"
+        - "PersistentVolumeClaims with appropriate storage class"
+        - "Use operators (e.g., CloudNativePG, Strimzi) for database/broker lifecycle"
+        - "Implement backup and restore procedures"
+        - "Use headless services for direct pod DNS resolution"
+      common_errors:
+        - error: "Using Deployment instead of StatefulSet for databases"
+          impact: "Pods get random names; no stable storage binding; data loss on reschedule"
+          fix: "Use StatefulSet for any workload needing stable identity or persistent storage"
+        - error: "No backup strategy for persistent volumes"
+          impact: "Data loss on PV failure or accidental deletion"
+          fix: "Implement VolumeSnapshot schedule or operator-managed backups"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Kubernetes StatefulSet Documentation"
+        type: standard
+        role: "Authoritative reference for stateful workloads"
+        status: recommended
+
+examples:
+  - id: k8s_deployment_example
+    title: "Production Kubernetes Deployment"
+    context: "Deploying a stateless API service with proper resource management"
+    correct: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: order-service
+        namespace: production
+        labels:
+          app: order-service
+          team: commerce
+      spec:
+        replicas: 3
+        selector:
+          matchLabels:
+            app: order-service
+        template:
+          metadata:
+            labels:
+              app: order-service
+          spec:
+            containers:
+              - name: order-service
+                image: registry.example.com/order-service:v1.2.3@sha256:abc123
+                ports:
+                  - containerPort: 8080
+                resources:
+                  requests:
+                    cpu: 250m
+                    memory: 256Mi
+                  limits:
+                    cpu: 500m
+                    memory: 512Mi
+                readinessProbe:
+                  httpGet:
+                    path: /health/ready
+                    port: 8080
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                livenessProbe:
+                  httpGet:
+                    path: /health/live
+                    port: 8080
+                  initialDelaySeconds: 15
+                  periodSeconds: 20
+                env:
+                  - name: DB_HOST
+                    valueFrom:
+                      configMapKeyRef:
+                        name: order-config
+                        key: db-host
+                  - name: DB_PASSWORD
+                    valueFrom:
+                      secretKeyRef:
+                        name: order-secrets
+                        key: db-password
+            topologySpreadConstraints:
+              - maxSkew: 1
+                topologyKey: topology.kubernetes.io/zone
+                whenUnsatisfiable: DoNotSchedule
+                labelSelector:
+                  matchLabels:
+                    app: order-service
+      ---
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: order-service-pdb
+        namespace: production
+      spec:
+        minAvailable: 2
+        selector:
+          matchLabels:
+            app: order-service
+    incorrect: |
+      # WRONG: Missing resource limits, probes, security context
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: order-service
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: order-service
+        template:
+          metadata:
+            labels:
+              app: order-service
+          spec:
+            containers:
+              - name: order-service
+                image: order-service:latest
+                ports:
+                  - containerPort: 8080
+                env:
+                  - name: DB_PASSWORD
+                    value: "supersecret123"
+      # Problems:
+      #   - No resource requests/limits
+      #   - No health probes
+      #   - :latest tag, no digest
+      #   - Password in plain text
+      #   - Single replica
+      #   - Default namespace
+      #   - No PDB
+    explanation: >
+      The correct version defines resource requests and limits, readiness and
+      liveness probes, secrets via SecretKeyRef, topology spread for HA,
+      and a PodDisruptionBudget. The incorrect version has none of these
+      and hardcodes secrets in the manifest.
+
+  - id: helm_chart_example
+    title: "Helm Chart Values — Environment Overrides"
+    context: "Using Helm values for multi-environment deployments"
+    correct: |
+      # values.yaml (defaults)
+      replicaCount: 2
+      image:
+        repository: registry.example.com/api-service
+        tag: ""  # Set by CI/CD via --set image.tag=...
+        pullPolicy: IfNotPresent
+      resources:
+        requests:
+          cpu: 250m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+
+      # values-production.yaml (environment override)
+      replicaCount: 3
+      resources:
+        requests:
+          cpu: 500m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 1Gi
+
+      # Deploy: helm upgrade --install api-service ./chart \
+      #   -f values.yaml -f values-production.yaml \
+      #   --set image.tag=$CI_COMMIT_SHA
+    incorrect: |
+      # WRONG: Hardcoded values, no environment separation
+      # values.yaml
+      replicaCount: 1
+      image:
+        repository: api-service
+        tag: latest
+      # No resource limits defined
+      # Same values used for dev, staging, and production
+      # Image tag set to :latest
+    explanation: >
+      The correct version uses base values with environment-specific overrides,
+      image tags set by CI/CD (never :latest), and proper resource definitions.
+      The incorrect version uses hardcoded values with no environment separation.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Service mesh mTLS for all inter-service communication"
+      - "Ingress TLS termination with valid certificates"
+  data_protection:
+    requirements:
+      - "Kubernetes Secrets encrypted at rest (EncryptionConfiguration)"
+      - "Use external secret stores (Vault, AWS Secrets Manager) for sensitive data"
+  access_control:
+    requirements:
+      - "RBAC with least-privilege roles per namespace"
+      - "NetworkPolicies to restrict pod-to-pod communication"
+      - "Pod Security Standards enforced (restricted profile)"
+  input_output:
+    requirements:
+      - "Admission controllers validate manifests before deployment"
+  secrets:
+    requirements:
+      - "Never commit Secrets manifests to version control"
+      - "Use Sealed Secrets or External Secrets Operator for GitOps workflows"
+  monitoring:
+    requirements:
+      - "Prometheus/Grafana stack for cluster and workload metrics"
+      - "Audit logging enabled for all API server requests"
+
+compliance:
+  standards:
+    - name: "CIS Kubernetes Benchmark"
+      relevance: "Industry standard for Kubernetes security configuration"
+    - name: "CNCF Cloud Native Best Practices"
+      relevance: "Community standards for cloud-native workloads"
+
+  requirements_mapping:
+    - control: resource_limits
+      description: "All pods must define resource requests and limits"
+      maps_to:
+        - "CIS Kubernetes Benchmark 5.2"
+    - control: network_policies
+      description: "Default-deny NetworkPolicies per namespace"
+      maps_to:
+        - "CIS Kubernetes Benchmark 5.3"
+
+prompt_recipes:
+  - id: k8s_greenfield
+    scenario: greenfield
+    description: "Create Kubernetes manifests for a new service"
+    prompt: |
+      Create production-ready Kubernetes manifests for a {language} {service_type} service:
+
+      1. Deployment with resource requests/limits, probes, and security context
+      2. Service (ClusterIP or LoadBalancer based on exposure needs)
+      3. ConfigMap for non-sensitive configuration
+      4. Secret references (external secret store, not inline)
+      5. HorizontalPodAutoscaler with CPU/memory targets
+      6. PodDisruptionBudget for high availability
+      7. NetworkPolicy for ingress/egress rules
+
+  - id: k8s_migration
+    scenario: migration
+    description: "Migrate Docker Compose setup to Kubernetes"
+    prompt: |
+      Migrate this Docker Compose application to Kubernetes:
+
+      1. Convert each service to a Deployment + Service
+      2. Convert volumes to PersistentVolumeClaims
+      3. Convert environment variables to ConfigMaps/Secrets
+      4. Add resource limits, probes, and security context
+      5. Create namespace and NetworkPolicies
+      6. Show Helm chart structure if >3 services
+
+  - id: k8s_audit
+    scenario: audit
+    description: "Audit Kubernetes manifests for production readiness"
+    prompt: |
+      Audit these Kubernetes manifests for production readiness:
+
+      1. **Resources**: Requests and limits defined for all containers?
+      2. **Probes**: Readiness, liveness, and startup probes configured?
+      3. **Security**: Non-root, read-only filesystem, capabilities dropped?
+      4. **HA**: Multiple replicas, PDB, topology spread?
+      5. **Secrets**: No hardcoded secrets? Using external secret management?
+      6. **Networking**: NetworkPolicies defined? Ingress TLS?
+
+  - id: k8s_troubleshooting
+    scenario: debugging
+    description: "Debug Kubernetes workload issues"
+    prompt: |
+      Debug this Kubernetes workload issue: {issue_description}
+
+      1. Check pod status and events: kubectl describe pod
+      2. Check container logs: kubectl logs
+      3. Verify resource constraints: requests vs actual usage
+      4. Check probe failures: readiness/liveness timing
+      5. Verify networking: Service endpoints, DNS resolution
+      6. Check RBAC: ServiceAccount permissions
+      7. Provide the fix and explain root cause
+
+anti_patterns:
+  - name: "No Resource Limits"
+    description: >
+      Deploying pods without resource requests or limits. A single pod can
+      consume all node CPU and memory, causing cascading failures for
+      co-located workloads.
+    fix: "Always set resource requests (scheduling guarantee) and limits (hard cap) for CPU and memory"
+    severity: critical
+    related_pattern: kubernetes_manifests
+
+  - name: "Using :latest Tag"
+    description: >
+      Deploying with image:latest tag. No rollback possible, no audit trail,
+      and different pods may run different image versions if pulled at
+      different times.
+    fix: "Use specific version tags or SHA digests; set image tag from CI/CD pipeline"
+    severity: high
+    related_pattern: kubernetes_manifests
+
+  - name: "Hardcoded Secrets in Manifests"
+    description: >
+      Putting passwords, API keys, or tokens directly in Deployment manifests
+      or values files committed to version control.
+    fix: "Use Kubernetes Secrets with external secret management (Vault, Sealed Secrets, ESO)"
+    severity: critical
+    related_pattern: managed_kubernetes
+
+  - name: "Premature Service Mesh"
+    description: >
+      Adopting a service mesh for <5 services. The operational complexity
+      of the mesh exceeds the value for small deployments.
+    fix: "Start with Kubernetes-native features; adopt service mesh when scale demands it"
+    severity: medium
+    related_pattern: service_mesh
+
+checklist:
+  - id: ORC-01
+    category: reliability
+    description: "Resource requests and limits defined for all containers"
+    severity: critical
+    verified_by: kubernetes_manifests
+
+  - id: ORC-02
+    category: reliability
+    description: "Readiness and liveness probes configured"
+    severity: high
+    verified_by: kubernetes_manifests
+
+  - id: ORC-03
+    category: reliability
+    description: "PodDisruptionBudget defined for critical services"
+    severity: high
+    verified_by: kubernetes_manifests
+
+  - id: ORC-04
+    category: security
+    description: "RBAC roles follow least-privilege per namespace"
+    severity: high
+    verified_by: managed_kubernetes
+
+  - id: ORC-05
+    category: security
+    description: "NetworkPolicies restrict pod-to-pod communication"
+    severity: high
+    verified_by: managed_kubernetes
+
+  - id: ORC-06
+    category: security
+    description: "Pod Security Standards enforced (restricted profile)"
+    severity: high
+    verified_by: managed_kubernetes
+
+  - id: ORC-07
+    category: observability
+    description: "Monitoring stack deployed (metrics, logs, traces)"
+    severity: high
+    verified_by: service_mesh
+
+  - id: ORC-08
+    category: reliability
+    description: "HorizontalPodAutoscaler configured for variable workloads"
+    severity: medium
+    verified_by: kubernetes_manifests
+
+  - id: ORC-09
+    category: security
+    description: "Secrets managed via external store, not inline in manifests"
+    severity: critical
+    verified_by: managed_kubernetes
+
+  - id: ORC-10
+    category: reliability
+    description: "Topology spread constraints for multi-zone availability"
+    severity: medium
+    verified_by: kubernetes_manifests
+
+  - id: ORC-11
+    category: maintainability
+    description: "Helm or Kustomize used for manifest templating"
+    severity: medium
+    verified_by: managed_kubernetes
+
+  - id: ORC-12
+    category: security
+    description: "Image pull from private registry with authentication"
+    severity: high
+    verified_by: kubernetes_manifests

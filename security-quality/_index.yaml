@@ -1,0 +1,56 @@
+# Security & Quality Standards — Category Index
+category: security-quality
+description: >
+  Standards for encryption, rate limiting, testing strategies, code quality,
+  performance optimization, and accessibility. Covers the cross-cutting
+  concerns that AI assistants need to produce secure, testable, performant,
+  and inclusive software.
+
+entries:
+  - domain: encryption
+    version: "1.0.0"
+    description: "Data encryption at rest and in transit, key management, and cryptographic best practices"
+    tags: ["encryption", "tls", "cryptography", "key-management", "data-protection"]
+    prerequisites: ["authentication"]
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: rate-limiting
+    version: "1.0.0"
+    description: "Rate limiting, throttling, and abuse prevention for APIs and services"
+    tags: ["rate-limiting", "throttling", "api-protection", "dos-prevention", "quotas"]
+    prerequisites: ["api-design"]
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: testing-strategies
+    version: "1.0.0"
+    description: "Testing pyramids, strategies, and patterns for comprehensive quality assurance"
+    tags: ["testing", "unit-tests", "integration-tests", "e2e", "tdd", "quality"]
+    prerequisites: []
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: code-quality
+    version: "1.0.0"
+    description: "Code quality standards, linting, static analysis, and maintainability practices"
+    tags: ["code-quality", "linting", "static-analysis", "maintainability", "readability"]
+    prerequisites: []
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: performance-optimization
+    version: "1.0.0"
+    description: "Performance profiling, optimization patterns, caching strategies, and scalability"
+    tags: ["performance", "optimization", "caching", "profiling", "scalability"]
+    prerequisites: []
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: accessibility
+    version: "1.0.0"
+    description: "Accessibility standards, inclusive design, and assistive technology compatibility"
+    tags: ["accessibility", "a11y", "wcag", "aria", "inclusive-design"]
+    prerequisites: []
+    pattern_count: 3
+    anti_pattern_count: 4

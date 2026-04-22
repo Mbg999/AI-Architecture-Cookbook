@@ -1,0 +1,70 @@
+category: foundational
+name: "Foundational Standards"
+description: >
+  Core cross-cutting concerns every system needs. These standards form the
+  foundation that all other architectural decisions build upon.
+
+entries:
+  - domain: authentication
+    version: "2.0.0"
+    description: "Authentication and authorization patterns including OIDC, OAuth2, JWT, DPoP, mTLS"
+    tags: ["security", "authentication", "authorization", "identity", "oauth", "oidc", "tokens"]
+    prerequisites: []
+    pattern_count: 5
+    anti_pattern_count: 6
+
+  - domain: api-design
+    version: "1.0.0"
+    description: "API design patterns for REST, GraphQL, gRPC, and WebSocket communication"
+    tags: ["api", "rest", "graphql", "grpc", "websocket", "http", "communication"]
+    prerequisites: []
+    pattern_count: 4
+    anti_pattern_count: 5
+
+  - domain: error-handling
+    version: "1.0.0"
+    description: "Error handling and resilience patterns including circuit breakers, retries, fallbacks"
+    tags: ["resilience", "errors", "circuit-breaker", "retry", "fallback", "bulkhead"]
+    prerequisites: []
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: logging-observability
+    version: "1.0.0"
+    description: "Structured logging, distributed tracing, and metrics for production observability"
+    tags: ["logging", "observability", "tracing", "metrics", "monitoring", "alerting"]
+    prerequisites: []
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: data-persistence
+    version: "1.0.0"
+    description: "Data persistence patterns for relational, NoSQL, caching, and event stores"
+    tags: ["database", "persistence", "sql", "nosql", "caching", "event-store", "data"]
+    prerequisites: []
+    pattern_count: 5
+    anti_pattern_count: 5
+
+  - domain: input-validation
+    version: "1.0.0"
+    description: "Input validation and sanitization for security and data integrity"
+    tags: ["security", "validation", "sanitization", "injection", "xss", "input"]
+    prerequisites: []
+    pattern_count: 3
+    anti_pattern_count: 4
+
+  - domain: messaging-events
+    version: "1.0.0"
+    description: "Messaging and event-driven architecture including queues, pub/sub, event sourcing, CQRS"
+    tags: ["messaging", "events", "pubsub", "queue", "event-sourcing", "cqrs", "async"]
+    prerequisites: []
+    pattern_count: 5
+    anti_pattern_count: 4
+
+  - domain: configuration-management
+    version: "1.0.0"
+    description: "Configuration management patterns for env vars, secrets, and feature flags"
+    tags: ["configuration", "secrets", "feature-flags", "environment", "config"]
+    prerequisites: []
+    pattern_count: 4
+    anti_pattern_count: 4

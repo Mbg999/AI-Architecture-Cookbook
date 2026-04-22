@@ -1,0 +1,659 @@
+# =============================================================================
+# AI Architecture Cookbook — Domain-Driven Design
+# Schema: v3 | Domain: domain-driven-design
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: domain-driven-design
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Domain-Driven Design strategic and tactical patterns for modeling complex
+    business domains. Covers bounded contexts, aggregates, entities, value
+    objects, domain events, and context mapping.
+
+  tags:
+    - ddd
+    - domain
+    - bounded-context
+    - aggregate
+    - event-storming
+    - ubiquitous-language
+    - strategic-design
+
+  categories:
+    - application-architecture
+
+  prerequisites: []
+
+  related_standards:
+    - id: service-architecture
+      relationship: complementary
+      context: "Bounded contexts from DDD define microservice boundaries"
+    - id: messaging-events
+      relationship: complementary
+      context: "Domain events are published and consumed via messaging infrastructure"
+    - id: repository-pattern
+      relationship: complementary
+      context: "Repositories persist and retrieve aggregates as defined by DDD"
+    - id: layered-architecture
+      relationship: complementary
+      context: "DDD tactical patterns live in the domain layer of clean/hexagonal architectures"
+
+context_inputs:
+  - name: domain_complexity
+    type: enum
+    description: "How complex is the business domain?"
+    required: true
+    default: complex
+    enum_values:
+      - simple
+      - moderate
+      - complex
+
+  - name: domain_expert_access
+    type: boolean
+    description: "Does the team have access to domain experts for modeling sessions?"
+    required: true
+    default: true
+
+  - name: team_ddd_experience
+    type: enum
+    description: "Team's experience with DDD concepts"
+    required: true
+    default: moderate
+    enum_values:
+      - none
+      - basic
+      - moderate
+      - expert
+
+  - name: existing_codebase
+    type: boolean
+    description: "Is there an existing codebase to refactor?"
+    required: true
+    default: false
+
+  - name: consistency_requirements
+    type: enum
+    description: "How strong are transactional consistency requirements?"
+    required: true
+    default: strong_within_aggregate
+    enum_values:
+      - eventual_everywhere
+      - strong_within_aggregate
+      - strong_across_aggregates
+
+decision_tree:
+  - id: complex_with_experts
+    priority: 1
+    if:
+      - domain_complexity == complex
+      - domain_expert_access == true
+    then:
+      pattern: full_ddd
+      standards:
+        - "Eric Evans — Domain-Driven Design"
+      notes: >
+        Complex domains with domain expert access benefit from full DDD —
+        strategic design for boundaries, tactical patterns for modeling.
+    else:
+      pattern: ddd_lite
+      notes: "Without domain experts, use DDD-lite with tactical patterns only"
+
+  - id: moderate_domain
+    priority: 2
+    if:
+      - domain_complexity == moderate
+      - team_ddd_experience in [moderate, expert]
+    then:
+      pattern: ddd_lite
+      standards:
+        - "Vaughn Vernon — Implementing DDD"
+      notes: >
+        Moderate complexity with experienced team benefits from tactical DDD
+        patterns without full strategic design overhead.
+
+  - id: brownfield_refactor
+    priority: 3
+    if:
+      - existing_codebase == true
+      - domain_complexity in [moderate, complex]
+    then:
+      pattern: strategic_ddd
+      standards:
+        - "Context Mapping"
+      notes: >
+        Existing codebases benefit from strategic DDD first — discover bounded
+        contexts and relationships before applying tactical patterns.
+
+  - id: simple_domain_or_no_experience
+    priority: 4
+    if:
+      - domain_complexity == simple
+    then:
+      pattern: aggregate_only
+      standards:
+        - "Aggregate Pattern"
+      notes: >
+        Simple domains need only aggregate patterns for consistency boundaries;
+        full DDD is over-engineering.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: ddd_lite
+    description: "DDD-lite with tactical patterns is the safest starting point for most teams"
+
+patterns:
+  - id: full_ddd
+    name: "Full Domain-Driven Design"
+    description: >
+      Complete DDD implementation including strategic design (bounded contexts,
+      context maps, ubiquitous language) and tactical design (aggregates, entities,
+      value objects, domain events, repositories, domain services). Requires
+      close collaboration with domain experts.
+    use_when:
+      - "Complex business domain with many rules and invariants"
+      - "Domain experts are available for modeling workshops"
+      - "Multiple teams working on the same business domain"
+      - "System will evolve significantly over years"
+    avoid_when:
+      - "Simple CRUD application"
+      - "No access to domain experts"
+      - "Team has no DDD experience and short timeline"
+    tradeoffs:
+      pros:
+        - "Software model closely mirrors business reality"
+        - "Ubiquitous language reduces communication gaps"
+        - "Bounded contexts create natural service boundaries"
+        - "Domain events enable loose coupling between contexts"
+      cons:
+        - "Significant upfront investment in domain modeling"
+        - "Requires ongoing access to domain experts"
+        - "Steep learning curve for the full pattern catalog"
+        - "Over-engineering risk if applied to simple domains"
+    implementation:
+      guidelines:
+        - "Start with Event Storming to discover domain events and bounded contexts"
+        - "Define ubiquitous language per bounded context — enforce in code and conversation"
+        - "Model aggregates as consistency boundaries — one transaction per aggregate"
+        - "Use value objects for concepts defined by attributes, not identity"
+        - "Publish domain events when aggregate state changes — other contexts subscribe"
+        - "Repository per aggregate root — never for entities inside an aggregate"
+      common_errors:
+        - error: "One ubiquitous language for the entire system"
+          impact: "Terms have different meanings in different contexts, causing confusion"
+          fix: "Each bounded context has its own ubiquitous language; translate at boundaries"
+        - error: "Aggregates too large — spanning multiple consistency boundaries"
+          impact: "Concurrency conflicts; performance issues; difficulty reasoning about invariants"
+          fix: "Follow the rule: small aggregates with consistency boundaries around true invariants"
+        - error: "Domain events carrying too much data"
+          impact: "Tight coupling between contexts; events become shared data contracts"
+          fix: "Events carry only the identity and state change; consumers query for details if needed"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Domain-Driven Design (Eric Evans)"
+        type: pattern
+        role: "Original DDD reference — strategic and tactical patterns"
+        status: recommended
+      - name: "Implementing Domain-Driven Design (Vaughn Vernon)"
+        type: pattern
+        role: "Practical DDD implementation guide"
+        status: recommended
+
+  - id: ddd_lite
+    name: "DDD-Lite (Tactical Patterns Only)"
+    description: >
+      Apply DDD tactical patterns (aggregates, value objects, domain events,
+      repositories) without the full strategic design overhead. Good for teams
+      that want rich domain modeling without bounded context analysis.
+    use_when:
+      - "Moderate domain complexity"
+      - "Team wants better domain modeling but lacks time for full strategic DDD"
+      - "Single bounded context application"
+      - "Existing clean architecture codebase adding domain richness"
+    avoid_when:
+      - "Multiple teams with overlapping domain concepts (need strategic DDD)"
+      - "Simple CRUD where entities are just data containers"
+    tradeoffs:
+      pros:
+        - "Lower adoption cost than full DDD"
+        - "Rich domain model with proper invariant enforcement"
+        - "Good aggregate design prevents consistency bugs"
+        - "Domain events improve decoupling within the application"
+      cons:
+        - "May miss important bounded context boundaries"
+        - "Without ubiquitous language discipline, naming inconsistencies grow"
+        - "Harder to decompose later without context maps"
+    implementation:
+      guidelines:
+        - "Identify aggregates by grouping entities that must be consistent together"
+        - "Use value objects for all concepts without identity (money, addresses, date ranges)"
+        - "Domain services for operations that don't belong to a single entity"
+        - "Publish domain events from aggregates for side effects and notifications"
+        - "Repository pattern for aggregate persistence — load and save whole aggregates"
+      common_errors:
+        - error: "Treating all entities as aggregate roots"
+          impact: "No consistency boundaries; every entity independently loadable and mutable"
+          fix: "Only aggregate roots are accessible; child entities accessed through the root"
+        - error: "Value objects with setters (mutable)"
+          impact: "Shared value object instances can be modified, breaking invariants"
+          fix: "Value objects are always immutable; create new instances for changes"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Implementing Domain-Driven Design (Vaughn Vernon)"
+        type: pattern
+        role: "Practical reference for tactical DDD patterns"
+        status: recommended
+
+  - id: strategic_ddd
+    name: "Strategic DDD (Context Mapping)"
+    description: >
+      Focus on strategic patterns: bounded contexts, context maps, and
+      integration patterns between contexts (Shared Kernel, Anti-Corruption
+      Layer, Open Host Service, Published Language). Best for brownfield systems
+      where you need to understand existing domain boundaries.
+    use_when:
+      - "Multiple teams working on related business domains"
+      - "Existing system needs domain boundary clarification"
+      - "Planning microservice extraction from a monolith"
+      - "Different parts of the system model the same concept differently"
+    avoid_when:
+      - "Single team, single bounded context"
+      - "Greenfield with simple, well-understood domain"
+    tradeoffs:
+      pros:
+        - "Clarifies team boundaries and ownership"
+        - "Reveals hidden coupling between system parts"
+        - "Anti-corruption layers protect domain integrity during integration"
+        - "Natural input for microservice boundary decisions"
+      cons:
+        - "Requires multi-team coordination for context mapping"
+        - "Context maps need ongoing maintenance as domains evolve"
+        - "Strategic patterns are abstract — harder to learn without examples"
+    implementation:
+      guidelines:
+        - "Map existing system into bounded contexts based on language and data ownership"
+        - "Document context relationships: Shared Kernel, Customer-Supplier, Conformist, ACL"
+        - "Use Anti-Corruption Layer when integrating with legacy or external systems"
+        - "Open Host Service for contexts that serve many consumers"
+        - "Published Language (e.g., canonical data model) for standardized context integration"
+      common_errors:
+        - error: "No Anti-Corruption Layer when integrating with legacy systems"
+          impact: "Legacy model leaks into new domain code; new system constrained by legacy schema"
+          fix: "Always put an ACL between legacy and new contexts; translate at the boundary"
+        - error: "Conformist pattern used when you have leverage to negotiate"
+          impact: "Your domain model forced to match an upstream that doesn't serve your needs"
+          fix: "Use Customer-Supplier when you can influence upstream; Conformist only when you cannot"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Domain-Driven Design (Eric Evans) — Part IV"
+        type: pattern
+        role: "Strategic design patterns for bounded contexts and context mapping"
+        status: recommended
+
+  - id: aggregate_only
+    name: "Aggregate Pattern (Standalone)"
+    description: >
+      Use the aggregate pattern purely as a consistency boundary design tool,
+      without adopting the full DDD vocabulary. Aggregates group related entities
+      and enforce invariants atomically.
+    use_when:
+      - "Need consistency boundaries but domain is not complex enough for full DDD"
+      - "Team understands transaction boundaries but not full DDD"
+      - "Data model has clear clusters of related entities"
+    avoid_when:
+      - "Domain is truly anemic — just CRUD with no invariants"
+      - "System is read-heavy with few write-side consistency requirements"
+    tradeoffs:
+      pros:
+        - "Clear transactional boundaries without full DDD overhead"
+        - "Prevents inconsistent state across related entities"
+        - "Works with any architecture style"
+      cons:
+        - "Without full DDD context, aggregate boundaries may be arbitrary"
+        - "Missing value objects and domain events reduces expressiveness"
+    implementation:
+      guidelines:
+        - "Group entities that must be atomically consistent into aggregates"
+        - "Designate one entity as the aggregate root — all access goes through it"
+        - "One transaction per aggregate — cross-aggregate operations use eventual consistency"
+        - "Keep aggregates small — large aggregates cause contention"
+      common_errors:
+        - error: "Loading and modifying entities outside their aggregate root"
+          impact: "Invariants bypassed; inconsistent state"
+          fix: "All modifications go through the aggregate root's methods"
+    maturity:
+      level: standard
+    standards:
+      - name: "Aggregate Pattern (DDD)"
+        type: pattern
+        role: "Consistency boundary design"
+        status: recommended
+
+examples:
+  - id: aggregate_design_example
+    title: "Aggregate Design — Order with Line Items"
+    context: "Designing an Order aggregate that enforces business invariants"
+    correct: |
+      # Order is the aggregate root; LineItem is a child entity
+      class Order:
+          def __init__(self, customer_id):
+              self.id = generate_id()
+              self.customer_id = customer_id
+              self.line_items = []
+              self.status = "draft"
+
+          def add_item(self, product_id, quantity, price):
+              if self.status != "draft":
+                  raise DomainError("Cannot modify a submitted order")
+              item = LineItem(product_id, quantity, price)
+              self.line_items.append(item)
+              self.domain_events.append(ItemAdded(self.id, product_id))
+
+          def submit(self):
+              if not self.line_items:
+                  raise DomainError("Cannot submit empty order")
+              self.status = "submitted"
+              self.domain_events.append(OrderSubmitted(self.id, self.total))
+
+          @property
+          def total(self):
+              return sum(item.subtotal for item in self.line_items)
+
+      # Repository loads and saves the entire aggregate
+      class OrderRepository(Protocol):
+          def find(self, order_id) -> Order: ...
+          def save(self, order: Order) -> None: ...
+    incorrect: |
+      # WRONG: LineItem independently accessible; no invariant enforcement
+      class OrderService:
+          def add_item(self, order_id, product_id, quantity, price):
+              item = LineItem(order_id=order_id, product_id=product_id,
+                              quantity=quantity, price=price)
+              self.line_item_repo.save(item)  # Bypass Order aggregate
+
+          def submit_order(self, order_id):
+              order = self.order_repo.find(order_id)
+              order.status = "submitted"  # No validation
+              self.order_repo.save(order)
+              # LineItems might be inconsistent — loaded separately
+    explanation: >
+      The correct version enforces all business rules through the Order aggregate
+      root. Line items can only be added through Order.add_item(), which checks
+      the order status invariant. The incorrect version bypasses the aggregate,
+      allowing line items to be added to submitted orders and submitting empty orders.
+
+  - id: bounded_context_example
+    title: "Bounded Contexts — Same Concept, Different Models"
+    context: "Customer concept modeled differently in Sales vs Shipping contexts"
+    correct: |
+      # Sales Context — Customer is about purchasing behavior
+      # sales/models.py
+      class Customer:
+          def __init__(self, id, name, credit_limit, discount_tier):
+              self.id = id
+              self.name = name
+              self.credit_limit = credit_limit  # Sales-specific
+              self.discount_tier = discount_tier  # Sales-specific
+
+      # Shipping Context — Customer is about delivery address
+      # shipping/models.py
+      class Recipient:  # Different name! Different ubiquitous language
+          def __init__(self, id, name, address, delivery_preferences):
+              self.id = id
+              self.name = name
+              self.address = address  # Shipping-specific
+              self.delivery_preferences = delivery_preferences  # Shipping-specific
+
+      # Anti-Corruption Layer translates between contexts
+      class ShippingACL:
+          def recipient_from_order(self, order_placed_event) -> Recipient:
+              return Recipient(
+                  id=order_placed_event.customer_id,
+                  name=order_placed_event.shipping_name,
+                  address=order_placed_event.shipping_address,
+                  delivery_preferences=self.lookup_preferences(order_placed_event.customer_id)
+              )
+    incorrect: |
+      # WRONG: Single shared Customer model used everywhere
+      class Customer:
+          def __init__(self, id, name, credit_limit, discount_tier,
+                       address, delivery_preferences, support_tier,
+                       billing_address, tax_id, loyalty_points):
+              # God object — every context adds fields
+              pass
+
+      # Sales uses Customer.credit_limit
+      # Shipping uses Customer.address
+      # Billing uses Customer.tax_id
+      # Support uses Customer.support_tier
+      # Changes to any field risk breaking all contexts
+    explanation: >
+      The correct version models Customer differently in each bounded context,
+      using the language natural to that context (Recipient in Shipping). An ACL
+      translates between contexts. The incorrect version uses a shared God object
+      that couples all contexts and accumulates every field any context needs.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Domain events encrypted in transit when crossing context boundaries"
+      - "Context-to-context communication uses authenticated channels"
+  data_protection:
+    requirements:
+      - "Aggregate serialization excludes sensitive fields not needed by consumers"
+      - "PII handled per-context with data minimization — each context stores only what it needs"
+  access_control:
+    requirements:
+      - "Domain services enforce business authorization rules (e.g., ownership checks)"
+      - "Aggregate methods validate caller permissions before state changes"
+  input_output:
+    requirements:
+      - "Value objects validate input at construction — invalid values cannot exist"
+      - "Anti-Corruption Layers sanitize all incoming data from external contexts"
+  secrets:
+    requirements:
+      - "Domain layer has no awareness of secrets — infrastructure adapters handle credentials"
+  monitoring:
+    requirements:
+      - "Domain events include correlation IDs for distributed tracing"
+      - "Aggregate invariant violations logged as business-level warnings"
+
+compliance:
+  standards:
+    - name: "GDPR"
+      relevance: "Bounded contexts help enforce data minimization — each context holds only relevant PII"
+    - name: "SOC 2"
+      relevance: "Aggregate invariants help enforce data integrity controls"
+
+  requirements_mapping:
+    - control: data_minimization
+      description: "Each bounded context stores only the data it needs for its purpose"
+      maps_to:
+        - "GDPR — Article 5(1)(c)"
+    - control: data_integrity
+      description: "Aggregate invariants ensure data consistency at the business rule level"
+      maps_to:
+        - "SOC 2 — Processing Integrity"
+
+prompt_recipes:
+  - id: ddd_greenfield
+    scenario: greenfield
+    description: "Model a new domain using DDD patterns"
+    prompt: |
+      Model the domain for a {system_description} using Domain-Driven Design.
+
+      1. Run an Event Storming session:
+         - Identify domain events (past tense, e.g., "OrderPlaced")
+         - Group events into bounded contexts by language and data ownership
+         - Identify commands that trigger events
+         - Identify aggregates that handle commands
+
+      2. For each bounded context:
+         - Define the ubiquitous language (glossary of terms)
+         - Identify aggregates with their invariants
+         - Define value objects for attribute-only concepts
+         - List domain events published by this context
+
+      3. Create a context map showing relationships:
+         - Shared Kernel, Customer-Supplier, Conformist, ACL, Open Host
+
+  - id: ddd_migration
+    scenario: migration
+    description: "Refactor an existing codebase to use DDD patterns"
+    prompt: |
+      Refactor this {language} codebase to use DDD tactical patterns:
+
+      1. Identify entities that should be aggregates (look for consistency boundaries)
+      2. Find concepts that should be value objects (immutable, equality by attributes)
+      3. Extract domain events from implicit state changes
+      4. Move business logic from services into entities and value objects
+      5. Implement repositories per aggregate root
+
+      Preserve all existing behavior. Create tests for each aggregate's invariants.
+
+  - id: ddd_audit
+    scenario: audit
+    description: "Audit DDD implementation for common mistakes"
+    prompt: |
+      Audit this DDD implementation for common mistakes:
+
+      1. Are aggregates too large? (look for >5 entity types per aggregate)
+      2. Are value objects mutable? (setters on value objects)
+      3. Are child entities accessible outside their aggregate root?
+      4. Do domain events carry too much data?
+      5. Is business logic in application services instead of domain objects?
+      6. Are there anemic entities (data-only, no behavior)?
+
+      For each finding, classify severity and provide a fix.
+
+  - id: ddd_event_storming
+    scenario: architecture
+    description: "Facilitate a virtual Event Storming session"
+    prompt: |
+      Facilitate an Event Storming session for {system_description}.
+
+      Walk through:
+      1. **Big Picture**: List all domain events that occur in the system
+      2. **Process Modeling**: Sequence events, add commands and actors
+      3. **Software Design**: Group into aggregates and bounded contexts
+
+      Output:
+      - List of bounded contexts with owned events
+      - Aggregate definitions with invariants
+      - Context map with integration patterns
+
+anti_patterns:
+  - name: "Anemic Domain Model"
+    description: >
+      Entities are data-only objects (getters/setters) with no behavior.
+      All business logic lives in service classes, resulting in a procedural
+      design disguised as object-oriented.
+    fix: "Move business logic into entities and value objects; services orchestrate, not compute"
+    severity: high
+    related_pattern: full_ddd
+
+  - name: "God Aggregate"
+    description: >
+      Single aggregate containing dozens of entities and enforcing too many
+      invariants. Causes contention, slow loading, and difficulty reasoning
+      about consistency.
+    fix: "Break into smaller aggregates; use domain events for cross-aggregate consistency"
+    severity: high
+    related_pattern: aggregate_only
+
+  - name: "Missing Bounded Context Boundaries"
+    description: >
+      Same domain model used across the entire system. Different business
+      contexts share entity classes, causing field bloat and coupling.
+    fix: "Identify bounded contexts; create separate models per context with ACLs at boundaries"
+    severity: high
+    related_pattern: strategic_ddd
+
+  - name: "CRUD as DDD"
+    description: >
+      Calling repository + service + entity pattern "DDD" when the domain
+      has no real invariants. DDD ceremony adds no value to simple CRUD.
+    fix: "Use DDD only when the domain has real business rules; simple CRUD doesn't need aggregates"
+    severity: medium
+    related_pattern: aggregate_only
+
+checklist:
+  - id: DDD-01
+    category: design
+    description: "Bounded contexts identified and documented with ubiquitous language glossary"
+    severity: high
+    verified_by: full_ddd
+
+  - id: DDD-02
+    category: design
+    description: "Aggregates designed around true invariants — small, focused consistency boundaries"
+    severity: critical
+    verified_by: full_ddd
+
+  - id: DDD-03
+    category: correctness
+    description: "Value objects are immutable with equality by attributes"
+    severity: high
+    verified_by: ddd_lite
+
+  - id: DDD-04
+    category: correctness
+    description: "Child entities accessible only through their aggregate root"
+    severity: high
+    verified_by: aggregate_only
+
+  - id: DDD-05
+    category: design
+    description: "Domain events published for all significant aggregate state changes"
+    severity: medium
+    verified_by: full_ddd
+
+  - id: DDD-06
+    category: correctness
+    description: "One transaction per aggregate — no cross-aggregate transactions"
+    severity: high
+    verified_by: aggregate_only
+
+  - id: DDD-07
+    category: maintainability
+    description: "Anti-Corruption Layer present at every legacy or external system integration"
+    severity: high
+    verified_by: strategic_ddd
+
+  - id: DDD-08
+    category: design
+    description: "Business logic in entities and value objects, not in services"
+    severity: high
+    verified_by: full_ddd
+
+  - id: DDD-09
+    category: maintainability
+    description: "Context map documented showing relationships between bounded contexts"
+    severity: medium
+    verified_by: strategic_ddd
+
+  - id: DDD-10
+    category: compliance
+    description: "Each bounded context stores only the PII it needs (data minimization)"
+    severity: high
+    verified_by: strategic_ddd
+
+  - id: DDD-11
+    category: observability
+    description: "Domain events carry correlation IDs for tracing across contexts"
+    severity: medium
+    verified_by: full_ddd
+
+  - id: DDD-12
+    category: design
+    description: "Repositories defined per aggregate root — not per entity"
+    severity: high
+    verified_by: ddd_lite

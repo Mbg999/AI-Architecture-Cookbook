@@ -1,0 +1,2 @@
+# Tools-specific requirements (delegate to repo root)
+-r ../requirements.txt

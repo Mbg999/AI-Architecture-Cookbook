@@ -1,0 +1,692 @@
+# =============================================================================
+# AI Architecture Cookbook — Encryption & Key Management
+# Schema: v3 | Domain: encryption
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: encryption
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Data encryption at rest and in transit, key management lifecycle, and
+    cryptographic best practices. Covers TLS configuration, symmetric/asymmetric
+    encryption, envelope encryption, and secrets rotation.
+
+  tags:
+    - encryption
+    - tls
+    - cryptography
+    - key-management
+    - data-protection
+    - security
+
+  categories:
+    - security-quality
+
+  prerequisites:
+    - authentication
+
+  related_standards:
+    - id: authentication
+      relationship: complementary
+      context: "Token encryption and transport security depend on encryption standards"
+    - id: data-persistence
+      relationship: complementary
+      context: "Stored data requires encryption at rest per this standard"
+    - id: configuration-management
+      relationship: complementary
+      context: "Encryption keys and certificates are sensitive configuration items"
+
+context_inputs:
+  - name: data_classification
+    type: enum
+    description: "Sensitivity level of the data to protect"
+    required: true
+    default: confidential
+    enum_values:
+      - public
+      - internal
+      - confidential
+      - restricted
+
+  - name: encryption_scope
+    type: enum
+    description: "Where encryption is applied"
+    required: true
+    default: transit_and_rest
+    enum_values:
+      - transit_only
+      - rest_only
+      - transit_and_rest
+      - end_to_end
+
+  - name: key_management_model
+    type: enum
+    description: "How encryption keys are managed"
+    required: true
+    default: managed_service
+    enum_values:
+      - self_managed
+      - managed_service
+      - hsm_backed
+      - hybrid
+
+  - name: compliance_regime
+    type: enum
+    description: "Regulatory requirements affecting encryption"
+    required: false
+    default: general
+    enum_values:
+      - general
+      - pci_dss
+      - hipaa
+      - gdpr
+      - fedramp
+
+decision_tree:
+  - id: restricted_data_envelope
+    priority: 1
+    if:
+      - data_classification in [restricted]
+      - key_management_model in [hsm_backed, managed_service]
+    then:
+      pattern: envelope_encryption
+      standards:
+        - "NIST SP 800-57"
+        - "FIPS 140-2"
+      notes: >
+        Restricted data requires envelope encryption with HSM-backed key
+        hierarchy. Data encryption key encrypted by a master key in HSM.
+    else:
+      pattern: managed_encryption_at_rest
+      notes: "Managed service encryption provides good defaults for most data"
+
+  - id: transit_security
+    priority: 2
+    if:
+      - encryption_scope in [transit_only, transit_and_rest, end_to_end]
+    then:
+      pattern: tls_configuration
+      standards:
+        - "TLS 1.3"
+        - "NIST SP 800-52 Rev 2"
+      notes: >
+        All data in transit must use TLS 1.2+ with strong cipher suites.
+        TLS 1.3 preferred for new implementations.
+
+  - id: rest_encryption_standard
+    priority: 3
+    if:
+      - encryption_scope in [rest_only, transit_and_rest]
+      - data_classification in [confidential, internal]
+    then:
+      pattern: managed_encryption_at_rest
+      standards:
+        - "AES-256"
+      notes: >
+        Use cloud provider or database managed encryption at rest. Transparent
+        to the application with automatic key rotation.
+
+  - id: end_to_end_requirement
+    priority: 4
+    if:
+      - encryption_scope == end_to_end
+    then:
+      pattern: application_layer_encryption
+      standards:
+        - "NaCl/libsodium"
+      notes: >
+        End-to-end encryption requires application-layer cryptography where
+        data is encrypted before leaving the client and decrypted only by
+        the intended recipient.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: critical
+  fallback:
+    pattern: tls_configuration
+    description: "TLS 1.2+ for transit and managed encryption at rest cover most use cases"
+
+patterns:
+  - id: tls_configuration
+    name: "TLS Configuration & Certificate Management"
+    description: >
+      Properly configure TLS for all network communication. Enforce modern
+      protocol versions, strong cipher suites, certificate validation, and
+      automated certificate lifecycle management.
+    use_when:
+      - "Any service exposing network endpoints"
+      - "Service-to-service communication"
+      - "API endpoints (REST, gRPC, GraphQL)"
+      - "Database connections"
+    avoid_when:
+      - "Truly air-gapped environments with no network (extremely rare)"
+    tradeoffs:
+      pros:
+        - "Protects data in transit from eavesdropping and tampering"
+        - "Certificate-based authentication provides mutual TLS"
+        - "Industry standard with broad tooling support"
+        - "TLS 1.3 reduces handshake latency"
+      cons:
+        - "Certificate management overhead (rotation, renewal)"
+        - "TLS termination adds CPU overhead (minimal with modern hardware)"
+        - "Debugging encrypted traffic requires additional tooling"
+    implementation:
+      guidelines:
+        - "Enforce TLS 1.2 minimum, prefer TLS 1.3 for new services"
+        - "Disable SSLv3, TLS 1.0, TLS 1.1 — no exceptions"
+        - "Use strong cipher suites: AES-256-GCM, ChaCha20-Poly1305"
+        - "Enable HSTS header with includeSubDomains and preload"
+        - "Automate certificate renewal with ACME (Let's Encrypt) or cloud CA"
+        - "Use short-lived certificates (90 days max, prefer 30 days)"
+        - "Enable OCSP stapling for certificate revocation"
+        - "Implement certificate pinning only for mobile apps (not web)"
+      common_errors:
+        - error: "Allowing TLS 1.0/1.1 for backward compatibility"
+          impact: "Vulnerable to BEAST, POODLE, and other downgrade attacks"
+          fix: "Disable TLS <1.2; all modern clients support TLS 1.2+"
+        - error: "Self-signed certificates in production without proper trust"
+          impact: "Applications may disable certificate validation to work around errors"
+          fix: "Use certificates from trusted CA; use internal CA for service mesh"
+        - error: "Not renewing certificates before expiry"
+          impact: "Service outage when certificate expires"
+          fix: "Automate renewal with ACME; alert at 30, 14, 7 days before expiry"
+    maturity:
+      level: standard
+    standards:
+      - name: "TLS 1.3 (RFC 8446)"
+        type: rfc
+        role: "Current recommended transport security protocol"
+        status: recommended
+        reference: "https://www.rfc-editor.org/rfc/rfc8446"
+      - name: "NIST SP 800-52 Rev 2"
+        type: standard
+        role: "Guidelines for TLS implementation selection"
+        status: recommended
+
+  - id: managed_encryption_at_rest
+    name: "Managed Encryption at Rest"
+    description: >
+      Leverage cloud provider or database-managed encryption at rest. Data is
+      transparently encrypted when written and decrypted when read, with keys
+      managed by the platform. Minimal application changes required.
+    use_when:
+      - "Cloud-hosted databases and object storage"
+      - "Confidential data that must be encrypted at rest"
+      - "When transparency and simplicity are priorities"
+      - "Compliance requires encryption at rest documentation"
+    avoid_when:
+      - "Need to control encryption keys entirely (use envelope encryption)"
+      - "Multi-tenant isolation requires per-tenant keys"
+    tradeoffs:
+      pros:
+        - "Zero application code changes — transparent to the app"
+        - "Automatic key rotation handled by the provider"
+        - "Compliant with most regulatory requirements"
+        - "Performance impact negligible (hardware-accelerated AES)"
+      cons:
+        - "Cloud provider has access to keys (unless customer-managed keys)"
+        - "Cannot encrypt at field level — entire volume/table encrypted"
+        - "No protection if attacker has application-level access"
+    implementation:
+      guidelines:
+        - "Enable encryption at rest on all storage services (S3, RDS, Cosmos DB, etc.)"
+        - "Use customer-managed keys (CMK) for confidential/restricted data"
+        - "Configure automatic key rotation (annually minimum)"
+        - "Audit key access via cloud provider audit logs"
+        - "Verify encryption status in infrastructure-as-code (not just console)"
+        - "Use AES-256 as the minimum algorithm"
+      common_errors:
+        - error: "Assuming encryption is enabled by default"
+          impact: "Data stored unencrypted; compliance violation"
+          fix: "Explicitly enable encryption in IaC templates; add policy to block unencrypted resources"
+        - error: "Using provider-managed keys for restricted data"
+          impact: "Cloud provider retains key access; may not satisfy compliance"
+          fix: "Use customer-managed keys (CMK) stored in your cloud KMS"
+    maturity:
+      level: standard
+    standards:
+      - name: "AES-256-GCM"
+        type: standard
+        role: "Symmetric encryption algorithm for data at rest"
+        status: recommended
+      - name: "NIST SP 800-111"
+        type: standard
+        role: "Guide to storage encryption technologies"
+        status: recommended
+
+  - id: envelope_encryption
+    name: "Envelope Encryption with Key Hierarchy"
+    description: >
+      Encrypt data with a Data Encryption Key (DEK), then encrypt the DEK with
+      a Key Encryption Key (KEK) stored in a hardware security module or KMS.
+      Enables per-record/per-tenant encryption with efficient key rotation.
+    use_when:
+      - "Multi-tenant systems needing per-tenant encryption"
+      - "Field-level encryption for sensitive columns"
+      - "Regulatory requirements mandating HSM-backed keys"
+      - "Large datasets where re-encrypting everything for key rotation is impractical"
+    avoid_when:
+      - "Simple encryption at rest is sufficient (use managed encryption)"
+      - "Application cannot tolerate encryption/decryption latency"
+    tradeoffs:
+      pros:
+        - "Key rotation only re-wraps DEK — data doesn't need re-encryption"
+        - "Per-tenant/per-record key isolation"
+        - "Master key never leaves HSM/KMS boundary"
+        - "Supports field-level encryption granularity"
+      cons:
+        - "More complex implementation than managed encryption"
+        - "Additional KMS API calls for encrypt/decrypt operations"
+        - "Must manage DEK storage and caching"
+    implementation:
+      guidelines:
+        - "Generate DEK locally, encrypt data, then wrap DEK with KEK via KMS"
+        - "Store wrapped (encrypted) DEK alongside the encrypted data"
+        - "Cache plaintext DEK in memory briefly — never persist to disk"
+        - "Rotate KEK periodically; re-wrap all DEKs (no data re-encryption)"
+        - "Use unique DEK per tenant, record, or logical partition"
+        - "Audit all KMS key usage via cloud audit logs"
+      common_errors:
+        - error: "Storing plaintext DEK alongside data"
+          impact: "Attacker who accesses storage gets both data and key"
+          fix: "Store only the KMS-wrapped DEK; retrieve plaintext DEK via KMS API"
+        - error: "Using same DEK for all tenants"
+          impact: "Compromise of one tenant's data exposes all tenants"
+          fix: "Generate unique DEK per tenant; wrap each with the shared KEK"
+        - error: "Not caching DEK, calling KMS for every operation"
+          impact: "Excessive KMS costs and latency; potential rate limiting"
+          fix: "Cache plaintext DEK in memory with short TTL; re-fetch on eviction"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "NIST SP 800-57 Key Management"
+        type: standard
+        role: "Key management recommendations and lifecycle"
+        status: recommended
+        reference: "https://csrc.nist.gov/publications/detail/sp/800-57-part-1/rev-5/final"
+      - name: "FIPS 140-2"
+        type: standard
+        role: "Security requirements for cryptographic modules (HSM)"
+        status: recommended
+
+  - id: application_layer_encryption
+    name: "Application-Layer / End-to-End Encryption"
+    description: >
+      Encrypt data at the application layer before it leaves the client or
+      service. Data remains encrypted through all intermediaries (load
+      balancers, API gateways, message brokers) and is decrypted only by
+      the intended recipient.
+    use_when:
+      - "Zero-trust environments where intermediaries are untrusted"
+      - "Messaging systems requiring end-to-end privacy"
+      - "Client-side encryption before data reaches the backend"
+      - "Healthcare or financial data requiring encryption beyond TLS"
+    avoid_when:
+      - "TLS is sufficient (most API scenarios)"
+      - "Server needs to process/query encrypted data (use searchable encryption)"
+    tradeoffs:
+      pros:
+        - "Data protected even if intermediary is compromised"
+        - "True zero-knowledge — server never sees plaintext"
+        - "Strongest privacy guarantee for sensitive data"
+      cons:
+        - "Cannot search, index, or process encrypted data server-side"
+        - "Key distribution is complex (requires secure key exchange)"
+        - "Application complexity increases significantly"
+        - "Debugging is harder — encrypted payloads are opaque"
+    implementation:
+      guidelines:
+        - "Use NaCl/libsodium or Web Crypto API for encryption primitives"
+        - "Never implement custom cryptographic algorithms"
+        - "Use authenticated encryption (AEAD): AES-256-GCM or XChaCha20-Poly1305"
+        - "Implement secure key exchange (X25519 Diffie-Hellman)"
+        - "Include nonce/IV with every encrypted message (never reuse)"
+        - "Version the encryption scheme to allow algorithm migration"
+      common_errors:
+        - error: "Implementing custom encryption instead of using proven libraries"
+          impact: "Subtle vulnerabilities in custom crypto; not peer-reviewed"
+          fix: "Use NaCl/libsodium, Web Crypto API, or Tink — never roll your own"
+        - error: "Reusing nonce/IV with the same key"
+          impact: "Catastrophic — allows plaintext recovery with GCM and other modes"
+          fix: "Generate random nonce for every encryption operation; use 96-bit minimum"
+    maturity:
+      level: advanced
+    standards:
+      - name: "NaCl / libsodium"
+        type: framework
+        role: "High-level cryptographic library with safe defaults"
+        status: recommended
+        reference: "https://doc.libsodium.org/"
+      - name: "Google Tink"
+        type: framework
+        role: "Multi-language crypto library with key management"
+        status: recommended
+
+examples:
+  - id: envelope_encryption_example
+    title: "Envelope Encryption — Encrypt User PII"
+    context: "Encrypting personally identifiable information per-user with envelope encryption"
+    correct: |
+      # Generate DEK for this user
+      dek = crypto.generate_random_bytes(32)  # 256-bit AES key
+
+      # Encrypt the data with DEK
+      nonce = crypto.generate_random_bytes(12)  # 96-bit nonce
+      encrypted_data = aes_256_gcm_encrypt(dek, nonce, user_pii_json)
+
+      # Wrap (encrypt) the DEK with KEK via KMS
+      wrapped_dek = kms.encrypt(key_id="alias/user-data-kek", plaintext=dek)
+
+      # Store: encrypted data + nonce + wrapped DEK
+      database.store(user_id, {
+        "encrypted_pii": encrypted_data,
+        "nonce": nonce,
+        "wrapped_dek": wrapped_dek,
+        "kek_id": "alias/user-data-kek",
+        "algorithm": "AES-256-GCM"
+      })
+
+      # Clear plaintext DEK from memory immediately
+      secure_zero(dek)
+    incorrect: |
+      # WRONG: Single shared key, stored in code, no envelope encryption
+      ENCRYPTION_KEY = "my-secret-key-do-not-share"  # hardcoded!
+
+      encrypted_data = aes_encrypt(ENCRYPTION_KEY, user_pii_json)
+      # No nonce — uses ECB mode implicitly
+      # Same key for all users — compromise exposes everything
+
+      database.store(user_id, {"encrypted_pii": encrypted_data})
+      # Key rotation requires re-encrypting ALL data
+      # No algorithm versioning — stuck with current scheme forever
+    explanation: >
+      Envelope encryption uses per-user DEKs wrapped by a KMS-managed KEK.
+      Key rotation only re-wraps DEKs (cheap). Per-user keys limit blast radius.
+      The incorrect version uses a hardcoded shared key with no nonce, making
+      it vulnerable to key compromise, pattern analysis, and impossible to rotate.
+
+  - id: tls_configuration_example
+    title: "TLS Configuration — Web Server"
+    context: "Configuring TLS for a production web server"
+    correct: |
+      # Nginx TLS configuration
+      server {
+        listen 443 ssl http2;
+
+        # TLS 1.2+ only — no legacy protocols
+        ssl_protocols TLSv1.2 TLSv1.3;
+
+        # Strong cipher suites only
+        ssl_ciphers ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305;
+        ssl_prefer_server_ciphers on;
+
+        # Certificate from trusted CA (auto-renewed)
+        ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+
+        # HSTS — force HTTPS for 1 year
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+
+        # OCSP stapling
+        ssl_stapling on;
+        ssl_stapling_verify on;
+      }
+
+      # Redirect HTTP to HTTPS
+      server {
+        listen 80;
+        return 301 https://$host$request_uri;
+      }
+    incorrect: |
+      # WRONG: Legacy TLS, weak ciphers, no HSTS
+      server {
+        listen 443 ssl;
+        ssl_protocols SSLv3 TLSv1 TLSv1.1 TLSv1.2;  # SSLv3 and TLS 1.0 vulnerable!
+        ssl_ciphers ALL:!aNULL;  # Allows weak ciphers (RC4, DES, etc.)
+        # No HSTS — users can be downgraded to HTTP
+        # No OCSP stapling — slow revocation checks
+        # Self-signed certificate — browsers show warnings
+      }
+    explanation: >
+      The correct version enforces TLS 1.2+ only, uses strong cipher suites,
+      includes HSTS to prevent protocol downgrade, and enables OCSP stapling.
+      The incorrect version allows known-vulnerable protocols (SSLv3, TLS 1.0)
+      and weak ciphers that can be exploited.
+
+security_hardening:
+  transport:
+    requirements:
+      - "TLS 1.2 minimum for all network communication; TLS 1.3 preferred"
+      - "Disable SSLv3, TLS 1.0, TLS 1.1 — no exceptions"
+      - "HSTS header with min 1-year max-age, includeSubDomains"
+  data_protection:
+    requirements:
+      - "AES-256-GCM or ChaCha20-Poly1305 for symmetric encryption"
+      - "RSA-2048 minimum for asymmetric; prefer Ed25519 or ECDSA P-256"
+      - "Encryption at rest enabled on all storage services"
+  access_control:
+    requirements:
+      - "KMS key policies follow least privilege"
+      - "Separate keys per environment (dev/staging/prod)"
+      - "Audit all key usage via cloud audit logs"
+  input_output:
+    requirements:
+      - "Use authenticated encryption (AEAD) — never unauthenticated modes (ECB, CBC without HMAC)"
+      - "Include nonce/IV with every ciphertext — never reuse nonces"
+  secrets:
+    requirements:
+      - "Encryption keys never stored in source code or environment variables"
+      - "Keys stored in KMS, HSM, or dedicated secret manager"
+      - "Automatic key rotation (annually minimum)"
+  monitoring:
+    requirements:
+      - "Monitor certificate expiry — alert at 30, 14, 7 days"
+      - "Audit KMS key access patterns for anomalies"
+      - "Alert on TLS handshake failures (potential downgrade attacks)"
+
+compliance:
+  standards:
+    - name: "NIST SP 800-57 Key Management"
+      relevance: "Comprehensive key management lifecycle guidance"
+      reference: "https://csrc.nist.gov/publications/detail/sp/800-57-part-1/rev-5/final"
+    - name: "PCI DSS Requirement 4"
+      relevance: "Encrypt transmission of cardholder data across open networks"
+    - name: "OWASP Cryptographic Failures (A02:2021)"
+      relevance: "Top-10 web application security risk for cryptographic issues"
+      reference: "https://owasp.org/Top10/A02_2021-Cryptographic_Failures/"
+
+  requirements_mapping:
+    - control: data_in_transit_encryption
+      description: "All data transmitted over networks encrypted with TLS 1.2+"
+      maps_to:
+        - "PCI DSS 4.1"
+        - "NIST SP 800-52 Rev 2"
+    - control: data_at_rest_encryption
+      description: "All sensitive data encrypted at rest with AES-256"
+      maps_to:
+        - "PCI DSS 3.4"
+        - "NIST SP 800-111"
+    - control: key_management
+      description: "Encryption keys managed with proper lifecycle (generation, rotation, revocation)"
+      maps_to:
+        - "NIST SP 800-57"
+        - "PCI DSS 3.5, 3.6"
+
+prompt_recipes:
+  - id: encryption_greenfield
+    scenario: greenfield
+    description: "Design encryption strategy for a new application"
+    prompt: |
+      Design the encryption strategy for a new application.
+
+      Context:
+      - Data classification: [public/internal/confidential/restricted]
+      - Encryption scope: [transit_only/rest_only/transit_and_rest/end_to_end]
+      - Key management: [self_managed/managed_service/hsm_backed]
+      - Compliance: [general/pci_dss/hipaa/gdpr/fedramp]
+
+      Requirements:
+      - TLS 1.2+ for all network communication
+      - Encryption at rest for all storage services
+      - Key rotation strategy with documented procedures
+      - Certificate lifecycle automation
+      - No hardcoded keys or secrets in code
+
+  - id: encryption_audit
+    scenario: audit
+    description: "Audit existing encryption implementation"
+    prompt: |
+      Audit the encryption implementation:
+
+      1. Are all network connections using TLS 1.2+?
+      2. Are legacy protocols (SSLv3, TLS 1.0, TLS 1.1) disabled?
+      3. Are cipher suites strong (AES-256-GCM, ChaCha20)?
+      4. Is HSTS enabled with appropriate max-age?
+      5. Are certificates from trusted CAs with auto-renewal?
+      6. Is encryption at rest enabled on all storage?
+      7. Are encryption keys in KMS/HSM (not in code)?
+      8. Is key rotation automated?
+      9. Are nonces/IVs unique per encryption operation?
+      10. Is authenticated encryption used (AEAD, not ECB/CBC)?
+
+      For each: report compliant/non-compliant with evidence and remediation.
+
+  - id: encryption_migration
+    scenario: migration
+    description: "Migrate from weak to strong encryption"
+    prompt: |
+      Migrate the application from weak encryption to current best practices.
+
+      Steps:
+      1. Inventory current encryption: algorithms, key sizes, protocols
+      2. Identify gaps: deprecated algorithms, weak keys, missing encryption
+      3. Plan migration: dual-write period, re-encryption strategy
+      4. Implement: update TLS config, rotate keys, re-encrypt data
+      5. Verify: scan for remaining weak encryption
+      6. Document: update runbooks and compliance evidence
+
+  - id: encryption_key_rotation
+    scenario: operations
+    description: "Implement encryption key rotation"
+    prompt: |
+      Implement key rotation for the encryption infrastructure.
+
+      Requirements:
+      - Rotate KEK annually (or on compromise)
+      - Re-wrap all DEKs with new KEK (no data re-encryption)
+      - Rotate TLS certificates before expiry (automate with ACME)
+      - Verify no service disruption during rotation
+      - Audit log all rotation events
+      - Test rollback procedure for failed rotations
+
+anti_patterns:
+  - name: "Hardcoded Encryption Keys"
+    description: >
+      Embedding encryption keys, API keys, or certificates directly in source code
+      or configuration files committed to version control. Keys are extractable
+      from compiled binaries, Docker images, and git history.
+    fix: "Store keys in KMS, HSM, or secret manager; inject at runtime"
+    severity: critical
+    related_pattern: envelope_encryption
+
+  - name: "Rolling Your Own Crypto"
+    description: >
+      Implementing custom encryption algorithms or protocols instead of using
+      vetted, peer-reviewed cryptographic libraries. Custom crypto invariably
+      has subtle vulnerabilities.
+    fix: "Use NaCl/libsodium, Web Crypto API, Tink, or language standard crypto libraries"
+    severity: critical
+    related_pattern: application_layer_encryption
+
+  - name: "Using Deprecated Algorithms"
+    description: >
+      Using MD5, SHA1, DES, 3DES, RC4, or ECB mode for encryption or hashing.
+      These algorithms have known weaknesses and are prohibited by current
+      standards.
+    fix: "Use AES-256-GCM for encryption, SHA-256+ for hashing, Argon2id for password hashing"
+    severity: high
+    related_pattern: tls_configuration
+
+  - name: "Nonce/IV Reuse"
+    description: >
+      Reusing the same nonce or initialization vector with the same encryption
+      key. For AES-GCM, nonce reuse allows authentication tag forgery and
+      plaintext recovery. Catastrophic failure mode.
+    fix: "Generate random nonce per encryption operation; use 96-bit minimum for GCM"
+    severity: critical
+    related_pattern: application_layer_encryption
+
+checklist:
+  - id: ENC-01
+    category: security
+    description: "TLS 1.2+ enforced for all network communication"
+    severity: critical
+    verified_by: tls_configuration
+
+  - id: ENC-02
+    category: security
+    description: "Legacy protocols (SSLv3, TLS 1.0, TLS 1.1) disabled"
+    severity: critical
+    verified_by: tls_configuration
+
+  - id: ENC-03
+    category: security
+    description: "Strong cipher suites configured (AES-256-GCM, ChaCha20-Poly1305)"
+    severity: high
+    verified_by: tls_configuration
+
+  - id: ENC-04
+    category: security
+    description: "HSTS header enabled with includeSubDomains"
+    severity: high
+    verified_by: tls_configuration
+
+  - id: ENC-05
+    category: compliance
+    description: "Encryption at rest enabled on all storage services"
+    severity: critical
+    verified_by: managed_encryption_at_rest
+
+  - id: ENC-06
+    category: security
+    description: "Encryption keys stored in KMS/HSM, not in code"
+    severity: critical
+    verified_by: envelope_encryption
+
+  - id: ENC-07
+    category: security
+    description: "Automatic key rotation configured"
+    severity: high
+    verified_by: envelope_encryption
+
+  - id: ENC-08
+    category: security
+    description: "Authenticated encryption used (AEAD) — no ECB or unauthenticated CBC"
+    severity: critical
+    verified_by: application_layer_encryption
+
+  - id: ENC-09
+    category: security
+    description: "Unique nonce/IV per encryption operation — never reused"
+    severity: critical
+    verified_by: application_layer_encryption
+
+  - id: ENC-10
+    category: reliability
+    description: "Certificate expiry monitored with automated renewal"
+    severity: high
+    verified_by: tls_configuration
+
+  - id: ENC-11
+    category: compliance
+    description: "Customer-managed keys (CMK) used for restricted data"
+    severity: high
+    verified_by: managed_encryption_at_rest
+
+  - id: ENC-12
+    category: security
+    description: "No deprecated algorithms (MD5, SHA1, DES, RC4, ECB) in use"
+    severity: critical
+    verified_by: tls_configuration

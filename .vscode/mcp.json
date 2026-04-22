@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "ai-architecture-cookbook": {
+      "command": "node",
+      "args": ["${workspaceFolder}/mcp-server/dist/server.js"],
+      "env": {}
+    }
+  }
+}

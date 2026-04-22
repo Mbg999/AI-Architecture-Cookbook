@@ -1,0 +1,683 @@
+# =============================================================================
+# AI Architecture Cookbook — Configuration Management
+# Schema: v3 | Domain: configuration-management
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: configuration-management
+  version: "1.0.0"
+  last_updated: 2026-04-22
+  description: >
+    Configuration management patterns for externalizing configuration,
+    managing secrets, feature flags, and environment-specific settings.
+    Covers the spectrum from static config files to dynamic runtime
+    configuration.
+
+  tags:
+    - configuration
+    - secrets
+    - feature-flags
+    - environment
+    - twelve-factor
+    - config-management
+
+  categories:
+    - foundational
+
+  prerequisites: []
+
+  related_standards:
+    - id: authentication
+      relationship: complementary
+      context: "Authentication configuration (issuer, audience) must be externalized"
+    - id: logging-observability
+      relationship: complementary
+      context: "Log levels and sampling rates should be dynamically configurable"
+    - id: data-persistence
+      relationship: complementary
+      context: "Database connection strings must use secrets management"
+    - id: api-design
+      relationship: complementary
+      context: "API timeouts and rate limits should be configurable per environment"
+
+context_inputs:
+  - name: deployment_model
+    type: enum
+    description: "How the application is deployed"
+    required: true
+    default: containers
+    enum_values:
+      - traditional_servers
+      - containers
+      - serverless
+      - edge
+
+  - name: environment_count
+    type: enum
+    description: "Number of environments to manage"
+    required: true
+    default: standard
+    enum_values:
+      - single
+      - standard
+      - many
+
+  - name: secret_sensitivity
+    type: enum
+    description: "Sensitivity level of secrets in the system"
+    required: true
+    default: high
+    enum_values:
+      - low
+      - medium
+      - high
+      - critical
+
+  - name: config_change_frequency
+    type: enum
+    description: "How often configuration changes without code deployment"
+    required: true
+    default: moderate
+    enum_values:
+      - rarely
+      - moderate
+      - frequently
+      - real_time
+
+  - name: feature_flag_needs
+    type: boolean
+    description: "Does the system need feature flags for progressive rollout?"
+    required: true
+    default: true
+
+decision_tree:
+  - id: secrets_always_need_vault
+    priority: 1
+    if:
+      - secret_sensitivity in [high, critical]
+    then:
+      pattern: secrets_management
+      standards:
+        - Twelve-Factor App Config
+      notes: "High-sensitivity secrets must use a dedicated secrets manager, never env vars or files"
+
+  - id: frequent_changes_need_dynamic
+    priority: 2
+    if:
+      - config_change_frequency in [frequently, real_time]
+    then:
+      pattern: dynamic_configuration
+      standards:
+        - Feature Flags
+      notes: "Frequently changing config needs dynamic configuration without redeployment"
+
+  - id: feature_rollout_needs_flags
+    priority: 3
+    if:
+      - feature_flag_needs == true
+    then:
+      pattern: feature_flags
+      standards:
+        - Feature Flags
+      notes: "Progressive rollout and experimentation require feature flags"
+
+  - id: standard_needs_externalized
+    priority: 4
+    if:
+      - deployment_model in [containers, serverless]
+    then:
+      pattern: externalized_configuration
+      standards:
+        - Twelve-Factor App Config
+      notes: "Container and serverless deployments should externalize all configuration"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: externalized_configuration
+    description: "Externalize all configuration per Twelve-Factor App; use secrets manager for credentials"
+
+patterns:
+  - id: externalized_configuration
+    name: Externalized Configuration
+    description: >
+      All configuration is external to the application code and artifact.
+      The same build artifact runs in any environment, with environment-specific
+      configuration injected at runtime. Follows Twelve-Factor App principle III.
+
+    use_when:
+      - "Any application deployed to multiple environments"
+      - "Container-based deployments (Docker, Kubernetes)"
+      - "Need to change configuration without rebuilding"
+
+    avoid_when:
+      - "Single-use scripts or tools with hardcoded settings"
+
+    tradeoffs:
+      pros:
+        - "Same artifact in all environments (build once, deploy anywhere)"
+        - "Configuration changes don't require code changes or rebuilds"
+        - "Clear separation of code and config"
+        - "Environment parity — reduce config drift"
+      cons:
+        - "Additional infrastructure for config management"
+        - "Must validate configuration at startup (fail fast if misconfigured)"
+        - "Environment variable sprawl without structure"
+
+    implementation:
+      guidelines:
+        - "Configuration sources in priority order: env vars > config files > defaults"
+        - "Use structured configuration (YAML/JSON files) for complex settings"
+        - "Validate all configuration at application startup (fail fast)"
+        - "Use typed configuration objects — not raw string lookups everywhere"
+        - "Document every configuration parameter with type, default, and description"
+        - "Never commit environment-specific values to source control"
+
+      common_errors:
+        - error: "Hardcoded configuration in application code"
+          impact: "Must rebuild and redeploy to change any setting"
+          fix: "Externalize to environment variables or config files"
+        - error: "No validation at startup"
+          impact: "Application starts with missing or invalid config, fails at runtime"
+          fix: "Validate all required config at startup; fail fast with clear error message"
+        - error: "Environment variables for complex nested config"
+          impact: "Dozens of flat env vars, hard to manage and document"
+          fix: "Use structured config files (YAML/JSON) for complex settings; env vars for simple overrides"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: Twelve-Factor App (Factor III)
+        type: spec
+        role: "Store config in the environment"
+        status: recommended
+        reference: "https://12factor.net/config"
+
+  - id: secrets_management
+    name: Secrets Management
+    description: >
+      Dedicated secrets manager for storing, rotating, and accessing credentials,
+      API keys, certificates, and other sensitive configuration. Secrets are
+      never stored in code, config files, or plain environment variables.
+
+    use_when:
+      - "Any system with database credentials, API keys, or certificates"
+      - "Compliance requires audit trail for secret access"
+      - "Secrets need automated rotation"
+      - "Multiple services need shared secrets (service mesh, shared APIs)"
+
+    avoid_when:
+      - "Local development with no sensitive data (use .env files with .gitignore)"
+
+    tradeoffs:
+      pros:
+        - "Secrets encrypted at rest and in transit"
+        - "Access control and audit logging for every secret access"
+        - "Automated rotation without redeployment"
+        - "Centralized management across services"
+      cons:
+        - "Additional infrastructure dependency (secrets manager availability)"
+        - "Latency for secret retrieval (mitigate with caching)"
+        - "Cost for managed secrets services"
+
+    implementation:
+      guidelines:
+        - "Use a dedicated secrets manager (HashiCorp Vault, AWS Secrets Manager, Azure Key Vault)"
+        - "Never store secrets in source code, config files, or plain env vars"
+        - "Implement automated secret rotation with zero-downtime"
+        - "Use short-lived credentials where possible (temporary tokens > static keys)"
+        - "Cache secrets in memory with TTL — don't fetch on every request"
+        - "Audit all secret access — who accessed what, when"
+
+      common_errors:
+        - error: "Secrets in source code or Git history"
+          impact: "Credentials exposed to anyone with repo access; persist in Git history forever"
+          fix: "Use secrets manager; scan Git history for leaked secrets and rotate immediately"
+        - error: "Secrets in plain-text environment variables"
+          impact: "Visible in process listings, container inspect, and crash dumps"
+          fix: "Use secrets manager that injects secrets into memory, not env vars"
+        - error: "No secret rotation"
+          impact: "Compromised credential remains valid indefinitely"
+          fix: "Automate rotation; use short-lived tokens; alert on rotation failures"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: OWASP Secrets Management
+        type: spec
+        role: "Best practices for secrets handling"
+        status: recommended
+        reference: "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
+
+  - id: feature_flags
+    name: Feature Flags
+    description: >
+      Runtime toggles that control feature visibility and behavior without code
+      deployment. Enables progressive rollout, A/B testing, kill switches,
+      and operational controls.
+
+    use_when:
+      - "Progressive rollout of new features (percentage, user segment)"
+      - "A/B testing and experimentation"
+      - "Kill switches for features that may cause issues"
+      - "Trunk-based development with incomplete features behind flags"
+
+    avoid_when:
+      - "Permanent configuration (use externalized config instead)"
+      - "Security controls (feature flags are not access control)"
+
+    tradeoffs:
+      pros:
+        - "Deploy without releasing — decouple deployment from release"
+        - "Progressive rollout reduces blast radius"
+        - "Kill switch for instant rollback without redeploy"
+        - "Enable trunk-based development (incomplete features behind flags)"
+      cons:
+        - "Technical debt if flags are not cleaned up"
+        - "Testing complexity — must test with flags on and off"
+        - "Flag management overhead at scale"
+
+    implementation:
+      guidelines:
+        - "Use a feature flag service (LaunchDarkly, Unleash, Flagsmith, or custom)"
+        - "Categorize flags: release (temporary), ops (permanent), experiment (temporary)"
+        - "Set expiration dates on release flags — enforce cleanup"
+        - "Default flags to 'off' in production (new features disabled by default)"
+        - "Log flag evaluations for debugging"
+        - "Test both flag states in CI (on and off)"
+
+      common_errors:
+        - error: "Never cleaning up old feature flags"
+          impact: "Hundreds of flags — nobody knows which are still needed; dead code accumulates"
+          fix: "Set expiration dates; track flag lifecycle; remove flags after full rollout"
+        - error: "Using feature flags for permanent config"
+          impact: "Flag management overhead for settings that never change"
+          fix: "Use externalized configuration for permanent settings; flags for temporary rollout only"
+        - error: "Feature flags as access control"
+          impact: "Users can potentially manipulate flags; no audit trail for authorization"
+          fix: "Use proper authorization (RBAC, ABAC) for access control, not feature flags"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: OpenFeature
+        type: spec
+        role: "Vendor-neutral feature flag API"
+        status: recommended
+        reference: "https://openfeature.dev/"
+
+  - id: dynamic_configuration
+    name: Dynamic Configuration
+    description: >
+      Configuration that can be changed at runtime without restart or
+      redeployment. Changes propagate to running instances via polling
+      or push notification.
+
+    use_when:
+      - "Need to change behavior (rate limits, thresholds) without redeploy"
+      - "Configuration must respond to operational events in real-time"
+      - "Log level changes during incident investigation"
+
+    avoid_when:
+      - "Configuration changes are rare (static externalized config suffices)"
+      - "Startup-only configuration (connection pools, thread counts)"
+
+    tradeoffs:
+      pros:
+        - "Instant configuration changes without deployment"
+        - "Respond to operational events in real-time"
+        - "Reduce deployment frequency for config-only changes"
+      cons:
+        - "Complexity of config change propagation and consistency"
+        - "Risk of runtime misconfiguration affecting live traffic"
+        - "Need rollback mechanism for bad config changes"
+
+    implementation:
+      guidelines:
+        - "Use a configuration service (Consul, etcd, Azure App Configuration)"
+        - "Poll for changes with reasonable interval (30s-5min) or use push/watch"
+        - "Validate config changes before applying"
+        - "Support rollback of config changes"
+        - "Log every config change with who, what, when"
+        - "Gradual rollout: apply config changes to canary instances first"
+
+      common_errors:
+        - error: "No validation of dynamic config changes"
+          impact: "Invalid configuration applied to production — outage"
+          fix: "Validate all config changes before applying; reject invalid values"
+        - error: "No audit trail for config changes"
+          impact: "Cannot determine who changed what during incident investigation"
+          fix: "Log every config change with author, timestamp, old value, new value"
+
+    maturity:
+      level: advanced
+
+    standards:
+      - name: Configuration as a Service
+        type: pattern
+        role: "Centralized dynamic configuration"
+        status: recommended
+
+examples:
+  - id: config_hierarchy
+    title: "Configuration Hierarchy with Validation"
+    context: "Application startup with layered configuration sources"
+    correct: |
+      # Configuration loaded in priority order (later overrides earlier):
+      # 1. Defaults (code)     — safe fallbacks
+      # 2. Config file (YAML)  — structured settings
+      # 3. Environment vars    — per-environment overrides
+      # 4. Secrets manager     — credentials (never in files)
+
+      config = load_defaults()
+      config.merge(load_yaml("config/app.yaml"))
+      config.merge(load_environment_vars(prefix="APP_"))
+      config.merge(load_secrets("vault/app/production"))
+
+      # Validate ALL configuration at startup
+      errors = validate_config(config, schema)
+      if errors:
+        log.error("Configuration validation failed", errors=errors)
+        exit(1)  # Fail fast — do not start with invalid config
+
+      # Access via typed configuration objects
+      db_config = config.database   # { host, port, pool_size, ssl }
+      api_config = config.api       # { timeout, rate_limit, cors_origins }
+    incorrect: |
+      # WRONG: Hardcoded config, secrets in code
+      DB_HOST = "prod-db.example.com"
+      DB_PASSWORD = "s3cret!"  # Secret in source code!
+      API_TIMEOUT = 30
+
+      # No validation — app starts with any config
+      # No hierarchy — cannot override per environment
+    explanation: >
+      Layered configuration with validation ensures the application starts
+      correctly in every environment. Secrets from a dedicated manager,
+      structured config from files, and environment variable overrides
+      provide flexibility without security risks.
+
+  - id: feature_flag_rollout
+    title: "Progressive Feature Rollout with Feature Flags"
+    context: "Rolling out a new checkout flow to users gradually"
+    correct: |
+      # Feature flag configuration (in flag service)
+      # flag: new_checkout_flow
+      # type: release (temporary — remove after full rollout)
+      # default: false
+      # rules:
+      #   - internal_users: true (dogfood)
+      #   - beta_users: true (opt-in beta)
+      #   - percentage: 10% (gradual rollout)
+      # expiration: 2026-06-01
+
+      function get_checkout_handler(user):
+        if feature_flags.is_enabled("new_checkout_flow", user_context=user):
+          return new_checkout_handler
+        else:
+          return legacy_checkout_handler
+
+      # Monitor both paths
+      metrics.increment("checkout.started", tags={"flow": "new" if flag else "legacy"})
+    incorrect: |
+      # WRONG: Feature flag hardcoded, never cleaned up
+      NEW_CHECKOUT = True  # Hardcoded — cannot roll back without deploy
+
+      # Or: old flags never removed
+      if feature_flags.is_enabled("experiment_from_2023"):  # 3 years old, still in code
+        ...
+    explanation: >
+      Feature flags enable progressive rollout with percentage-based targeting.
+      Setting an expiration date prevents flag accumulation. Monitoring both
+      code paths ensures issues are detected during rollout.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Configuration service connections use TLS"
+      - "Secret retrieval uses authenticated, encrypted channels"
+
+  data_protection:
+    requirements:
+      - "Secrets encrypted at rest in the secrets manager"
+      - "Configuration files do not contain secrets"
+      - "Secrets not logged even at DEBUG level"
+
+  access_control:
+    requirements:
+      - "Least-privilege access to secrets (each service sees only its secrets)"
+      - "Config changes require authorized approval"
+      - "Secret access audit logged"
+
+  input_output:
+    requirements:
+      - "Configuration values validated against expected types and ranges"
+      - "Reject configuration that fails validation (fail fast)"
+
+  secrets:
+    requirements:
+      - "All credentials, API keys, and certificates in secrets manager"
+      - "Automated secret rotation with zero-downtime"
+      - "Git history scanned for leaked secrets; leaked secrets rotated immediately"
+      - "Short-lived credentials preferred over static keys"
+
+  monitoring:
+    requirements:
+      - "Alert on secret rotation failures"
+      - "Monitor for secrets in source code (pre-commit hooks, CI scanning)"
+      - "Log all configuration changes with author and timestamp"
+
+compliance:
+  standards:
+    - name: Twelve-Factor App
+      relevance: "Factor III: Store config in the environment"
+      reference: "https://12factor.net/config"
+
+    - name: OWASP Secrets Management
+      relevance: "Secrets handling best practices"
+      reference: "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
+
+    - name: PCI DSS
+      relevance: "Cryptographic key management requirements"
+      reference: "PCI DSS v4.0 Requirement 3.6"
+
+  requirements_mapping:
+    - control: secrets_protection
+      description: "Secrets stored in dedicated secrets manager, encrypted at rest"
+      maps_to:
+        - "OWASP Secrets Management"
+        - "PCI DSS Requirement 3.6"
+
+    - control: config_audit
+      description: "All configuration changes logged with author and timestamp"
+      maps_to:
+        - "SOC 2 CC6.1 (Change Management)"
+
+prompt_recipes:
+  - id: greenfield_config
+    scenario: greenfield
+    description: "Design configuration management for a new application"
+    prompt: |
+      Design configuration management for a new application.
+
+      Context:
+      - Deployment model: [traditional_servers/containers/serverless/edge]
+      - Environment count: [single/standard/many]
+      - Secret sensitivity: [low/medium/high/critical]
+      - Feature flag needs: [yes/no]
+
+      Requirements:
+      - Externalize all configuration (Twelve-Factor Factor III)
+      - Layer: defaults → config files → env vars → secrets manager
+      - Validate all config at startup (fail fast)
+      - Use secrets manager for all credentials and API keys
+      - Implement feature flags for progressive rollout (if needed)
+      - Document every configuration parameter
+
+  - id: audit_config
+    scenario: audit
+    description: "Audit existing configuration management"
+    prompt: |
+      Audit the configuration management implementation:
+
+      1. Is all configuration externalized (not hardcoded)?
+      2. Are secrets in a dedicated secrets manager (not env vars or files)?
+      3. Are secrets absent from source code and Git history?
+      4. Is automated secret rotation implemented?
+      5. Is configuration validated at application startup?
+      6. Are configuration changes logged with author and timestamp?
+      7. Are feature flags categorized with expiration dates?
+      8. Are stale feature flags cleaned up regularly?
+      9. Is least-privilege access enforced for secrets?
+      10. Are pre-commit hooks scanning for secret leaks?
+
+      For each item: report compliant/non-compliant/not-applicable with evidence.
+
+  - id: secret_rotation
+    scenario: operations
+    description: "Implement automated secret rotation"
+    prompt: |
+      Implement automated secret rotation for the application.
+
+      For each secret type:
+      - Database credentials: Rotate via secrets manager; use dual-user rotation for zero-downtime
+      - API keys: Rotate via provider API; update secrets manager; old key valid during grace period
+      - Certificates: Auto-renew via ACME/Let's Encrypt; update before expiration
+      - Service tokens: Use short-lived tokens (JWT with expiry) where possible
+
+      Requirements:
+      - Zero downtime during rotation
+      - Alert on rotation failure
+      - Audit log for all rotations
+      - Test rotation in staging before production
+
+  - id: feature_flag_cleanup
+    scenario: maintenance
+    description: "Clean up stale feature flags"
+    prompt: |
+      Clean up stale feature flags in the codebase.
+
+      Steps:
+      1. List all feature flags with their creation date and status
+      2. Identify flags past their expiration date
+      3. For each stale flag:
+         a. Verify the feature is fully rolled out (100% enabled)
+         b. Remove the flag check in code (keep the enabled code path)
+         c. Remove the flag from the flag service
+         d. Delete associated test fixtures for the disabled path
+      4. Update documentation
+
+anti_patterns:
+  - name: "Secrets in source code"
+    description: >
+      Storing credentials, API keys, or certificates in application code or
+      configuration files committed to source control. Once in Git history,
+      secrets persist even after removal — anyone with repo access can extract them.
+    fix: "Use a dedicated secrets manager; scan Git history for leaks; rotate any leaked secrets"
+    severity: critical
+    related_pattern: secrets_management
+
+  - name: "Hardcoded configuration"
+    description: >
+      Embedding environment-specific values (URLs, ports, timeouts) directly in
+      code. Requires rebuild and redeployment for any configuration change.
+      Different environments require different builds.
+    fix: "Externalize all configuration per Twelve-Factor App; same artifact in all environments"
+    severity: high
+    related_pattern: externalized_configuration
+
+  - name: "Feature flag graveyard"
+    description: >
+      Accumulating hundreds of feature flags that are never cleaned up. Code
+      becomes littered with dead branches, testing complexity multiplies, and
+      nobody knows which flags are still needed.
+    fix: "Set expiration dates on release flags; enforce cleanup process; track flag lifecycle"
+    severity: high
+    related_pattern: feature_flags
+
+  - name: "No config validation at startup"
+    description: >
+      Application starts without validating configuration, then fails at
+      runtime when it first tries to use a missing or invalid value. May
+      run for hours before the error surfaces.
+    fix: "Validate all required configuration at startup; fail fast with clear error messages"
+    severity: high
+    related_pattern: externalized_configuration
+
+checklist:
+  - id: CFG-01
+    category: security
+    description: "All secrets in dedicated secrets manager (not in code, files, or env vars)"
+    severity: critical
+    verified_by: secrets_management
+
+  - id: CFG-02
+    category: security
+    description: "Git history scanned for leaked secrets; any found are rotated"
+    severity: critical
+    verified_by: secrets_management
+
+  - id: CFG-03
+    category: security
+    description: "Automated secret rotation implemented with zero-downtime"
+    severity: high
+    verified_by: secrets_management
+
+  - id: CFG-04
+    category: design
+    description: "All configuration externalized (same artifact in all environments)"
+    severity: high
+    verified_by: externalized_configuration
+
+  - id: CFG-05
+    category: reliability
+    description: "Configuration validated at startup (fail fast on invalid config)"
+    severity: high
+    verified_by: externalized_configuration
+
+  - id: CFG-06
+    category: design
+    description: "Configuration hierarchy defined: defaults → files → env vars → secrets"
+    severity: medium
+    verified_by: externalized_configuration
+
+  - id: CFG-07
+    category: design
+    description: "Feature flags categorized (release/ops/experiment) with expiration dates"
+    severity: high
+    verified_by: feature_flags
+
+  - id: CFG-08
+    category: design
+    description: "Stale feature flags cleaned up regularly"
+    severity: medium
+    verified_by: feature_flags
+
+  - id: CFG-09
+    category: observability
+    description: "Configuration changes logged with author and timestamp"
+    severity: high
+    verified_by: dynamic_configuration
+
+  - id: CFG-10
+    category: security
+    description: "Least-privilege access to secrets (per-service scoping)"
+    severity: high
+    verified_by: secrets_management
+
+  - id: CFG-11
+    category: security
+    description: "Pre-commit hooks or CI scanning for secrets in code"
+    severity: high
+    verified_by: secrets_management
+
+  - id: CFG-12
+    category: design
+    description: "Every configuration parameter documented with type, default, and description"
+    severity: medium
+    verified_by: externalized_configuration

@@ -1,0 +1,662 @@
+# =============================================================================
+# AI Architecture Cookbook — Cloud Architecture
+# Schema: v3 | Domain: cloud-architecture
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: cloud-architecture
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Cloud-native design patterns, well-architected principles, multi-cloud
+    strategies, and managed service selection. Covers the architectural
+    decisions that determine how workloads run in cloud environments.
+
+  tags:
+    - cloud
+    - aws
+    - azure
+    - gcp
+    - well-architected
+    - multi-cloud
+    - serverless
+
+  categories:
+    - infrastructure
+
+  prerequisites: []
+
+  related_standards:
+    - id: orchestration
+      relationship: complementary
+      context: "Orchestration platforms are a core component of cloud architecture"
+    - id: infrastructure-as-code
+      relationship: complementary
+      context: "IaC implements the cloud architecture decisions"
+    - id: containerization
+      relationship: complementary
+      context: "Containers are a primary workload packaging for cloud"
+
+context_inputs:
+  - name: cloud_strategy
+    type: enum
+    description: "Cloud adoption strategy"
+    required: true
+    default: single_cloud
+    enum_values:
+      - single_cloud
+      - multi_cloud
+      - hybrid
+      - cloud_agnostic
+
+  - name: workload_profile
+    type: enum
+    description: "Primary workload characteristics"
+    required: true
+    default: request_driven
+    enum_values:
+      - request_driven
+      - event_driven
+      - batch_processing
+      - data_intensive
+      - mixed
+
+  - name: operational_maturity
+    type: enum
+    description: "Team's cloud operational maturity"
+    required: true
+    default: intermediate
+    enum_values:
+      - beginner
+      - intermediate
+      - advanced
+      - expert
+
+decision_tree:
+  - id: serverless_first
+    priority: 1
+    if:
+      - workload_profile == event_driven
+      - operational_maturity in [beginner, intermediate]
+    then:
+      pattern: serverless_architecture
+      standards:
+        - "AWS Well-Architected Serverless Lens"
+      notes: >
+        Serverless minimizes operational overhead for event-driven workloads.
+        No servers to manage, automatic scaling, pay-per-invocation.
+    else:
+      pattern: managed_services_first
+      notes: "Default to managed services to reduce operational burden"
+
+  - id: managed_services
+    priority: 2
+    if:
+      - operational_maturity in [beginner, intermediate]
+    then:
+      pattern: managed_services_first
+      standards:
+        - "AWS Well-Architected Framework"
+        - "Azure Well-Architected Framework"
+      notes: >
+        Use managed services (RDS, Cosmos DB, SQS) to offload operational
+        complexity. Self-manage only when managed services don't meet requirements.
+
+  - id: multi_region_ha
+    priority: 3
+    if:
+      - cloud_strategy in [single_cloud, multi_cloud]
+      - workload_profile in [request_driven, data_intensive]
+    then:
+      pattern: multi_region
+      standards:
+        - "Cloud Provider HA Documentation"
+      notes: >
+        Multi-region architecture provides disaster recovery and global
+        latency reduction. Cost and complexity increase significantly.
+
+  - id: well_architected
+    priority: 4
+    if:
+      - operational_maturity in [intermediate, advanced, expert]
+    then:
+      pattern: well_architected_review
+      standards:
+        - "Well-Architected Frameworks"
+      notes: >
+        Well-architected reviews evaluate workloads against the pillars:
+        reliability, security, cost, performance, operations, sustainability.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: managed_services_first
+    description: "Start with managed services — optimize later"
+
+patterns:
+  - id: managed_services_first
+    name: "Managed Services First"
+    description: >
+      Default to cloud-managed services (databases, queues, caches, compute)
+      instead of self-managing open-source alternatives. Trade flexibility
+      for reduced operational burden. Self-manage only when managed services
+      demonstrably cannot meet requirements.
+    use_when:
+      - "Team wants to focus on application logic, not infrastructure"
+      - "Operational maturity is growing"
+      - "Standard workloads without exotic requirements"
+      - "Want built-in HA, backups, and monitoring"
+    avoid_when:
+      - "Need to avoid vendor lock-in at all costs"
+      - "Managed service doesn't support required feature"
+      - "Cost at scale exceeds self-managed alternative significantly"
+    tradeoffs:
+      pros:
+        - "Dramatically reduced operational burden"
+        - "Built-in HA, backups, patching, monitoring"
+        - "Cloud provider SLAs for availability"
+        - "Focus engineering effort on business value"
+      cons:
+        - "Vendor lock-in for specific services"
+        - "Cost may exceed self-managed at very large scale"
+        - "Less control over configuration and behavior"
+        - "Feature availability depends on cloud provider roadmap"
+    implementation:
+      guidelines:
+        - "Evaluate managed service first; self-manage only with documented justification"
+        - "Wrap cloud-specific services behind interfaces for portability"
+        - "Use cloud-native IAM for service-to-service authentication"
+        - "Enable all available monitoring and alerting"
+        - "Review cost regularly — managed services can surprise at scale"
+      common_errors:
+        - error: "Self-managing Postgres/Redis/Kafka without dedicated ops team"
+          impact: "Data loss, missed backups, security patches delayed, outages"
+          fix: "Use RDS/ElastiCache/MSK — managed services handle operations"
+        - error: "Using managed service without understanding billing model"
+          impact: "Unexpected cloud bill — often 5-10x expected"
+          fix: "Model costs before provisioning; set billing alerts; review monthly"
+    maturity:
+      level: standard
+    standards:
+      - name: "Cloud Provider Well-Architected Frameworks"
+        type: framework
+        role: "Provider-specific guidance for cloud workloads"
+        status: recommended
+
+  - id: serverless_architecture
+    name: "Serverless Architecture"
+    description: >
+      Event-driven compute without server management. Functions as a Service
+      (Lambda, Cloud Functions, Azure Functions) scale automatically from zero
+      to peak. Combined with managed services for storage, queues, and APIs
+      to build fully serverless applications.
+    use_when:
+      - "Event-driven workloads (API Gateway → Lambda → DynamoDB)"
+      - "Unpredictable or spiky traffic patterns"
+      - "Want zero infrastructure management"
+      - "Cost optimization for intermittent workloads"
+    avoid_when:
+      - "Long-running processes (>15 minutes)"
+      - "Workloads requiring persistent connections (WebSocket servers)"
+      - "Latency-sensitive workloads where cold starts are unacceptable"
+      - "High-throughput steady-state workloads (containers cheaper)"
+    tradeoffs:
+      pros:
+        - "Zero server management — no patching, scaling, or capacity planning"
+        - "Scale to zero — pay nothing when idle"
+        - "Automatic scaling to handle any traffic spike"
+        - "Fast time-to-market for event-driven features"
+      cons:
+        - "Cold start latency (100ms–10s depending on runtime)"
+        - "Vendor lock-in to cloud provider's FaaS platform"
+        - "Debugging distributed serverless systems is harder"
+        - "Maximum execution duration limits"
+    implementation:
+      guidelines:
+        - "One function per responsibility (SRP applies to functions)"
+        - "Keep functions stateless — state in managed storage"
+        - "Use provisioned concurrency for latency-sensitive functions"
+        - "Bundle only required dependencies to minimize cold start"
+        - "Structured logging with correlation IDs across function invocations"
+      common_errors:
+        - error: "Monolithic Lambda function handling all routes"
+          impact: "Large package size, slow cold starts, tight coupling"
+          fix: "One function per API route or event type; use API Gateway routing"
+        - error: "Not accounting for cold start latency"
+          impact: "User-facing latency spikes; SLA violations"
+          fix: "Use provisioned concurrency for critical paths; or use containers for steady-state"
+    maturity:
+      level: standard
+    standards:
+      - name: "Serverless Framework / SAM"
+        type: tool
+        role: "Serverless application deployment frameworks"
+        status: recommended
+
+  - id: multi_region
+    name: "Multi-Region Architecture"
+    description: >
+      Deploy workloads across multiple geographic regions for disaster recovery,
+      lower latency for global users, and regulatory compliance (data residency).
+      Active-active for maximum availability; active-passive for cost efficiency.
+    use_when:
+      - "RPO/RTO requirements demand cross-region failover"
+      - "Global user base needing low latency"
+      - "Data residency requirements (GDPR, data sovereignty)"
+      - "SLA requires >99.99% availability"
+    avoid_when:
+      - "Single-region availability meets SLA requirements"
+      - "Data synchronization complexity exceeds the benefit"
+      - "Budget doesn't support multi-region cost (2x+ infrastructure)"
+    tradeoffs:
+      pros:
+        - "Disaster recovery with minimal RPO/RTO"
+        - "Lower latency for global users"
+        - "Compliance with data residency regulations"
+        - "Survive entire region failure"
+      cons:
+        - "2x+ infrastructure cost"
+        - "Data consistency challenges (CAP theorem)"
+        - "Significant operational complexity"
+        - "Testing failover scenarios is difficult"
+    implementation:
+      guidelines:
+        - "Active-passive: secondary region on standby, failover on primary failure"
+        - "Active-active: both regions serve traffic, data replicated"
+        - "Use global load balancers (Route 53, Azure Front Door, Cloud DNS)"
+        - "Database replication strategy: async for performance, sync for consistency"
+        - "Test failover regularly — untested DR is not DR"
+      common_errors:
+        - error: "Multi-region without testing failover"
+          impact: "DR doesn't work when you need it; false confidence"
+          fix: "Regular chaos engineering / failover drills; automate failover testing"
+        - error: "Synchronous cross-region replication for all data"
+          impact: "Every write incurs cross-region latency (100ms+); throughput drops"
+          fix: "Async replication for most data; sync only for critical consistency needs"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Cloud Provider Multi-Region Documentation"
+        type: reference
+        role: "Provider-specific multi-region guidance"
+        status: recommended
+
+  - id: well_architected_review
+    name: "Well-Architected Review"
+    description: >
+      Systematic evaluation of cloud workloads against the six pillars:
+      operational excellence, security, reliability, performance efficiency,
+      cost optimization, and sustainability. Identifies risks and improvement
+      opportunities using the cloud provider's well-architected framework.
+    use_when:
+      - "New workload going to production — pre-launch review"
+      - "Annual review of existing production workloads"
+      - "Post-incident review to prevent recurrence"
+      - "Before major architecture changes"
+    avoid_when:
+      - "Prototype or proof-of-concept (review before promoting to production)"
+    tradeoffs:
+      pros:
+        - "Systematic risk identification across all pillars"
+        - "Cloud provider tooling to automate assessment"
+        - "Documented improvement plan with priorities"
+        - "Industry-standard framework for architecture quality"
+      cons:
+        - "Time investment for thorough review"
+        - "May surface more issues than team can address immediately"
+    implementation:
+      guidelines:
+        - "Use cloud provider WAR tool (AWS Well-Architected Tool, Azure Advisor)"
+        - "Review each pillar: operations, security, reliability, performance, cost, sustainability"
+        - "Prioritize findings by risk level and business impact"
+        - "Create improvement backlog and track remediation"
+        - "Schedule regular reviews (annually or after major changes)"
+      common_errors:
+        - error: "One-time review with no follow-up"
+          impact: "Findings not addressed; architecture degrades over time"
+          fix: "Create backlog from findings; schedule quarterly review cadence"
+        - error: "Reviewing only security pillar, ignoring others"
+          impact: "Cost overruns, reliability issues, performance problems"
+          fix: "Review all six pillars; each addresses different failure modes"
+    maturity:
+      level: standard
+    standards:
+      - name: "AWS Well-Architected Framework"
+        type: framework
+        role: "Cloud architecture evaluation framework"
+        status: recommended
+
+examples:
+  - id: managed_services_example
+    title: "Managed Services First — Web Application Stack"
+    context: "Choosing between self-managed and managed services for a typical web app"
+    correct: |
+      # Architecture using managed services
+      # Compute:    ECS Fargate (serverless containers)
+      # Database:   RDS PostgreSQL (managed, multi-AZ, automated backups)
+      # Cache:      ElastiCache Redis (managed, automatic failover)
+      # Queue:      SQS (fully managed, no broker to operate)
+      # Storage:    S3 (fully managed object storage)
+      # CDN:        CloudFront (global edge caching)
+      # Monitoring: CloudWatch + X-Ray (built-in)
+
+      # Terraform example:
+      module "database" {
+        source = "./modules/rds"
+        engine         = "postgres"
+        engine_version = "16"
+        instance_class = "db.r6g.large"
+        multi_az       = true
+        backup_retention_period = 7
+        storage_encrypted = true
+        deletion_protection = true
+      }
+
+      module "cache" {
+        source = "./modules/elasticache"
+        engine               = "redis"
+        node_type            = "cache.r6g.large"
+        automatic_failover   = true
+        at_rest_encryption   = true
+        transit_encryption   = true
+      }
+
+      # Total ops overhead: near zero — cloud provider handles HA, backups, patching
+    incorrect: |
+      # WRONG: Self-managing everything on EC2
+      # Compute:    EC2 instances (patch OS, manage scaling groups)
+      # Database:   PostgreSQL on EC2 (manage replication, backups, failover)
+      # Cache:      Redis on EC2 (manage cluster, persistence, failover)
+      # Queue:      RabbitMQ on EC2 (manage cluster, persistence, monitoring)
+      # Storage:    NFS on EC2 (manage storage, backups)
+
+      # Total ops overhead: 3+ full-time ops engineers
+      # Risk: missed backups, delayed security patches, manual failover
+    explanation: >
+      The correct version uses managed services — RDS, ElastiCache, SQS, S3 —
+      where the cloud provider handles HA, backups, patching, and monitoring.
+      The incorrect version self-manages everything on EC2, requiring
+      significant operational investment for the same functionality.
+
+  - id: serverless_event_driven
+    title: "Serverless Event-Driven Architecture"
+    context: "Order processing pipeline using serverless components"
+    correct: |
+      # Event-driven order processing — fully serverless
+      # 1. API Gateway receives order → triggers Lambda
+      # 2. Lambda validates and writes to DynamoDB
+      # 3. DynamoDB Stream triggers processing Lambda
+      # 4. Processing Lambda sends to SQS for async work
+      # 5. SQS triggers notification Lambda
+      # 6. Step Functions orchestrates complex multi-step workflows
+
+      # SAM template (sam-template.yaml)
+      Resources:
+        OrderApi:
+          Type: AWS::Serverless::Api
+          Properties:
+            StageName: prod
+
+        CreateOrderFunction:
+          Type: AWS::Serverless::Function
+          Properties:
+            Handler: src/create-order.handler
+            Runtime: nodejs20.x
+            MemorySize: 256
+            Timeout: 10
+            Events:
+              PostOrder:
+                Type: Api
+                Properties:
+                  Path: /orders
+                  Method: post
+                  RestApiId: !Ref OrderApi
+            Policies:
+              - DynamoDBCrudPolicy:
+                  TableName: !Ref OrdersTable
+
+        OrdersTable:
+          Type: AWS::DynamoDB::Table
+          Properties:
+            BillingMode: PAY_PER_REQUEST
+            StreamSpecification:
+              StreamViewType: NEW_AND_OLD_IMAGES
+    incorrect: |
+      # WRONG: Monolithic Lambda doing everything
+      Resources:
+        MonolithFunction:
+          Type: AWS::Serverless::Function
+          Properties:
+            Handler: src/monolith.handler
+            Runtime: nodejs20.x
+            MemorySize: 3008  # Max memory — why?
+            Timeout: 900      # Max timeout — doing too much
+            Events:
+              AnyRequest:
+                Type: Api
+                Properties:
+                  Path: /{proxy+}
+                  Method: ANY
+            Policies:
+              - AdministratorAccess  # Over-permissioned
+      # One function handles all routes, all logic
+      # Slow cold starts, impossible to scale individual features
+    explanation: >
+      The correct version uses purpose-built serverless components — each Lambda
+      has one responsibility, DynamoDB Streams drive event processing, and
+      permissions are scoped. The incorrect version is a monolithic Lambda
+      with max resources and admin access.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All cloud service endpoints accessed over TLS"
+      - "VPC endpoints for private access to cloud services"
+  data_protection:
+    requirements:
+      - "Encryption at rest enabled for all data stores"
+      - "Encryption in transit for all service-to-service communication"
+  access_control:
+    requirements:
+      - "Cloud IAM with least-privilege policies"
+      - "Service accounts with scoped permissions per workload"
+      - "No use of root/admin accounts for workloads"
+  input_output:
+    requirements:
+      - "API Gateway with request validation and throttling"
+      - "WAF for public-facing endpoints"
+  secrets:
+    requirements:
+      - "Cloud secret managers (Secrets Manager, Key Vault) for all credentials"
+      - "Automatic secret rotation configured"
+  monitoring:
+    requirements:
+      - "Cloud-native monitoring and alerting enabled"
+      - "CloudTrail / Azure Activity Log / GCP Audit Logs enabled"
+
+compliance:
+  standards:
+    - name: "AWS Well-Architected Framework"
+      relevance: "Six-pillar framework for cloud architecture quality"
+    - name: "Azure Well-Architected Framework"
+      relevance: "Microsoft's cloud architecture best practices"
+    - name: "GCP Architecture Framework"
+      relevance: "Google's cloud architecture guidance"
+
+  requirements_mapping:
+    - control: well_architected_review
+      description: "Workloads reviewed against well-architected pillars before production"
+      maps_to:
+        - "Cloud Provider WAR Programs"
+    - control: cost_optimization
+      description: "Resources right-sized and unused resources cleaned up"
+      maps_to:
+        - "FinOps Foundation Standards"
+
+prompt_recipes:
+  - id: cloud_greenfield
+    scenario: greenfield
+    description: "Design cloud architecture for a new workload"
+    prompt: |
+      Design {cloud_provider} architecture for: {workload_description}
+
+      1. Choose compute model: containers, serverless, or VMs (justify choice)
+      2. Choose data stores: managed database, cache, object storage
+      3. Design networking: VPC, subnets, security groups, load balancers
+      4. Define IAM: service accounts, roles, least-privilege policies
+      5. Plan monitoring: metrics, logs, traces, alerts
+      6. Estimate monthly cost range
+      7. Provide IaC (Terraform/Bicep) for the architecture
+
+  - id: cloud_audit
+    scenario: audit
+    description: "Well-architected review of existing cloud workload"
+    prompt: |
+      Perform a well-architected review of this {cloud_provider} workload:
+
+      1. **Operational Excellence**: Automated? Observable? Runbooks?
+      2. **Security**: IAM least-privilege? Encryption? WAF? Logging?
+      3. **Reliability**: Multi-AZ? Backups? Auto-scaling? DR plan?
+      4. **Performance**: Right-sized? Caching? CDN? Database indexing?
+      5. **Cost**: Reserved/savings plans? Right-sized? Unused resources?
+      6. **Sustainability**: Efficient compute? Right region?
+
+      Prioritize findings by risk and provide remediation plan.
+
+  - id: cloud_migration
+    scenario: migration
+    description: "Migrate on-premises workload to cloud"
+    prompt: |
+      Migrate this on-premises workload to {cloud_provider}:
+
+      1. Assess current architecture and dependencies
+      2. Choose migration strategy: lift-and-shift, re-platform, or re-architect
+      3. Map on-premises services to cloud equivalents
+      4. Plan data migration with minimal downtime
+      5. Design cloud networking (VPN/Direct Connect for hybrid)
+      6. Create IaC for target architecture
+      7. Define cutover plan and rollback procedure
+
+  - id: cloud_cost
+    scenario: optimization
+    description: "Optimize cloud cost"
+    prompt: |
+      Optimize cloud costs for this {cloud_provider} workload:
+
+      1. Identify unused/underutilized resources
+      2. Right-size compute instances based on actual usage
+      3. Evaluate reserved instances / savings plans
+      4. Use spot/preemptible instances for fault-tolerant workloads
+      5. Optimize data transfer costs
+      6. Review storage tiers and lifecycle policies
+      7. Show before/after monthly cost estimate
+
+anti_patterns:
+  - name: "Lift and Shift Everything"
+    description: >
+      Moving on-premises VMs directly to cloud IaaS without leveraging
+      cloud-native services. Pays cloud prices for on-premises architecture.
+      Misses managed services, auto-scaling, and pay-per-use.
+    fix: "Re-platform to managed services; reserve lift-and-shift for legacy systems with migration deadlines"
+    severity: high
+    related_pattern: managed_services_first
+
+  - name: "Over-Provisioned Resources"
+    description: >
+      Provisioning large instances 'just in case' instead of right-sizing
+      based on actual usage. Cloud bills 3-10x what they should be.
+    fix: "Monitor actual usage; right-size instances; use auto-scaling for variable workloads"
+    severity: high
+    related_pattern: well_architected_review
+
+  - name: "No Disaster Recovery Plan"
+    description: >
+      Production workloads running in a single availability zone or region
+      with no failover plan. A single zone failure takes down the service.
+    fix: "Multi-AZ at minimum; multi-region for critical workloads; test failover regularly"
+    severity: critical
+    related_pattern: multi_region
+
+  - name: "Serverless for Everything"
+    description: >
+      Using Lambda/Functions for steady-state high-throughput workloads where
+      containers would be cheaper and more efficient. Cold starts impact
+      latency; cost exceeds container equivalent.
+    fix: "Use serverless for event-driven and bursty workloads; containers for steady-state"
+    severity: medium
+    related_pattern: serverless_architecture
+
+checklist:
+  - id: CLD-01
+    category: design
+    description: "Managed services used by default — self-manage with justification only"
+    severity: high
+    verified_by: managed_services_first
+
+  - id: CLD-02
+    category: security
+    description: "IAM policies follow least-privilege per service"
+    severity: critical
+    verified_by: managed_services_first
+
+  - id: CLD-03
+    category: reliability
+    description: "Workloads deployed across multiple availability zones"
+    severity: high
+    verified_by: multi_region
+
+  - id: CLD-04
+    category: reliability
+    description: "Backup and restore procedures defined and tested"
+    severity: high
+    verified_by: well_architected_review
+
+  - id: CLD-05
+    category: security
+    description: "Encryption at rest and in transit for all data"
+    severity: critical
+    verified_by: managed_services_first
+
+  - id: CLD-06
+    category: performance
+    description: "Compute resources right-sized based on actual usage"
+    severity: medium
+    verified_by: well_architected_review
+
+  - id: CLD-07
+    category: observability
+    description: "Cloud-native monitoring, logging, and alerting enabled"
+    severity: high
+    verified_by: well_architected_review
+
+  - id: CLD-08
+    category: design
+    description: "Serverless used for event-driven; containers for steady-state"
+    severity: medium
+    verified_by: serverless_architecture
+
+  - id: CLD-09
+    category: compliance
+    description: "Well-architected review completed before production launch"
+    severity: high
+    verified_by: well_architected_review
+
+  - id: CLD-10
+    category: security
+    description: "VPC endpoints for private access to cloud services"
+    severity: high
+    verified_by: managed_services_first
+
+  - id: CLD-11
+    category: reliability
+    description: "Auto-scaling configured for variable workloads"
+    severity: medium
+    verified_by: managed_services_first
+
+  - id: CLD-12
+    category: performance
+    description: "CDN and caching layers deployed for public-facing content"
+    severity: medium
+    verified_by: managed_services_first

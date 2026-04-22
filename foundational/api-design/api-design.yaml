@@ -1,0 +1,803 @@
+# =============================================================================
+# AI Architecture Cookbook — API Design
+# Schema: v3 | Domain: api-design
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: api-design
+  version: "1.0.0"
+  last_updated: 2026-04-22
+  description: >
+    API design decision framework covering REST, GraphQL, gRPC, and WebSocket
+    protocols. Provides context-aware recommendations based on client types,
+    data complexity, performance needs, and team expertise.
+
+  tags:
+    - api
+    - rest
+    - graphql
+    - grpc
+    - websocket
+    - http
+    - communication
+
+  categories:
+    - foundational
+
+  prerequisites: []
+
+  related_standards:
+    - id: authentication
+      relationship: complementary
+      context: "All APIs require authentication — apply authentication standard to every API endpoint"
+    - id: input-validation
+      relationship: complementary
+      context: "All API inputs must be validated per input-validation standard"
+    - id: error-handling
+      relationship: complementary
+      context: "APIs must implement structured error responses per error-handling standard"
+    - id: rate-limiting
+      relationship: complementary
+      context: "Public APIs require rate limiting to prevent abuse"
+    - id: versioning
+      relationship: complementary
+      context: "APIs must follow versioning strategies for backward compatibility"
+
+context_inputs:
+  - name: client_types
+    type: enum
+    description: "Primary consumers of the API"
+    required: true
+    default: web_and_mobile
+    enum_values:
+      - web_only
+      - mobile_only
+      - web_and_mobile
+      - internal_services
+      - third_party
+      - mixed
+
+  - name: data_complexity
+    type: enum
+    description: "Complexity of the data graph clients need to query"
+    required: true
+    default: moderate
+    enum_values:
+      - simple
+      - moderate
+      - complex
+      - deeply_nested
+
+  - name: performance_requirement
+    type: enum
+    description: "Latency and throughput requirements"
+    required: true
+    default: standard
+    enum_values:
+      - relaxed
+      - standard
+      - low_latency
+      - ultra_low_latency
+
+  - name: real_time_needed
+    type: boolean
+    description: "Does the API need to push real-time updates to clients?"
+    required: true
+    default: false
+
+  - name: team_expertise
+    type: enum
+    description: "Team familiarity with API paradigms"
+    required: false
+    default: rest_familiar
+    enum_values:
+      - rest_familiar
+      - graphql_experienced
+      - grpc_experienced
+      - polyglot
+
+  - name: public_api
+    type: boolean
+    description: "Is this a public-facing API for external consumers?"
+    required: true
+    default: false
+
+  - name: contract_strictness
+    type: enum
+    description: "How strict should the API contract be?"
+    required: false
+    default: moderate
+    enum_values:
+      - loose
+      - moderate
+      - strict
+
+decision_tree:
+  - id: real_time_requires_websocket
+    priority: 1
+    if:
+      - real_time_needed == true
+    then:
+      pattern: websocket_api
+      standards:
+        - WebSocket
+        - RFC 6455
+      notes: "Real-time bidirectional communication requires WebSocket or SSE; WebSocket is preferred for bidirectional"
+    else:
+      pattern: rest_api
+      notes: "No real-time needs — evaluate REST, GraphQL, or gRPC based on other factors"
+
+  - id: ultra_low_latency_requires_grpc
+    priority: 2
+    if:
+      - performance_requirement == ultra_low_latency
+      - client_types == internal_services
+    then:
+      pattern: grpc_api
+      standards:
+        - gRPC
+        - Protocol Buffers
+      notes: "Internal service-to-service with ultra-low latency needs binary protocol"
+
+  - id: complex_data_suggests_graphql
+    priority: 3
+    if:
+      - data_complexity in [complex, deeply_nested]
+      - client_types in [web_and_mobile, mobile_only, mixed]
+    then:
+      pattern: graphql_api
+      standards:
+        - GraphQL
+      notes: "Complex data graphs with multiple client types benefit from client-driven queries"
+    else:
+      pattern: rest_api
+      notes: "Simpler data models work well with REST's resource-oriented approach"
+
+  - id: public_api_prefers_rest
+    priority: 4
+    if:
+      - public_api == true
+    then:
+      pattern: rest_api
+      standards:
+        - OpenAPI 3.x
+        - HTTP/1.1
+      notes: "Public APIs should use REST for maximum ecosystem compatibility and discoverability"
+
+  - id: internal_high_perf_grpc
+    priority: 5
+    if:
+      - client_types == internal_services
+      - performance_requirement == low_latency
+    then:
+      pattern: grpc_api
+      standards:
+        - gRPC
+        - Protocol Buffers
+      notes: "Internal services with low-latency requirements benefit from gRPC's binary protocol and streaming"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: rest_api
+    description: "REST with OpenAPI 3.x specification — universally understood, rich ecosystem, lowest adoption risk"
+
+patterns:
+  - id: rest_api
+    name: RESTful API
+    description: >
+      Resource-oriented API design using HTTP methods, status codes, and
+      content negotiation. The most widely adopted API paradigm with the
+      richest ecosystem of tools, libraries, and developer familiarity.
+
+    use_when:
+      - "Public-facing APIs requiring broad ecosystem support"
+      - "Simple to moderate data models with clear resource boundaries"
+      - "Team is REST-experienced and timeline is tight"
+      - "Need for extensive caching (HTTP cache semantics)"
+      - "Hypermedia-driven workflows (HATEOAS)"
+
+    avoid_when:
+      - "Deeply nested data graphs with many client-specific query patterns"
+      - "Ultra-low-latency internal service communication"
+      - "Real-time bidirectional communication needed"
+
+    tradeoffs:
+      pros:
+        - "Universal HTTP support — works everywhere"
+        - "Rich caching via HTTP cache headers"
+        - "OpenAPI/Swagger tooling for documentation, code generation, testing"
+        - "Stateless — each request is self-contained"
+        - "Largest developer community and ecosystem"
+      cons:
+        - "Over-fetching/under-fetching when data needs vary by client"
+        - "Multiple round-trips for complex data (chatty APIs)"
+        - "No built-in schema enforcement at runtime"
+        - "Versioning complexity over time"
+
+    implementation:
+      guidelines:
+        - "Use nouns for resources, HTTP methods for actions (GET, POST, PUT, PATCH, DELETE)"
+        - "Return appropriate HTTP status codes (2xx success, 4xx client error, 5xx server error)"
+        - "Use OpenAPI 3.x specification as the API contract"
+        - "Implement HATEOAS links for discoverable APIs"
+        - "Use consistent pagination (cursor-based preferred over offset for large datasets)"
+        - "Support content negotiation (Accept header) for multiple formats"
+        - "Use ETag/If-None-Match for conditional requests and caching"
+
+      common_errors:
+        - error: "Using POST for everything"
+          impact: "Loses HTTP semantic benefits — caching, idempotency, discoverability"
+          fix: "Map operations to correct HTTP methods: GET (read), POST (create), PUT (full update), PATCH (partial update), DELETE (remove)"
+        - error: "Using verbs in URLs (e.g., /api/getUser/123)"
+          impact: "Breaks REST resource model, inconsistent naming"
+          fix: "Use noun-based URLs (/api/users/123) with HTTP methods for actions"
+        - error: "Returning 200 for every response with error in body"
+          impact: "Clients cannot use HTTP status for error detection; breaks intermediary caching/routing"
+          fix: "Use proper HTTP status codes: 400 (bad request), 404 (not found), 422 (validation), 500 (server error)"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: OpenAPI 3.x
+        type: spec
+        role: "API contract specification and documentation"
+        status: recommended
+        reference: "https://spec.openapis.org/oas/latest.html"
+      - name: JSON:API
+        type: spec
+        role: "Standardized JSON response format for REST APIs"
+        status: recommended
+        reference: "https://jsonapi.org/format/"
+      - name: HTTP Semantics
+        type: spec
+        role: "HTTP method and status code semantics"
+        status: recommended
+        reference: "RFC 9110"
+
+  - id: graphql_api
+    name: GraphQL API
+    description: >
+      Client-driven query language that allows consumers to request exactly the
+      data they need in a single request. Eliminates over-fetching and under-fetching
+      by letting clients specify their data requirements.
+
+    use_when:
+      - "Multiple client types need different data shapes from the same backend"
+      - "Complex, deeply nested data graphs"
+      - "Rapid frontend iteration without backend changes"
+      - "Aggregating data from multiple backend services into a unified API"
+
+    avoid_when:
+      - "Simple CRUD with flat resources (REST is simpler)"
+      - "Public APIs where discoverability and caching matter (REST is better here)"
+      - "Team lacks GraphQL experience and timeline is tight"
+      - "File uploads are the primary use case"
+
+    tradeoffs:
+      pros:
+        - "Eliminates over-fetching and under-fetching"
+        - "Single endpoint reduces round-trips"
+        - "Strong typing via schema introspection"
+        - "Frontend can evolve independently of backend"
+      cons:
+        - "Complex caching (no HTTP cache semantics per field)"
+        - "N+1 query problem requires dataloader pattern"
+        - "Potential for expensive queries (needs query complexity analysis)"
+        - "Smaller ecosystem than REST for tooling"
+
+    implementation:
+      guidelines:
+        - "Implement query complexity analysis and depth limiting"
+        - "Use DataLoader pattern to batch and deduplicate backend queries"
+        - "Implement persisted queries for production (whitelist allowed queries)"
+        - "Use cursor-based pagination (Relay connection spec)"
+        - "Separate query and mutation types cleanly"
+        - "Implement field-level authorization, not just endpoint-level"
+
+      common_errors:
+        - error: "No query complexity limits"
+          impact: "Malicious or accidental deeply nested queries cause denial of service"
+          fix: "Implement query depth limiting, complexity scoring, and timeout enforcement"
+        - error: "N+1 database queries"
+          impact: "Resolving nested fields triggers separate DB queries per parent record"
+          fix: "Use DataLoader to batch and cache backend calls within a single request"
+        - error: "Exposing entire database schema via GraphQL"
+          impact: "Leaks internal data model, increases attack surface"
+          fix: "Design a purpose-built GraphQL schema that abstracts the database model"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: GraphQL Specification
+        type: spec
+        role: "Query language specification"
+        status: recommended
+        reference: "https://spec.graphql.org/"
+      - name: Relay Connection Specification
+        type: spec
+        role: "Cursor-based pagination standard"
+        status: recommended
+        reference: "https://relay.dev/graphql/connections.htm"
+
+  - id: grpc_api
+    name: gRPC API
+    description: >
+      High-performance RPC framework using Protocol Buffers for binary serialization
+      and HTTP/2 for transport. Ideal for internal service-to-service communication
+      where latency and throughput are critical.
+
+    use_when:
+      - "Internal microservice-to-microservice communication"
+      - "Low-latency, high-throughput requirements"
+      - "Strong contract enforcement needed (schema-first with protobuf)"
+      - "Streaming data (server-side, client-side, or bidirectional)"
+      - "Polyglot microservices needing auto-generated client libraries"
+
+    avoid_when:
+      - "Browser clients without a proxy (gRPC-Web adds complexity)"
+      - "Public APIs where REST ecosystem support matters"
+      - "Simple CRUD that does not justify protobuf toolchain overhead"
+      - "Team unfamiliar with Protocol Buffers"
+
+    tradeoffs:
+      pros:
+        - "Binary serialization — smaller payloads, faster parsing than JSON"
+        - "HTTP/2 multiplexing — multiple RPCs over one connection"
+        - "Built-in streaming (server, client, bidirectional)"
+        - "Code generation for multiple languages from .proto files"
+        - "Strong contract via protobuf schema"
+      cons:
+        - "Not human-readable (binary protocol)"
+        - "Limited browser support without gRPC-Web proxy"
+        - "Toolchain setup for protobuf compilation"
+        - "Harder to debug than REST/JSON"
+
+    implementation:
+      guidelines:
+        - "Define all services and messages in .proto files (schema-first)"
+        - "Use server-side streaming for large result sets"
+        - "Implement deadlines/timeouts on every RPC call"
+        - "Use gRPC interceptors for cross-cutting concerns (auth, logging, tracing)"
+        - "Use gRPC-Web proxy for browser clients that must use gRPC"
+        - "Version protobuf messages using field numbers (never reuse deleted field numbers)"
+
+      common_errors:
+        - error: "No deadlines on RPC calls"
+          impact: "Slow or unresponsive services cause cascading timeouts across the mesh"
+          fix: "Set deadline/timeout on every RPC call; propagate remaining deadline downstream"
+        - error: "Breaking protobuf backward compatibility"
+          impact: "Deployed clients crash when fields change"
+          fix: "Never remove or renumber existing fields; use reserved keyword for deleted fields"
+        - error: "Using gRPC for everything including public APIs"
+          impact: "External developers struggle with protobuf toolchain and limited browser support"
+          fix: "Use gRPC internally, expose REST+OpenAPI gateway for public consumers"
+
+    maturity:
+      level: advanced
+
+    standards:
+      - name: gRPC
+        type: protocol
+        role: "High-performance RPC framework"
+        status: recommended
+        reference: "https://grpc.io/docs/"
+      - name: Protocol Buffers
+        type: format
+        role: "Binary serialization format for gRPC messages"
+        status: recommended
+        reference: "https://protobuf.dev/"
+
+  - id: websocket_api
+    name: WebSocket API
+    description: >
+      Full-duplex communication channel over a single TCP connection, enabling
+      real-time bidirectional data exchange between client and server without
+      the overhead of HTTP request-response cycles.
+
+    use_when:
+      - "Real-time features (chat, live dashboards, collaborative editing)"
+      - "Server-push notifications to connected clients"
+      - "High-frequency data updates (financial tickers, gaming)"
+      - "Bidirectional communication (client sends and receives simultaneously)"
+
+    avoid_when:
+      - "Request-response patterns where REST or GraphQL suffice"
+      - "Infrequent updates (SSE or long-polling are simpler)"
+      - "Clients behind restrictive proxies that block WebSocket upgrades"
+      - "Stateless architecture where connection state is unwanted"
+
+    tradeoffs:
+      pros:
+        - "True real-time — minimal latency for push updates"
+        - "Bidirectional — both client and server initiate messages"
+        - "Lower overhead than HTTP polling for high-frequency updates"
+        - "Single persistent connection reduces handshake costs"
+      cons:
+        - "Stateful connections — harder to scale horizontally"
+        - "No built-in request-response semantics (must build message protocol)"
+        - "Connection management complexity (reconnection, heartbeats)"
+        - "Load balancer configuration for sticky sessions or connection-aware routing"
+
+    implementation:
+      guidelines:
+        - "Implement heartbeat/ping-pong to detect dead connections"
+        - "Build automatic reconnection with exponential backoff on client"
+        - "Define a message protocol with types, IDs, and correlation for request-response patterns"
+        - "Use rooms/channels for topic-based message routing"
+        - "Authenticate on connection upgrade (token in handshake), not per message"
+        - "Consider Server-Sent Events (SSE) if only server-to-client push is needed"
+
+      common_errors:
+        - error: "No reconnection logic"
+          impact: "Clients silently disconnect and miss updates"
+          fix: "Implement exponential backoff reconnection with event replay for missed messages"
+        - error: "Authenticating per-message instead of on connection"
+          impact: "Unnecessary overhead and complexity on every message"
+          fix: "Authenticate during WebSocket upgrade handshake, maintain auth for connection lifetime"
+        - error: "No message protocol (sending raw strings)"
+          impact: "Cannot distinguish message types, correlate responses, or handle errors"
+          fix: "Define structured message format with type, id, payload, and error fields"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: WebSocket Protocol
+        type: protocol
+        role: "Full-duplex communication over TCP"
+        status: recommended
+        reference: "RFC 6455"
+      - name: Server-Sent Events
+        type: protocol
+        role: "Server-to-client push over HTTP (simpler alternative)"
+        status: recommended
+        reference: "https://html.spec.whatwg.org/multipage/server-sent-events.html"
+
+examples:
+  - id: rest_resource_design
+    title: "RESTful Resource Design"
+    context: "Designing a REST API for a user management system"
+    correct: |
+      # Resource-oriented URLs with HTTP methods
+      GET    /api/v1/users           # List users (paginated)
+      GET    /api/v1/users/{id}      # Get single user
+      POST   /api/v1/users           # Create user
+      PATCH  /api/v1/users/{id}      # Partial update
+      DELETE /api/v1/users/{id}      # Delete user
+
+      # Nested resources for relationships
+      GET    /api/v1/users/{id}/orders   # User's orders
+
+      # Response with proper status codes
+      # 200 OK — successful GET/PATCH
+      # 201 Created — successful POST (with Location header)
+      # 204 No Content — successful DELETE
+      # 400 Bad Request — validation failure
+      # 404 Not Found — resource doesn't exist
+      # 422 Unprocessable Entity — semantic validation error
+    incorrect: |
+      # WRONG: Verb-based URLs, single method
+      POST /api/getUser         { "id": 123 }
+      POST /api/createUser      { "name": "Alice" }
+      POST /api/deleteUser      { "id": 123 }
+      POST /api/getUserOrders   { "userId": 123 }
+
+      # Always returns 200 with error in body
+      # Response: { "status": "error", "message": "User not found" }
+    explanation: >
+      REST uses nouns for resources and HTTP methods for operations. This enables
+      HTTP caching (GET is cacheable), idempotency guarantees (PUT, DELETE),
+      and standard error handling via status codes. Verb-based APIs lose all
+      HTTP semantic benefits.
+
+  - id: graphql_query_optimization
+    title: "GraphQL with DataLoader"
+    context: "Resolving nested data without N+1 queries"
+    correct: |
+      # Schema
+      type Query {
+        users(first: Int, after: String): UserConnection!
+      }
+      type User {
+        id: ID!
+        name: String!
+        orders: [Order!]!
+      }
+
+      # Resolver with DataLoader (batched)
+      resolve User.orders(user):
+        return orderLoader.load(user.id)
+        # DataLoader batches all user.id calls in this tick
+        # into a single SQL: SELECT * FROM orders WHERE user_id IN (...)
+
+      # Query complexity limit
+      max_depth: 5
+      max_complexity: 1000
+    incorrect: |
+      # WRONG: N+1 query — separate DB call per user
+      resolve User.orders(user):
+        return db.query("SELECT * FROM orders WHERE user_id = ?", user.id)
+        # For 50 users: 1 query for users + 50 queries for orders = 51 queries
+
+      # No depth/complexity limit — attacker sends:
+      # { users { orders { items { product { reviews { author { orders ... }}}}}} }
+    explanation: >
+      DataLoader batches and deduplicates backend calls within a single GraphQL
+      request, turning N+1 database queries into a single batched query. Combined
+      with query complexity limits, this prevents both performance degradation
+      and denial-of-service via deeply nested queries.
+
+security_hardening:
+  transport:
+    requirements:
+      - "TLS 1.2+ required for all API endpoints"
+      - "HSTS header with min 1-year max-age"
+      - "CORS configured with explicit origin allowlist (never wildcard for authenticated APIs)"
+
+  data_protection:
+    requirements:
+      - "Never expose internal IDs that reveal record counts or sequence patterns"
+      - "Implement field-level access control for sensitive data"
+      - "Redact sensitive fields in API logs"
+
+  access_control:
+    requirements:
+      - "Authentication required on all non-public endpoints"
+      - "Authorization checked at resource level, not just endpoint"
+      - "Rate limiting on all endpoints (stricter on unauthenticated)"
+
+  input_output:
+    requirements:
+      - "Validate all input against schema (OpenAPI, GraphQL schema, protobuf)"
+      - "Sanitize all output to prevent injection in downstream consumers"
+      - "Content-Type validation — reject unexpected content types"
+      - "Request size limits enforced"
+
+  secrets:
+    requirements:
+      - "API keys transmitted only in headers, never in URLs"
+      - "API keys rotatable without downtime"
+      - "Service-to-service auth uses short-lived tokens, not static keys"
+
+  monitoring:
+    requirements:
+      - "Log all API requests with method, path, status, latency, caller identity"
+      - "Alert on error rate spikes (5xx > threshold)"
+      - "Monitor and alert on unusual traffic patterns"
+      - "Track API usage per consumer for billing and capacity planning"
+
+compliance:
+  standards:
+    - name: OWASP API Security Top 10
+      relevance: "Primary security standard for API design"
+      reference: "https://owasp.org/www-project-api-security/"
+
+    - name: OpenAPI Specification
+      relevance: "API contract standard for documentation and validation"
+      reference: "https://spec.openapis.org/oas/latest.html"
+
+    - name: RFC 9110 (HTTP Semantics)
+      relevance: "HTTP method and status code semantics"
+      reference: "https://www.rfc-editor.org/rfc/rfc9110"
+
+  requirements_mapping:
+    - control: api_authentication
+      description: "All API endpoints enforce authentication"
+      maps_to:
+        - "OWASP API2:2023 Broken Authentication"
+
+    - control: api_authorization
+      description: "Resource-level authorization on all operations"
+      maps_to:
+        - "OWASP API1:2023 Broken Object Level Authorization"
+
+    - control: rate_limiting
+      description: "Rate limiting prevents abuse"
+      maps_to:
+        - "OWASP API4:2023 Unrestricted Resource Consumption"
+
+prompt_recipes:
+  - id: greenfield_api
+    scenario: greenfield
+    description: "Design an API for a new application"
+    prompt: |
+      Design an API for a new application.
+
+      Context:
+      - Client types: [web/mobile/internal_services/third_party]
+      - Data complexity: [simple/moderate/complex/deeply_nested]
+      - Performance requirement: [relaxed/standard/low_latency/ultra_low_latency]
+      - Real-time needed: [yes/no]
+      - Public API: [yes/no]
+
+      If public or simple data: Use REST with OpenAPI 3.x specification.
+      If complex nested data + multiple clients: Use GraphQL with query complexity limits.
+      If internal services + low latency: Use gRPC with Protocol Buffers.
+      If real-time: Use WebSocket with structured message protocol.
+
+      Always: TLS, authentication, rate limiting, input validation, proper error responses.
+
+  - id: rest_api_review
+    scenario: audit
+    description: "Audit an existing REST API design"
+    prompt: |
+      Audit the existing REST API against these criteria:
+
+      1. Are URLs resource-oriented (nouns, not verbs)?
+      2. Are HTTP methods used correctly (GET=read, POST=create, etc.)?
+      3. Are HTTP status codes used properly (not 200-for-everything)?
+      4. Is pagination implemented (cursor-based for large datasets)?
+      5. Is an OpenAPI spec maintained and up-to-date?
+      6. Is versioning implemented (URL or header)?
+      7. Are error responses consistent and structured?
+      8. Is CORS configured properly (no wildcard for auth APIs)?
+      9. Are request size limits enforced?
+      10. Is rate limiting applied on all endpoints?
+
+      For each item: report compliant/non-compliant/not-applicable with evidence.
+
+  - id: graphql_to_rest_migration
+    scenario: migration
+    description: "Evaluate migrating from REST to GraphQL"
+    prompt: |
+      Evaluate whether migrating from REST to GraphQL is justified.
+
+      Current state: [describe existing REST API]
+
+      Evaluate:
+      - Are multiple clients fetching different data shapes from same endpoints?
+      - Are clients making multiple round-trips to assemble one view?
+      - Is over-fetching causing performance issues on mobile?
+      - Does the team have GraphQL experience?
+
+      If yes to most: GraphQL may be justified.
+      If no: REST is likely sufficient — optimize with sparse fieldsets or BFF pattern.
+
+      Migration approach: Run GraphQL alongside REST during transition.
+      Use GraphQL as a gateway that calls existing REST services internally.
+
+  - id: api_gateway_design
+    scenario: architecture
+    description: "Design an API gateway for microservices"
+    prompt: |
+      Design an API gateway for a microservices architecture.
+
+      Requirements:
+      - Route requests to correct backend service
+      - Aggregate responses from multiple services when needed
+      - Handle authentication and rate limiting at the edge
+      - Protocol translation (REST for external, gRPC for internal)
+
+      Gateway responsibilities:
+      - Authentication/authorization (verify tokens, not issue them)
+      - Rate limiting and throttling
+      - Request/response transformation
+      - Load balancing and circuit breaking
+      - API versioning routing
+      - Observability (logging, tracing, metrics)
+
+      Avoid: Business logic in gateway, tight coupling to backend schemas.
+
+anti_patterns:
+  - name: "Verb-based URLs"
+    description: >
+      Using action verbs in API URLs (e.g., /api/getUser, /api/createOrder).
+      This abandons REST's resource model and HTTP method semantics, losing
+      caching, idempotency, and standard HTTP tooling benefits.
+    fix: "Use noun-based resource URLs with HTTP methods for actions"
+    severity: medium
+    related_pattern: rest_api
+
+  - name: "200 OK for everything"
+    description: >
+      Returning HTTP 200 for all responses, including errors, with the actual
+      status in the response body. Breaks HTTP semantics, intermediary caching,
+      load balancer health checks, and client error handling.
+    fix: "Use appropriate HTTP status codes (4xx for client errors, 5xx for server errors)"
+    severity: high
+    related_pattern: rest_api
+
+  - name: "No query complexity limits on GraphQL"
+    description: >
+      Exposing a GraphQL API without depth limiting or query complexity scoring.
+      Attackers can send deeply nested queries that cause exponential backend load
+      (denial of service).
+    fix: "Implement query depth limits, complexity scoring, and request timeouts"
+    severity: critical
+    related_pattern: graphql_api
+
+  - name: "N+1 queries in GraphQL resolvers"
+    description: >
+      Each nested field resolver makes a separate database query. For a list of
+      N parent items, this results in 1 + N queries, degrading performance
+      dramatically as list size grows.
+    fix: "Use DataLoader pattern to batch and deduplicate backend calls per request"
+    severity: high
+    related_pattern: graphql_api
+
+  - name: "Chatty microservice APIs"
+    description: >
+      Multiple fine-grained API calls needed to assemble a single view.
+      Each call adds network latency, authentication overhead, and failure
+      points. Common when REST resources are too granular.
+    fix: "Use BFF (Backend for Frontend) pattern, GraphQL aggregation, or composite APIs"
+    severity: medium
+    related_pattern: rest_api
+
+checklist:
+  - id: API-01
+    category: design
+    description: "API paradigm chosen based on context (REST/GraphQL/gRPC/WebSocket)"
+    severity: high
+    verified_by: rest_api
+
+  - id: API-02
+    category: design
+    description: "API contract defined (OpenAPI spec, GraphQL schema, or .proto files)"
+    severity: critical
+    verified_by: rest_api
+
+  - id: API-03
+    category: security
+    description: "Authentication enforced on all non-public endpoints"
+    severity: critical
+    verified_by: rest_api
+
+  - id: API-04
+    category: security
+    description: "Rate limiting applied on all endpoints"
+    severity: high
+    verified_by: rest_api
+
+  - id: API-05
+    category: design
+    description: "Pagination implemented for list endpoints (cursor-based for large datasets)"
+    severity: high
+    verified_by: rest_api
+
+  - id: API-06
+    category: security
+    description: "Input validation on all request parameters and bodies"
+    severity: critical
+    verified_by: rest_api
+
+  - id: API-07
+    category: design
+    description: "Consistent error response format across all endpoints"
+    severity: high
+    verified_by: rest_api
+
+  - id: API-08
+    category: security
+    description: "CORS configured with explicit origin allowlist"
+    severity: high
+    verified_by: rest_api
+
+  - id: API-09
+    category: design
+    description: "API versioning strategy defined and implemented"
+    severity: high
+    verified_by: rest_api
+
+  - id: API-10
+    category: reliability
+    description: "Request size limits enforced on all endpoints"
+    severity: medium
+    verified_by: rest_api
+
+  - id: API-11
+    category: observability
+    description: "All API requests logged with method, path, status, latency, caller"
+    severity: high
+    verified_by: rest_api
+
+  - id: API-12
+    category: security
+    description: "GraphQL query complexity limits enforced (if using GraphQL)"
+    severity: critical
+    verified_by: graphql_api

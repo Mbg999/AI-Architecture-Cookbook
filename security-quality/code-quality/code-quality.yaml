@@ -1,0 +1,658 @@
+# =============================================================================
+# AI Architecture Cookbook — Code Quality & Maintainability
+# Schema: v3 | Domain: code-quality
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: code-quality
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Code quality standards, linting, static analysis, and maintainability
+    practices. Covers automated code quality enforcement, code review
+    standards, and architectural fitness functions.
+
+  tags:
+    - code-quality
+    - linting
+    - static-analysis
+    - maintainability
+    - readability
+    - refactoring
+
+  categories:
+    - security-quality
+
+  prerequisites: []
+
+  related_standards:
+    - id: testing-strategies
+      relationship: complementary
+      context: "Testable code is a key quality indicator; testing enforces quality"
+    - id: ci-cd
+      relationship: complementary
+      context: "Quality gates are enforced in CI/CD pipelines"
+    - id: logging-observability
+      relationship: complementary
+      context: "Observable code is easier to maintain and debug"
+
+context_inputs:
+  - name: language_ecosystem
+    type: enum
+    description: "Primary programming language ecosystem"
+    required: true
+    default: typescript
+    enum_values:
+      - typescript
+      - python
+      - java
+      - csharp
+      - go
+      - rust
+      - ruby
+      - kotlin
+      - multi_language
+
+  - name: codebase_maturity
+    type: enum
+    description: "Age and maturity of the codebase"
+    required: true
+    default: active
+    enum_values:
+      - greenfield
+      - active
+      - legacy
+      - migration
+
+  - name: team_experience
+    type: enum
+    description: "Average team experience level"
+    required: false
+    default: mixed
+    enum_values:
+      - junior
+      - mixed
+      - senior
+
+  - name: quality_priority
+    type: enum
+    description: "Primary quality focus"
+    required: false
+    default: balanced
+    enum_values:
+      - speed_first
+      - balanced
+      - quality_first
+
+decision_tree:
+  - id: legacy_improvement
+    priority: 1
+    if:
+      - codebase_maturity == legacy
+    then:
+      pattern: incremental_quality
+      standards:
+        - "Boy Scout Rule"
+      notes: >
+        Legacy codebases need incremental quality improvement. Don't attempt
+        a big-bang rewrite. Apply the Boy Scout Rule: leave code better than
+        you found it.
+    else:
+      pattern: automated_quality_gates
+      notes: "Active and greenfield projects should enforce quality gates from the start"
+
+  - id: greenfield_strict
+    priority: 2
+    if:
+      - codebase_maturity == greenfield
+      - quality_priority in [balanced, quality_first]
+    then:
+      pattern: automated_quality_gates
+      standards:
+        - "ESLint / Ruff / Checkstyle"
+      notes: >
+        Greenfield projects should establish strict quality gates from day one.
+        Much easier than retrofitting.
+
+  - id: multi_language_consistency
+    priority: 3
+    if:
+      - language_ecosystem == multi_language
+    then:
+      pattern: automated_quality_gates
+      standards:
+        - "SonarQube"
+      notes: >
+        Multi-language projects need a unified quality platform that
+        supports all languages with consistent rules.
+
+  - id: code_review_standards
+    priority: 4
+    if:
+      - team_experience in [junior, mixed]
+    then:
+      pattern: code_review_standards
+      standards:
+        - "Google Code Review Guidelines"
+      notes: >
+        Teams with junior members benefit from structured code review
+        standards and automated style enforcement.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: automated_quality_gates
+    description: "Automated quality gates catch issues before they reach code review"
+
+patterns:
+  - id: automated_quality_gates
+    name: "Automated Quality Gates"
+    description: >
+      Automated enforcement of code quality standards through linters, formatters,
+      static analysis, and CI/CD quality gates. Code that fails quality checks
+      cannot be merged. Removes subjective style debates from code reviews.
+    use_when:
+      - "Any project with more than one contributor"
+      - "Greenfield projects (establish early)"
+      - "Teams wanting consistent code style"
+      - "CI/CD pipelines need automated quality checks"
+    avoid_when:
+      - "Prototyping or hackathon code (temporary)"
+    tradeoffs:
+      pros:
+        - "Consistent style across entire codebase"
+        - "Catches bugs and anti-patterns automatically"
+        - "Removes style debates from code reviews (focus on logic)"
+        - "Fast feedback — linting runs in seconds"
+        - "Enforced — cannot be bypassed (CI gate)"
+      cons:
+        - "Initial setup effort for rule configuration"
+        - "False positives may require rule exceptions"
+        - "Too strict initially can frustrate teams"
+    implementation:
+      guidelines:
+        - "Choose language-appropriate linter (ESLint, Ruff, Checkstyle, golangci-lint)"
+        - "Use opinionated formatter (Prettier, Black, gofmt) — zero configuration style"
+        - "Run linter + formatter as pre-commit hooks (fast feedback)"
+        - "Run SAST tool in CI (SonarQube, Semgrep, CodeQL)"
+        - "Define quality gate: zero new issues in changed code"
+        - "Start with recommended rule set; customize only with team consensus"
+        - "Track quality metrics over time (technical debt, complexity, duplication)"
+      common_errors:
+        - error: "Allowing --no-verify to bypass pre-commit hooks"
+          impact: "Developers skip quality checks; issues found only in CI (slow feedback)"
+          fix: "CI is the enforcer, not pre-commit. CI gate must be mandatory; pre-commit is optional convenience"
+        - error: "Custom rule set from scratch instead of starting with recommended"
+          impact: "Weeks spent debating rules; inconsistent initial setup"
+          fix: "Start with recommended preset (eslint:recommended, ruff defaults); adjust over time"
+        - error: "Ignoring SAST findings as false positives without review"
+          impact: "Real security issues hidden among dismissed findings"
+          fix: "Triage all SAST findings; mark true false positives with documented reason"
+    maturity:
+      level: standard
+    standards:
+      - name: "ESLint"
+        type: tool
+        role: "JavaScript/TypeScript linting and static analysis"
+        status: recommended
+        reference: "https://eslint.org/"
+      - name: "Ruff"
+        type: tool
+        role: "Fast Python linter and formatter"
+        status: recommended
+        reference: "https://docs.astral.sh/ruff/"
+      - name: "SonarQube"
+        type: tool
+        role: "Multi-language static analysis platform"
+        status: recommended
+
+  - id: code_review_standards
+    name: "Structured Code Review"
+    description: >
+      Standardized code review process with clear criteria, review checklists,
+      and automated assistance. Reviews focus on correctness, design, and
+      knowledge sharing — style is handled by automation.
+    use_when:
+      - "Team has more than one developer"
+      - "Knowledge sharing is important (junior developers)"
+      - "Critical business logic changes"
+      - "Security-sensitive code paths"
+    avoid_when:
+      - "Solo developer (use automated checks instead)"
+      - "Trivial changes (auto-formatted, dependency bumps)"
+    tradeoffs:
+      pros:
+        - "Catches logic errors automated tools miss"
+        - "Knowledge sharing across team"
+        - "Mentoring opportunity for junior developers"
+        - "Multiple eyes on security-sensitive code"
+      cons:
+        - "Time-consuming if not structured"
+        - "Bottleneck if few reviewers available"
+        - "Can become rubber-stamping without standards"
+    implementation:
+      guidelines:
+        - "Review for correctness, design, and security — not style (automated)"
+        - "Keep PRs small (<400 lines changed) for effective review"
+        - "Require at least one approval; two for security-sensitive code"
+        - "Review within 24 hours to avoid blocking"
+        - "Use review checklists for consistency"
+        - "Author provides context: what changed, why, how to test"
+        - "Use AI-assisted review for initial triage (Copilot, CodeRabbit)"
+      common_errors:
+        - error: "Reviewing style instead of substance"
+          impact: "Bikeshedding on formatting; real bugs slip through"
+          fix: "Automate all style checks; review only logic, design, and security"
+        - error: "Large PRs (1000+ lines)"
+          impact: "Reviewers skim instead of reviewing; bugs missed"
+          fix: "Break into <400 line PRs; stack PRs for large features"
+    maturity:
+      level: standard
+    standards:
+      - name: "Google Code Review Guidelines"
+        type: practice
+        role: "Industry-recognized code review best practices"
+        status: recommended
+        reference: "https://google.github.io/eng-practices/review/"
+
+  - id: incremental_quality
+    name: "Incremental Quality Improvement (Boy Scout Rule)"
+    description: >
+      Improve legacy code quality incrementally: leave every file better than
+      you found it. Don't attempt big-bang rewrites. Add tests before refactoring.
+      Use the strangler fig pattern for large-scale modernization.
+    use_when:
+      - "Legacy codebase with low test coverage"
+      - "Team cannot stop feature development for quality improvements"
+      - "Codebase has significant technical debt"
+      - "Gradual migration to modern patterns"
+    avoid_when:
+      - "Greenfield project (do it right from the start)"
+      - "Codebase is being retired"
+    tradeoffs:
+      pros:
+        - "No big-bang risk — incremental improvement"
+        - "Feature development continues alongside quality work"
+        - "Team learns codebase through refactoring"
+        - "Measurable progress over time"
+      cons:
+        - "Slow improvement — months to see significant change"
+        - "Inconsistent codebase during transition"
+        - "Requires discipline to not skip the improvement step"
+    implementation:
+      guidelines:
+        - "Add tests before changing any code (characterization tests)"
+        - "Refactor only code you're already changing (Boy Scout Rule)"
+        - "Track quality metrics: complexity, coverage, duplication trends"
+        - "Use strangler fig for module-level rewrites"
+        - "Never introduce new code that doesn't meet current standards"
+        - "Create architecture decision records (ADRs) for quality improvements"
+      common_errors:
+        - error: "Big-bang rewrite of legacy system"
+          impact: "Project stalls, features delayed, new bugs introduced, original timeline blown"
+          fix: "Use strangler fig pattern: incrementally replace modules while maintaining functionality"
+        - error: "Refactoring without tests"
+          impact: "Refactoring introduces regressions with no safety net"
+          fix: "Write characterization tests first — capture current behavior before changing it"
+    maturity:
+      level: standard
+    standards:
+      - name: "Strangler Fig Pattern"
+        type: pattern
+        role: "Incremental system modernization strategy"
+        status: recommended
+        reference: "https://martinfowler.com/bliki/StranglerFigApplication.html"
+
+  - id: architectural_fitness
+    name: "Architectural Fitness Functions"
+    description: >
+      Automated tests that verify the codebase adheres to architectural
+      decisions: dependency rules, layer boundaries, naming conventions,
+      and modularity constraints. Prevent architectural erosion over time.
+    use_when:
+      - "Large codebases with defined architecture (layers, modules)"
+      - "Multiple teams contributing to the same codebase"
+      - "Architecture decisions need automated enforcement"
+      - "Preventing dependency cycles and layer violations"
+    avoid_when:
+      - "Small projects with simple architecture"
+      - "Architecture is still evolving rapidly"
+    tradeoffs:
+      pros:
+        - "Architectural decisions enforced automatically"
+        - "Prevents erosion and dependency creep"
+        - "Documentation-as-code for architecture rules"
+        - "Fast feedback in CI"
+      cons:
+        - "Requires tooling investment (ArchUnit, Dependency Cruiser)"
+        - "Rules must evolve with architecture"
+        - "False positives if rules are too strict"
+    implementation:
+      guidelines:
+        - "Define layer boundaries (presentation → application → domain → infrastructure)"
+        - "Enforce dependency direction: no reverse dependencies"
+        - "Detect and prevent circular dependencies"
+        - "Enforce naming conventions per layer"
+        - "Monitor module coupling and cohesion metrics"
+        - "Run fitness functions in CI alongside unit tests"
+      common_errors:
+        - error: "No enforcement of architecture decisions"
+          impact: "Architecture erodes over time; everything depends on everything"
+          fix: "Add ArchUnit/Dependency Cruiser tests for layer boundaries and dependency rules"
+        - error: "Fitness functions not maintained as architecture evolves"
+          impact: "Tests become obstacles to legitimate architectural changes"
+          fix: "Update fitness functions as part of architecture decision records (ADRs)"
+    maturity:
+      level: advanced
+    standards:
+      - name: "ArchUnit"
+        type: framework
+        role: "Architecture testing for Java/Kotlin"
+        status: recommended
+        reference: "https://www.archunit.org/"
+      - name: "Dependency Cruiser"
+        type: tool
+        role: "Dependency analysis and rule enforcement for JavaScript/TypeScript"
+        status: recommended
+        reference: "https://github.com/sverweij/dependency-cruiser"
+
+examples:
+  - id: quality_gate_ci
+    title: "CI Quality Gate — Multi-Stage"
+    context: "CI pipeline with progressive quality gates"
+    correct: |
+      # CI Pipeline — Quality Gates
+      stages:
+        lint:
+          - run: npm run lint          # ESLint — catches code issues
+          - run: npm run format:check  # Prettier — formatting check
+          # Fails fast — no point running tests if style is broken
+
+        test:
+          - run: npm run test:unit     # Unit tests (~30s)
+          - run: npm run test:integration  # Integration tests (~2min)
+          # Coverage gate
+          - run: npm run coverage:check --threshold=80  # Branch coverage
+
+        security:
+          - run: npm audit --audit-level=high  # Dependency vulnerabilities
+          - run: semgrep --config=auto .       # SAST analysis
+          - run: gitleaks detect              # Secret scanning
+
+        quality:
+          - run: sonar-scanner                # SonarQube analysis
+          # Quality gate: zero new bugs, zero new vulnerabilities
+          # Zero new code smells with severity >= major
+
+      # All stages must pass before merge is allowed
+      # Each stage runs only if previous passed (fail-fast)
+    incorrect: |
+      # WRONG: No quality gates, optional checks
+      stages:
+        build:
+          - run: npm run build
+        deploy:
+          - run: npm run deploy
+      # No linting — style debates in every PR
+      # No testing — bugs found in production
+      # No security scanning — vulnerabilities ship to prod
+      # No quality gate — anything can be merged
+    explanation: >
+      Progressive quality gates catch issues early and cheaply. Lint first (fast),
+      then test (medium), then security (slow), then quality analysis. The
+      incorrect pipeline has no quality enforcement — issues are found only
+      in production at 100x the cost.
+
+  - id: incremental_quality_example
+    title: "Incremental Quality — Legacy Code Improvement"
+    context: "Improving a legacy function during feature work"
+    correct: |
+      # Step 1: Write characterization test (capture current behavior)
+      def test_calculate_price_current_behavior():
+        # This test documents what the function currently does
+        assert calculate_price(100, "US", True) == 107.0  # 100 + 7% tax
+        assert calculate_price(100, "EU", True) == 120.0  # 100 + 20% VAT
+        assert calculate_price(100, "US", False) == 100.0  # No tax for exempt
+
+      # Step 2: Refactor with test safety net
+      # BEFORE: 200-line function with nested ifs
+      # AFTER: Extract tax strategy, separate concerns
+      class TaxCalculator:
+        def __init__(self, strategies):
+          self.strategies = strategies
+
+        def calculate(self, amount, region, taxable):
+          if not taxable:
+            return amount
+          strategy = self.strategies.get(region, self.default_strategy)
+          return strategy.apply(amount)
+
+      # Step 3: Verify characterization tests still pass
+      # Step 4: Add new tests for the new feature
+      # Step 5: Implement the new feature on clean code
+    incorrect: |
+      # WRONG: Refactoring without tests
+      # "I'll just clean up this function while I'm here"
+      # No tests exist — no way to verify behavior is preserved
+      # Refactoring introduces subtle bugs in tax calculation
+      # Bug discovered in production 2 weeks later
+      # Root cause: changed == to >= in a condition during "cleanup"
+    explanation: >
+      The Boy Scout Rule works safely when you first capture current behavior
+      with characterization tests, then refactor with confidence. Refactoring
+      without tests is gambling — behavior changes silently.
+
+security_hardening:
+  transport:
+    requirements:
+      - "SAST tools run in CI with results sent over secure channels"
+  data_protection:
+    requirements:
+      - "Secret scanning prevents credentials from being committed"
+  access_control:
+    requirements:
+      - "Quality gate bypass requires explicit approval from security team"
+  input_output:
+    requirements:
+      - "All SAST findings triaged within SLA (critical: 24h, high: 7d)"
+  secrets:
+    requirements:
+      - "Pre-commit hooks include secret detection (gitleaks, detect-secrets)"
+  monitoring:
+    requirements:
+      - "Quality metrics tracked over time (SonarQube dashboard)"
+      - "Alert on quality metric regression"
+
+compliance:
+  standards:
+    - name: "ISO 25010 Software Quality"
+      relevance: "Defines quality characteristics for software products"
+    - name: "OWASP Secure Coding Practices"
+      relevance: "Security-focused code quality requirements"
+      reference: "https://owasp.org/www-project-secure-coding-practices-quick-reference-guide/"
+
+  requirements_mapping:
+    - control: static_analysis
+      description: "All code passes static analysis with zero high/critical issues"
+      maps_to:
+        - "ISO 25010 — Maintainability"
+        - "OWASP Secure Coding"
+    - control: code_review
+      description: "All changes reviewed by at least one other developer"
+      maps_to:
+        - "ISO 25010 — Reliability"
+
+prompt_recipes:
+  - id: quality_greenfield
+    scenario: greenfield
+    description: "Set up code quality tooling for a new project"
+    prompt: |
+      Set up code quality tooling for a new {language} project.
+
+      Requirements:
+      - Linter with recommended rule set
+      - Formatter (opinionated, zero-config)
+      - Pre-commit hooks for fast feedback
+      - CI quality gate (lint + format + SAST)
+      - Code coverage reporting with branch coverage target
+      - Secret scanning (pre-commit and CI)
+
+      Show: configuration files, CI pipeline config, and pre-commit setup.
+
+  - id: quality_audit
+    scenario: audit
+    description: "Audit code quality practices"
+    prompt: |
+      Audit the code quality practices:
+
+      1. Is a linter configured with enforced rules?
+      2. Is a formatter enforced (no style debates in PRs)?
+      3. Are pre-commit hooks set up?
+      4. Does CI enforce quality gates (no bypass)?
+      5. Is SAST running (SonarQube, Semgrep, CodeQL)?
+      6. Is secret scanning active?
+      7. Are dependency vulnerabilities scanned?
+      8. Are code review standards documented?
+      9. Are PRs kept small (<400 lines)?
+      10. Are quality metrics tracked over time?
+
+  - id: quality_legacy
+    scenario: migration
+    description: "Introduce quality standards to a legacy codebase"
+    prompt: |
+      Introduce quality standards to a legacy {language} codebase.
+
+      Strategy:
+      1. Add linter with zero enforcement (report only) to baseline
+      2. Fix auto-fixable issues across codebase
+      3. Enable rules incrementally (start with errors, then warnings)
+      4. Add formatter — one large reformatting commit
+      5. Enable CI quality gate on NEW code only (don't block on legacy)
+      6. Track quality trend: new code must meet standards
+      7. Gradually improve legacy code via Boy Scout Rule
+
+  - id: quality_refactoring
+    scenario: maintenance
+    description: "Plan a safe refactoring of complex code"
+    prompt: |
+      Plan a safe refactoring for complex code.
+
+      Steps:
+      1. Write characterization tests (capture current behavior)
+      2. Identify code smells (long methods, deep nesting, duplication)
+      3. Plan refactoring steps (each step preserves behavior)
+      4. Execute refactoring with test verification after each step
+      5. Run full test suite after refactoring
+      6. Measure: complexity reduced, coverage maintained or improved
+
+anti_patterns:
+  - name: "No Linting or Formatting Standards"
+    description: >
+      No automated code style enforcement. Every PR becomes a style debate.
+      Codebase has inconsistent formatting, naming conventions, and patterns.
+      Code reviews waste time on style instead of logic.
+    fix: "Add linter + formatter with CI enforcement; use opinionated defaults"
+    severity: high
+    related_pattern: automated_quality_gates
+
+  - name: "Bypassing Quality Gates"
+    description: >
+      Using --no-verify, force-merging, or admin override to bypass quality
+      gates regularly. What was meant to be an emergency escape becomes
+      the normal workflow.
+    fix: "Remove admin bypass for quality gates; emergency exceptions require documented approval"
+    severity: high
+    related_pattern: automated_quality_gates
+
+  - name: "Big-Bang Rewrite"
+    description: >
+      Attempting to rewrite an entire legacy system from scratch. The rewrite
+      takes longer than expected, features are frozen on the old system, and
+      the new system ships with its own bugs. Most big-bang rewrites fail.
+    fix: "Use strangler fig pattern: incrementally replace modules while maintaining functionality"
+    severity: high
+    related_pattern: incremental_quality
+
+  - name: "Premature Abstraction"
+    description: >
+      Creating abstractions, interfaces, and patterns before they're needed.
+      Results in over-engineered code that's harder to understand and change.
+      Abstractions should emerge from duplication, not anticipation.
+    fix: "Follow Rule of Three: abstract only after seeing the same pattern three times"
+    severity: medium
+    related_pattern: code_review_standards
+
+checklist:
+  - id: CQ-01
+    category: maintainability
+    description: "Linter configured with enforced rules for primary language"
+    severity: high
+    verified_by: automated_quality_gates
+
+  - id: CQ-02
+    category: maintainability
+    description: "Formatter enforced — zero style debates in code reviews"
+    severity: high
+    verified_by: automated_quality_gates
+
+  - id: CQ-03
+    category: security
+    description: "SAST tool running in CI (SonarQube, Semgrep, or CodeQL)"
+    severity: high
+    verified_by: automated_quality_gates
+
+  - id: CQ-04
+    category: security
+    description: "Secret scanning in pre-commit hooks and CI"
+    severity: critical
+    verified_by: automated_quality_gates
+
+  - id: CQ-05
+    category: security
+    description: "Dependency vulnerability scanning in CI"
+    severity: high
+    verified_by: automated_quality_gates
+
+  - id: CQ-06
+    category: maintainability
+    description: "Code review required before merge (min 1 approval)"
+    severity: high
+    verified_by: code_review_standards
+
+  - id: CQ-07
+    category: maintainability
+    description: "PRs kept small (target <400 lines changed)"
+    severity: medium
+    verified_by: code_review_standards
+
+  - id: CQ-08
+    category: maintainability
+    description: "Quality metrics tracked over time (complexity, coverage, duplication)"
+    severity: medium
+    verified_by: automated_quality_gates
+
+  - id: CQ-09
+    category: maintainability
+    description: "Architecture fitness functions enforce dependency rules"
+    severity: medium
+    verified_by: architectural_fitness
+
+  - id: CQ-10
+    category: correctness
+    description: "No quality gate bypass without documented approval"
+    severity: high
+    verified_by: automated_quality_gates
+
+  - id: CQ-11
+    category: maintainability
+    description: "Legacy code improved incrementally (Boy Scout Rule)"
+    severity: medium
+    verified_by: incremental_quality
+
+  - id: CQ-12
+    category: maintainability
+    description: "Technical debt tracked and prioritized in backlog"
+    severity: medium
+    verified_by: incremental_quality

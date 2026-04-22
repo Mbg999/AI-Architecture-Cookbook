@@ -1,0 +1,662 @@
+# =============================================================================
+# AI Architecture Cookbook — Layered Architecture
+# Schema: v3 | Domain: layered-architecture
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: layered-architecture
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Layered architecture patterns that separate concerns into horizontal or
+    dependency-inverted layers. Covers traditional N-tier, clean architecture,
+    hexagonal (ports & adapters), and onion architecture.
+
+  tags:
+    - architecture
+    - layers
+    - clean-architecture
+    - hexagonal
+    - onion
+    - ports-adapters
+    - separation-of-concerns
+
+  categories:
+    - application-architecture
+
+  prerequisites: []
+
+  related_standards:
+    - id: dependency-injection
+      relationship: complementary
+      context: "DI is the mechanism that wires layers together while respecting dependency rules"
+    - id: repository-pattern
+      relationship: complementary
+      context: "Repository pattern implements the persistence port in hexagonal / clean architecture"
+    - id: domain-driven-design
+      relationship: complementary
+      context: "DDD tactical patterns live in the domain layer of clean / hexagonal architectures"
+
+context_inputs:
+  - name: team_size
+    type: enum
+    description: "Size of the development team maintaining the codebase"
+    required: true
+    default: medium
+    enum_values:
+      - small
+      - medium
+      - large
+
+  - name: domain_complexity
+    type: enum
+    description: "Complexity of business rules and domain logic"
+    required: true
+    default: moderate
+    enum_values:
+      - simple
+      - moderate
+      - complex
+
+  - name: testability_priority
+    type: enum
+    description: "How critical is unit-testability of business logic in isolation?"
+    required: true
+    default: high
+    enum_values:
+      - low
+      - medium
+      - high
+
+  - name: framework_coupling_tolerance
+    type: enum
+    description: "How acceptable is tight coupling to a specific framework?"
+    required: true
+    default: low
+    enum_values:
+      - low
+      - medium
+      - high
+
+  - name: expected_lifespan
+    type: enum
+    description: "Expected lifespan of the application in years"
+    required: true
+    default: long
+    enum_values:
+      - short
+      - medium
+      - long
+
+decision_tree:
+  - id: complex_domain_long_lived
+    priority: 1
+    if:
+      - domain_complexity == complex
+      - expected_lifespan == long
+    then:
+      pattern: clean_architecture
+      standards:
+        - "Uncle Bob's Clean Architecture"
+      notes: >
+        Complex domains with long lifespans benefit most from strict dependency
+        inversion; the domain layer remains framework-agnostic for decades.
+    else:
+      pattern: hexagonal_architecture
+      notes: "Hexagonal provides similar isolation with slightly less ceremony"
+
+  - id: high_testability_low_coupling
+    priority: 2
+    if:
+      - testability_priority == high
+      - framework_coupling_tolerance == low
+    then:
+      pattern: hexagonal_architecture
+      standards:
+        - "Alistair Cockburn Ports & Adapters"
+      notes: >
+        Hexagonal architecture naturally produces highly testable code through
+        port interfaces; adapters are swapped in tests.
+
+  - id: moderate_domain_medium_team
+    priority: 3
+    if:
+      - domain_complexity == moderate
+      - team_size in [medium, large]
+    then:
+      pattern: onion_architecture
+      standards:
+        - "Jeffrey Palermo Onion Architecture"
+      notes: >
+        Onion architecture offers good layer separation without the full
+        ceremony of clean architecture; suitable for most enterprise apps.
+
+  - id: simple_or_short_lived
+    priority: 4
+    if:
+      - domain_complexity == simple
+    then:
+      pattern: traditional_layered
+      standards:
+        - "N-Tier Architecture"
+      notes: >
+        For simple domains or short-lived projects, traditional layered
+        architecture provides sufficient separation with minimal overhead.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: hexagonal_architecture
+    description: "Hexagonal is the safest default — good testability, moderate ceremony"
+
+patterns:
+  - id: clean_architecture
+    name: "Clean Architecture"
+    description: >
+      Concentric ring architecture where dependencies point inward. The innermost
+      ring (entities) has zero external dependencies. Use cases orchestrate
+      entities. Interface adapters translate between use cases and external
+      agencies. Frameworks and drivers live in the outermost ring.
+    use_when:
+      - "Complex business domain with many rules and policies"
+      - "Application expected to outlive its current framework"
+      - "Multiple delivery mechanisms (web, CLI, API, events)"
+      - "Regulatory requirements demand auditable business logic"
+    avoid_when:
+      - "Simple CRUD application with little business logic"
+      - "Prototype or short-lived project"
+      - "Very small team where ceremony adds overhead"
+    tradeoffs:
+      pros:
+        - "Business logic is framework-agnostic and testable in isolation"
+        - "Easy to swap infrastructure (DB, messaging, UI) without touching domain"
+        - "Clear boundaries make code reviews and onboarding easier"
+        - "Naturally supports multiple delivery mechanisms"
+      cons:
+        - "More files, interfaces, and indirection than simpler approaches"
+        - "Mapping between layers adds boilerplate"
+        - "Over-engineering risk for simple domains"
+        - "Team must understand dependency rule strictly"
+    implementation:
+      guidelines:
+        - "Entities contain enterprise-wide business rules — no framework imports"
+        - "Use cases contain application-specific business rules — one use case per class"
+        - "Define port interfaces in the domain layer, implement adapters outside"
+        - "Data crosses boundaries via simple DTOs or value objects — never entities"
+        - "Dependency injection wires adapters to ports at the composition root"
+      common_errors:
+        - error: "Entities importing framework or ORM annotations"
+          impact: "Domain logic becomes coupled to persistence framework"
+          fix: "Keep entities as plain objects; map to ORM models in the adapter layer"
+        - error: "Use cases returning ORM entities to the controller"
+          impact: "Leaks persistence details into the delivery layer"
+          fix: "Map entities to response DTOs at the use case boundary"
+        - error: "Skipping the use case layer for simple operations"
+          impact: "Business rules scatter into controllers; inconsistent behavior"
+          fix: "Even trivial operations should pass through a use case to centralize rules"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Clean Architecture (Robert C. Martin)"
+        type: pattern
+        role: "Primary architectural pattern defining the dependency rule"
+        status: recommended
+        reference: "https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html"
+
+  - id: hexagonal_architecture
+    name: "Hexagonal Architecture (Ports & Adapters)"
+    description: >
+      Application core defines ports (interfaces) that external adapters implement.
+      Primary/driving ports are called by the outside (e.g., REST controller),
+      secondary/driven ports are called by the core (e.g., database, messaging).
+    use_when:
+      - "High testability requirement — tests swap real adapters for fakes"
+      - "Multiple integration points with external systems"
+      - "Team wants framework independence without full clean architecture ceremony"
+      - "Service will be consumed via multiple protocols"
+    avoid_when:
+      - "Application has very few external dependencies"
+      - "Team is unfamiliar with interface-based design"
+    tradeoffs:
+      pros:
+        - "Excellent testability — all external dependencies are behind ports"
+        - "Clear separation between what the app does and how it connects"
+        - "Adapters can be developed and tested independently"
+        - "Naturally supports test doubles (fakes, stubs, mocks)"
+      cons:
+        - "Port/adapter ceremony for every external dependency"
+        - "Can feel over-engineered for apps with few integrations"
+        - "Requires consistent discipline to keep ports in the right layer"
+    implementation:
+      guidelines:
+        - "Define driving ports as interfaces the application exposes (e.g., OrderService)"
+        - "Define driven ports as interfaces the application requires (e.g., OrderRepository)"
+        - "Adapters implement ports — one adapter per external system per port"
+        - "Application core never imports adapter code — only port interfaces"
+        - "Use dependency injection to wire adapters at startup"
+      common_errors:
+        - error: "Putting business logic in adapters"
+          impact: "Logic is duplicated across adapters or untestable"
+          fix: "Adapters should only translate between external protocols and port contracts"
+        - error: "Defining ports with framework-specific types"
+          impact: "Port is no longer framework-agnostic"
+          fix: "Use plain language types in port signatures; adapters handle conversion"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Hexagonal Architecture (Alistair Cockburn)"
+        type: pattern
+        role: "Primary pattern defining ports and adapters"
+        status: recommended
+        reference: "https://alistair.cockburn.us/hexagonal-architecture/"
+
+  - id: onion_architecture
+    name: "Onion Architecture"
+    description: >
+      Similar to clean architecture but with concentric layers named Domain Model
+      (center), Domain Services, Application Services, and Infrastructure (outer).
+      All dependencies point inward. Infrastructure is always the outermost layer.
+    use_when:
+      - "Enterprise application with moderate-to-complex domain"
+      - "Team prefers layered naming conventions over ports/adapters vocabulary"
+      - "Gradual migration from traditional N-tier to dependency-inverted design"
+    avoid_when:
+      - "Very simple applications where three layers suffice"
+      - "Team is already comfortable with hexagonal or clean architecture"
+    tradeoffs:
+      pros:
+        - "Clear layering model familiar to enterprise developers"
+        - "Infrastructure layer keeps all framework code contained"
+        - "Good balance between purity and pragmatism"
+      cons:
+        - "Less explicit about port/adapter distinction than hexagonal"
+        - "Layer definitions can blur if not enforced by tooling"
+        - "Similar learning curve to clean architecture"
+    implementation:
+      guidelines:
+        - "Domain Model layer contains entities and value objects — zero dependencies"
+        - "Domain Services layer contains domain logic that spans multiple entities"
+        - "Application Services orchestrate use cases and coordinate domain services"
+        - "Infrastructure layer implements persistence, messaging, and framework concerns"
+        - "Use interfaces in inner layers; implementations in Infrastructure"
+      common_errors:
+        - error: "Application Services directly accessing database"
+          impact: "Bypasses domain layer; business rules not enforced"
+          fix: "Application Services call Domain Services, which use repository interfaces"
+        - error: "Placing validation in Infrastructure layer"
+          impact: "Business rules leak out of domain; inconsistent validation"
+          fix: "Validation belongs in Domain Model or Domain Services"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Onion Architecture (Jeffrey Palermo)"
+        type: pattern
+        role: "Layered dependency-inversion pattern"
+        status: recommended
+        reference: "https://jeffreypalermo.com/2008/07/the-onion-architecture-part-1/"
+
+  - id: traditional_layered
+    name: "Traditional Layered (N-Tier) Architecture"
+    description: >
+      Classic horizontal layering: Presentation → Business Logic → Data Access.
+      Each layer can only call the layer directly below it. Simple, well-understood,
+      suitable for applications with straightforward business rules.
+    use_when:
+      - "Simple CRUD applications with minimal business logic"
+      - "Small team or solo developer needs fast delivery"
+      - "Short-lived application or prototype"
+      - "Framework provides natural layering (e.g., MVC)"
+    avoid_when:
+      - "Complex domain logic that needs isolation from infrastructure"
+      - "Application will outlive its current framework"
+      - "Multiple integration points requiring testable boundaries"
+    tradeoffs:
+      pros:
+        - "Simple to understand and implement"
+        - "Minimal boilerplate and ceremony"
+        - "Maps directly to most web framework conventions"
+        - "Low learning curve for junior developers"
+      cons:
+        - "Business logic tends to couple to data access patterns"
+        - "Hard to test business rules without infrastructure"
+        - "Difficult to swap frameworks or databases"
+        - "Tends to degrade into big ball of mud over time"
+    implementation:
+      guidelines:
+        - "Presentation layer handles HTTP, rendering, and input validation"
+        - "Business layer contains all business rules and orchestration"
+        - "Data Access layer encapsulates all persistence operations"
+        - "Never skip layers — presentation must not call data access directly"
+        - "Use interfaces between layers even in simple designs for future flexibility"
+      common_errors:
+        - error: "Controllers containing business logic"
+          impact: "Logic duplication; cannot reuse across delivery mechanisms"
+          fix: "Extract all business rules into the business layer"
+        - error: "Business layer returning ORM entities to presentation"
+          impact: "Presentation couples to database schema"
+          fix: "Map to DTOs or view models at the layer boundary"
+    maturity:
+      level: standard
+    standards:
+      - name: "N-Tier Architecture"
+        type: pattern
+        role: "Classic horizontal layering approach"
+        status: recommended
+
+examples:
+  - id: clean_arch_example
+    title: "Clean Architecture — Use Case with Port and Adapter"
+    context: "Implementing a CreateOrder use case with dependency-inverted persistence"
+    correct: |
+      # Domain entity (innermost ring — no framework imports)
+      class Order:
+          def __init__(self, customer_id, items):
+              self.customer_id = customer_id
+              self.items = items
+              self.total = sum(item.price for item in items)
+              self.validate()
+
+          def validate(self):
+              if not self.items:
+                  raise DomainError("Order must have at least one item")
+
+      # Port (interface in domain layer)
+      class OrderRepository(Protocol):
+          def save(self, order: Order) -> str: ...
+
+      # Use case (application layer — depends only on domain)
+      class CreateOrder:
+          def __init__(self, repo: OrderRepository):
+              self.repo = repo
+
+          def execute(self, customer_id, items) -> str:
+              order = Order(customer_id, items)
+              return self.repo.save(order)
+
+      # Adapter (infrastructure — implements the port)
+      class SqlOrderRepository(OrderRepository):
+          def save(self, order: Order) -> str:
+              record = self.mapper.to_record(order)
+              self.db.insert("orders", record)
+              return record.id
+    incorrect: |
+      # WRONG: Use case directly uses ORM and framework
+      class CreateOrderHandler:
+          def handle(self, request):
+              order = OrderModel(
+                  customer_id=request.POST["customer_id"],
+                  items=json.loads(request.POST["items"])
+              )
+              order.save()  # Direct ORM call in use case
+              send_email(order.customer.email)  # Side effect in use case
+              return JsonResponse({"id": order.pk})  # Framework type in use case
+    explanation: >
+      The correct version keeps the domain entity and use case free of framework
+      dependencies. The repository port is defined as an interface in the domain;
+      the SQL implementation lives in infrastructure. This allows testing the use
+      case with a fake repository and swapping persistence without touching business logic.
+
+  - id: hexagonal_ports_example
+    title: "Hexagonal Architecture — Driving and Driven Ports"
+    context: "Showing the distinction between driving (primary) and driven (secondary) ports"
+    correct: |
+      # Driving port — what the outside calls into the application
+      class OrderService(Protocol):
+          def place_order(self, cmd: PlaceOrderCommand) -> OrderId: ...
+
+      # Driven port — what the application calls out to
+      class PaymentGateway(Protocol):
+          def charge(self, amount: Money, method: PaymentMethod) -> PaymentResult: ...
+
+      # Application core implements driving port, depends on driven port
+      class OrderApplicationService(OrderService):
+          def __init__(self, payments: PaymentGateway, orders: OrderRepository):
+              self.payments = payments
+              self.orders = orders
+
+          def place_order(self, cmd: PlaceOrderCommand) -> OrderId:
+              order = Order.create(cmd.customer_id, cmd.items)
+              result = self.payments.charge(order.total, cmd.payment_method)
+              if not result.success:
+                  raise PaymentFailed(result.reason)
+              return self.orders.save(order)
+
+      # Driving adapter (REST controller calls the driving port)
+      class OrderController:
+          def __init__(self, service: OrderService):
+              self.service = service
+
+          def post(self, request):
+              cmd = PlaceOrderCommand.from_request(request)
+              order_id = self.service.place_order(cmd)
+              return Response({"id": order_id})
+
+      # Driven adapter (implements the driven port)
+      class StripePaymentGateway(PaymentGateway):
+          def charge(self, amount, method):
+              return self.stripe_client.create_charge(amount, method)
+    incorrect: |
+      # WRONG: Application core directly calls Stripe SDK
+      class OrderService:
+          def place_order(self, request):
+              stripe.Charge.create(  # Direct vendor SDK call in core
+                  amount=request.total,
+                  source=request.token
+              )
+              db.session.add(Order(...))  # Direct DB call in core
+              db.session.commit()
+    explanation: >
+      The correct version defines explicit driving and driven ports. The application
+      core depends only on port interfaces. Adapters handle Stripe SDK and database
+      details. Tests can substitute fakes for both payment gateway and repository
+      without touching the application logic.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Enforce HTTPS for all inter-layer communication when layers are distributed"
+      - "Use mTLS between service layers in microservice deployments"
+  data_protection:
+    requirements:
+      - "Domain entities must not expose sensitive fields through public DTOs without explicit mapping"
+      - "Apply field-level access control when mapping domain objects to response DTOs"
+  access_control:
+    requirements:
+      - "Authorization checks belong in the application/use-case layer, not in adapters"
+      - "Domain layer may enforce domain-level invariants (e.g., ownership checks)"
+  input_output:
+    requirements:
+      - "Input validation at the adapter/controller boundary before reaching domain"
+      - "Output encoding applied in the presentation adapter, not in domain"
+  secrets:
+    requirements:
+      - "Secrets injected via dependency injection at the composition root, never hardcoded in any layer"
+      - "Infrastructure adapters read secrets from vault/environment; domain layer is unaware"
+  monitoring:
+    requirements:
+      - "Cross-cutting logging via middleware or decorator — not scattered across layers"
+      - "Structured logs include layer context for easy filtering"
+
+compliance:
+  standards:
+    - name: "ISO/IEC 25010"
+      relevance: "Layered architecture directly supports maintainability and modularity quality attributes"
+    - name: "OWASP Secure Design Principles"
+      relevance: "Separation of concerns and defense-in-depth align with layered boundaries"
+
+  requirements_mapping:
+    - control: layer_dependency_rule
+      description: "Dependencies must point inward (or downward in N-tier); outer layers never imported by inner"
+      maps_to:
+        - "ISO/IEC 25010 — Modularity"
+    - control: boundary_validation
+      description: "Input validation occurs at each layer boundary crossing"
+      maps_to:
+        - "OWASP — Input Validation"
+
+prompt_recipes:
+  - id: layer_greenfield
+    scenario: greenfield
+    description: "Generate a new project with clean architecture folder structure"
+    prompt: |
+      Create a {language} project using Clean Architecture. Set up the following layers:
+      - Domain: entities, value objects, domain services, repository interfaces
+      - Application: use cases (one per file), DTOs, port interfaces
+      - Infrastructure: database adapters, external service adapters, framework config
+      - Presentation: controllers/handlers, request/response mapping
+
+      Apply the dependency rule: inner layers MUST NOT import from outer layers.
+      Use dependency injection to wire adapters to ports.
+      Include a composition root that bootstraps all dependencies.
+
+  - id: layer_migration
+    scenario: migration
+    description: "Migrate an existing N-tier application to hexagonal architecture"
+    prompt: |
+      I have an existing {language} application using traditional N-tier (controller → service → repository).
+      Migrate it to hexagonal architecture:
+
+      1. Identify current business logic in service classes
+      2. Extract port interfaces for each external dependency (DB, APIs, messaging)
+      3. Move business logic into an application core that depends only on ports
+      4. Create adapter implementations for each port
+      5. Set up a composition root to wire adapters
+
+      Preserve existing behavior. Add tests that use fake adapters to verify
+      business logic independently of infrastructure.
+
+  - id: layer_audit
+    scenario: audit
+    description: "Audit an existing codebase for layering violations"
+    prompt: |
+      Audit this {language} codebase for layered architecture violations:
+
+      1. Check dependency direction: do inner layers import from outer layers?
+      2. Find business logic in controllers or data access layers
+      3. Identify domain entities with framework annotations (ORM, serialization)
+      4. Find direct database/API calls in business logic (should use ports)
+      5. Check for missing DTOs at layer boundaries (entity leaking)
+
+      For each violation, classify severity (high/medium/low) and provide a fix.
+
+  - id: layer_testing
+    scenario: architecture
+    description: "Generate architecture fitness tests that enforce layer boundaries"
+    prompt: |
+      Generate architecture fitness tests for this {language} project to enforce:
+
+      1. Domain layer has zero imports from infrastructure or presentation
+      2. Application layer imports only from domain
+      3. Infrastructure layer does not import from presentation
+      4. All ports defined in domain/application are implemented in infrastructure
+      5. No circular dependencies between modules
+
+      Use {testing_framework} and any architecture testing library available for {language}.
+
+anti_patterns:
+  - name: "Big Ball of Mud"
+    description: >
+      No discernible architecture — any module can call any other module.
+      Business logic, persistence, and presentation interleave freely.
+    fix: "Introduce explicit layers with enforced dependency rules and interface boundaries"
+    severity: critical
+    related_pattern: clean_architecture
+
+  - name: "Leaky Abstraction Layers"
+    description: >
+      Layer boundaries exist on paper but domain entities carry ORM annotations,
+      framework types, or serialization concerns — breaking isolation.
+    fix: "Use plain domain objects and map to/from infrastructure types at boundaries"
+    severity: high
+    related_pattern: hexagonal_architecture
+
+  - name: "Anemic Domain Model"
+    description: >
+      Domain entities are data-only objects with no behavior. All business logic
+      resides in service classes, defeating the purpose of a rich domain layer.
+    fix: "Move behavior into entities and value objects; services orchestrate, not compute"
+    severity: medium
+    related_pattern: onion_architecture
+
+  - name: "Layer Skipping"
+    description: >
+      Presentation directly calls data access, bypassing the business layer.
+      Common shortcut that scatters business rules across the codebase.
+    fix: "Enforce strict layer-only-calls-next-layer rule; use architecture tests"
+    severity: high
+    related_pattern: traditional_layered
+
+checklist:
+  - id: LA-01
+    category: design
+    description: "Architecture style explicitly chosen and documented (clean, hexagonal, onion, N-tier)"
+    severity: high
+    verified_by: clean_architecture
+
+  - id: LA-02
+    category: design
+    description: "Dependency rule enforced — inner layers never import from outer layers"
+    severity: critical
+    verified_by: clean_architecture
+
+  - id: LA-03
+    category: maintainability
+    description: "Port interfaces defined for every external dependency"
+    severity: high
+    verified_by: hexagonal_architecture
+
+  - id: LA-04
+    category: correctness
+    description: "Domain entities free of framework annotations and infrastructure imports"
+    severity: high
+    verified_by: clean_architecture
+
+  - id: LA-05
+    category: maintainability
+    description: "DTOs used at every layer boundary — entities never leak across layers"
+    severity: medium
+    verified_by: onion_architecture
+
+  - id: LA-06
+    category: reliability
+    description: "Composition root wires all dependencies; no hidden service-locator calls"
+    severity: high
+    verified_by: hexagonal_architecture
+
+  - id: LA-07
+    category: security
+    description: "Authorization enforced in application/use-case layer, not in adapters"
+    severity: high
+    verified_by: clean_architecture
+
+  - id: LA-08
+    category: correctness
+    description: "Input validation occurs at adapter boundary before reaching domain"
+    severity: high
+    verified_by: hexagonal_architecture
+
+  - id: LA-09
+    category: maintainability
+    description: "Architecture fitness tests enforce layer boundaries in CI"
+    severity: medium
+    verified_by: traditional_layered
+
+  - id: LA-10
+    category: observability
+    description: "Cross-cutting concerns (logging, metrics) applied via middleware, not per-layer duplication"
+    severity: medium
+    verified_by: onion_architecture
+
+  - id: LA-11
+    category: design
+    description: "Layer responsibilities documented and understood by the team"
+    severity: medium
+    verified_by: traditional_layered
+
+  - id: LA-12
+    category: compliance
+    description: "Layering approach aligns with organizational architecture standards"
+    severity: low
+    verified_by: clean_architecture

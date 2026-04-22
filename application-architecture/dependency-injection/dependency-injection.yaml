@@ -1,0 +1,562 @@
+# =============================================================================
+# AI Architecture Cookbook — Dependency Injection
+# Schema: v3 | Domain: dependency-injection
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: dependency-injection
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Dependency injection and inversion of control patterns for building testable,
+    modular applications. Covers constructor injection, composition root,
+    service locator (anti-pattern recognition), and DI container usage.
+
+  tags:
+    - di
+    - ioc
+    - dependency-injection
+    - composition-root
+    - service-locator
+    - testability
+    - modularity
+
+  categories:
+    - application-architecture
+
+  prerequisites: []
+
+  related_standards:
+    - id: layered-architecture
+      relationship: complementary
+      context: "DI is the mechanism that wires layers together respecting the dependency rule"
+    - id: design-patterns
+      relationship: complementary
+      context: "DI implements the Dependency Inversion Principle from SOLID"
+    - id: repository-pattern
+      relationship: complementary
+      context: "Repositories are typically injected into services via DI"
+
+context_inputs:
+  - name: language_ecosystem
+    type: enum
+    description: "Primary programming language — determines DI tooling options"
+    required: true
+    default: general
+    enum_values:
+      - java_kotlin
+      - dotnet
+      - python
+      - typescript_javascript
+      - go
+      - general
+
+  - name: application_size
+    type: enum
+    description: "Size and complexity of the application"
+    required: true
+    default: medium
+    enum_values:
+      - small
+      - medium
+      - large
+
+  - name: testability_priority
+    type: enum
+    description: "How critical is unit testing with isolated dependencies?"
+    required: true
+    default: high
+    enum_values:
+      - low
+      - medium
+      - high
+
+  - name: framework_opinion
+    type: enum
+    description: "Does the framework provide a built-in DI container?"
+    required: true
+    default: framework_provided
+    enum_values:
+      - no_framework
+      - framework_provided
+      - custom_needed
+
+decision_tree:
+  - id: large_app_framework_di
+    priority: 1
+    if:
+      - application_size == large
+      - framework_opinion == framework_provided
+    then:
+      pattern: constructor_injection
+      standards:
+        - "Dependency Injection Principle"
+      notes: >
+        Large applications with framework DI should use constructor injection
+        as the primary pattern — maximum explicitness and framework support.
+
+  - id: high_testability
+    priority: 2
+    if:
+      - testability_priority == high
+    then:
+      pattern: constructor_injection
+      standards:
+        - "Dependency Inversion Principle"
+      notes: >
+        Constructor injection makes dependencies explicit and easily
+        substitutable in tests.
+
+  - id: small_no_framework
+    priority: 3
+    if:
+      - application_size == small
+      - framework_opinion == no_framework
+    then:
+      pattern: pure_di
+      standards:
+        - "Pure DI / Poor Man's DI"
+      notes: >
+        Small applications without a framework don't need a DI container —
+        manual wiring at the composition root is sufficient and simpler.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: constructor_injection
+    description: "Constructor injection is the universal default — explicit, testable, framework-agnostic"
+
+patterns:
+  - id: constructor_injection
+    name: "Constructor Injection"
+    description: >
+      Dependencies are provided through the constructor at object creation time.
+      The class declares its dependencies explicitly, and the DI container (or
+      manual wiring) provides concrete implementations. The most recommended
+      DI pattern across all languages and frameworks.
+    use_when:
+      - "Default choice for all dependency injection"
+      - "Dependencies are required for the object to function"
+      - "Maximum explicitness about what a class needs"
+      - "Framework or container supports constructor injection"
+    avoid_when:
+      - "Circular dependencies exist (refactor the design instead)"
+      - "Object must be created by a third-party library that doesn't support DI"
+    tradeoffs:
+      pros:
+        - "Dependencies are explicit — visible in the constructor signature"
+        - "Object is fully initialized after construction — no partial initialization"
+        - "Easy to substitute in tests — pass fakes/mocks via constructor"
+        - "Immutable dependencies — set once, never changed"
+        - "Supported by every DI container across all major languages"
+      cons:
+        - "Constructor parameter lists can grow large (signals class does too much)"
+        - "Framework must support constructor injection or use composition root"
+    implementation:
+      guidelines:
+        - "Accept interfaces (abstractions), not concrete implementations"
+        - "All required dependencies in the constructor — no optional deps as constructor params"
+        - "Use method injection for optional or context-specific dependencies"
+        - "If constructor has >4 dependencies, the class likely violates SRP — refactor"
+        - "Never call virtual methods in the constructor"
+      common_errors:
+        - error: "Accepting concrete classes instead of interfaces"
+          impact: "Cannot substitute implementations in tests or swap at runtime"
+          fix: "Define an interface for each dependency; accept the interface in the constructor"
+        - error: "Constructor doing work (I/O, complex logic)"
+          impact: "Object creation has side effects; difficult to test; slow instantiation"
+          fix: "Constructor should only assign dependencies to fields — no work"
+        - error: "Too many constructor parameters (>5)"
+          impact: "Class has too many responsibilities; hard to test and maintain"
+          fix: "Apply SRP; group related dependencies into aggregate services"
+    maturity:
+      level: standard
+    standards:
+      - name: "Dependency Injection Principle"
+        type: pattern
+        role: "Core DI pattern for providing dependencies"
+        status: recommended
+
+  - id: composition_root
+    name: "Composition Root"
+    description: >
+      A single location in the application where the entire object graph is
+      composed (wired together). All dependency resolution happens here —
+      no DI container references scattered through the codebase. The composition
+      root is as close to the application entry point as possible.
+    use_when:
+      - "Any application using dependency injection"
+      - "Container registration should be centralized and auditable"
+      - "Preventing container reference leaks into business logic"
+    avoid_when:
+      - "Never — composition root is always recommended when using DI"
+    tradeoffs:
+      pros:
+        - "Single place to see the entire object graph wiring"
+        - "Business logic has no dependency on DI container"
+        - "Easy to swap entire implementations for testing or different environments"
+        - "Container is an implementation detail, not a dependency"
+      cons:
+        - "Can become large in big applications — split into modules/installers"
+        - "All registrations must be maintained as the app evolves"
+    implementation:
+      guidelines:
+        - "Place the composition root in the application startup (Main, Program, app factory)"
+        - "Register all services, repositories, and infrastructure in the composition root"
+        - "No DI container references in business logic, domain, or application layers"
+        - "Use module/installer patterns to organize registrations by feature"
+        - "Environment-specific registrations via configuration (dev vs prod adapters)"
+      common_errors:
+        - error: "Injecting the DI container itself into classes"
+          impact: "Container becomes a Service Locator; dependencies are hidden"
+          fix: "Only the composition root should reference the container; classes accept explicit deps"
+        - error: "Multiple composition roots (registration scattered across the app)"
+          impact: "Hard to understand the full object graph; conflicting registrations"
+          fix: "Centralize all registration in one composition root; use installer/module pattern for organization"
+    maturity:
+      level: standard
+    standards:
+      - name: "Composition Root Pattern"
+        type: pattern
+        role: "Centralized dependency graph wiring"
+        status: recommended
+
+  - id: pure_di
+    name: "Pure DI (Manual Wiring)"
+    description: >
+      Dependencies wired manually at the composition root without a DI container.
+      The composition root uses plain constructors to build the object graph.
+      Eliminates container dependency while keeping DI benefits.
+    use_when:
+      - "Small to medium applications with manageable dependency graphs"
+      - "Team wants DI benefits without container complexity"
+      - "Language lacks good DI container options"
+      - "Container magic causes more confusion than it solves"
+    avoid_when:
+      - "Large application with complex object graph and lifetime management"
+      - "Framework provides excellent built-in DI (e.g., ASP.NET Core, Spring)"
+    tradeoffs:
+      pros:
+        - "No container dependency — pure language constructs"
+        - "Compile-time safety — wiring errors caught at build time"
+        - "Easy to debug — follow constructor calls, no reflection magic"
+        - "Full DI benefits (explicit deps, testability, abstraction)"
+      cons:
+        - "Manual wiring becomes tedious for large applications"
+        - "No automatic lifetime management (singleton, scoped, transient)"
+        - "Must manually update wiring when dependencies change"
+    implementation:
+      guidelines:
+        - "Build the entire object graph in the composition root using constructors"
+        - "Use factory methods for objects needing runtime parameters"
+        - "Implement singleton pattern manually for shared instances"
+        - "Group wiring by feature for readability"
+      common_errors:
+        - error: "Wiring scattered across multiple files instead of one composition root"
+          impact: "Object graph not visible in one place; conflicting wiring"
+          fix: "Centralize all wiring in one entry-point function or class"
+    maturity:
+      level: standard
+    standards:
+      - name: "Pure DI (Mark Seemann)"
+        type: pattern
+        role: "Container-less dependency injection"
+        status: recommended
+
+examples:
+  - id: di_constructor_example
+    title: "Constructor Injection with Composition Root"
+    context: "Wiring a service layer with repository and external dependencies"
+    correct: |
+      # Interfaces (abstractions)
+      class OrderRepository(Protocol):
+          def save(self, order: Order) -> str: ...
+          def find(self, order_id: str) -> Order: ...
+
+      class PaymentGateway(Protocol):
+          def charge(self, amount: Money) -> PaymentResult: ...
+
+      class NotificationService(Protocol):
+          def notify(self, user_id: str, message: str) -> None: ...
+
+      # Service accepts interfaces via constructor
+      class OrderService:
+          def __init__(self, repo: OrderRepository, payments: PaymentGateway,
+                       notifications: NotificationService):
+              self.repo = repo
+              self.payments = payments
+              self.notifications = notifications
+
+          def place_order(self, cmd: PlaceOrderCommand) -> str:
+              order = Order.create(cmd.customer_id, cmd.items)
+              result = self.payments.charge(order.total)
+              order_id = self.repo.save(order)
+              self.notifications.notify(cmd.customer_id, f"Order {order_id} placed")
+              return order_id
+
+      # Composition Root — single place to wire everything
+      def create_app():
+          db = PostgresOrderRepository(connection_string)
+          payments = StripePaymentGateway(api_key)
+          notifications = EmailNotificationService(smtp_config)
+          order_service = OrderService(db, payments, notifications)
+          return App(order_service=order_service)
+
+      # Tests — substitute fakes via constructor
+      def test_place_order():
+          fake_repo = InMemoryOrderRepository()
+          fake_payments = FakePaymentGateway(always_succeeds=True)
+          fake_notifications = FakeNotificationService()
+          service = OrderService(fake_repo, fake_payments, fake_notifications)
+          order_id = service.place_order(PlaceOrderCommand(...))
+          assert fake_repo.find(order_id) is not None
+    incorrect: |
+      # WRONG: Service Locator pattern — dependencies hidden
+      class OrderService:
+          def place_order(self, cmd):
+              repo = ServiceLocator.resolve(OrderRepository)    # Hidden dependency
+              payments = ServiceLocator.resolve(PaymentGateway)  # Hidden dependency
+              notifications = ServiceLocator.resolve(NotificationService)  # Hidden
+
+              # Dependencies not visible in constructor
+              # Cannot test without configuring global ServiceLocator
+              # Class appears to have no dependencies but actually has three
+    explanation: >
+      The correct version uses constructor injection — all dependencies are visible
+      in the constructor signature and easily substitutable in tests. The composition
+      root wires everything in one place. The incorrect version uses Service Locator,
+      hiding dependencies and making testing require global state configuration.
+
+  - id: di_module_example
+    title: "DI Container Registration with Module Pattern"
+    context: "Organizing DI registrations for a large application"
+    correct: |
+      # Registration organized by feature module
+      class OrderModule:
+          def register(self, container):
+              container.register(OrderRepository, SqlOrderRepository, lifetime="scoped")
+              container.register(OrderService, lifetime="scoped")
+
+      class PaymentModule:
+          def register(self, container):
+              container.register(PaymentGateway, StripeGateway, lifetime="singleton")
+              container.register(PaymentService, lifetime="scoped")
+
+      # Composition root assembles modules
+      def create_app():
+          container = Container()
+          OrderModule().register(container)
+          PaymentModule().register(container)
+          # All registration in one visible location
+          return container.build()
+    incorrect: |
+      # WRONG: Registrations scattered across the codebase
+      # In order_service.py:
+      container.register(OrderRepository, SqlOrderRepository)  # Scattered!
+
+      # In payment_controller.py:
+      container.register(PaymentGateway, StripeGateway)  # Another location!
+
+      # In startup.py:
+      container.register(NotificationService, EmailService)
+      # Cannot see the full object graph in any single place
+    explanation: >
+      The correct version uses module/installer pattern to organize registrations
+      by feature, all assembled at the composition root. The incorrect version
+      scatters registrations across the codebase, making the object graph impossible
+      to understand from any single location.
+
+security_hardening:
+  transport:
+    requirements:
+      - "DI container configuration does not expose service endpoints or connection strings in logs"
+  data_protection:
+    requirements:
+      - "DI container does not serialize or log dependency graph details including sensitive config"
+  access_control:
+    requirements:
+      - "DI container configuration is read-only after application startup"
+      - "Runtime service resolution restricted to the composition root scope"
+  input_output:
+    requirements:
+      - "DI container does not accept external input for service resolution (injection attacks)"
+  secrets:
+    requirements:
+      - "Secrets injected via DI, never hardcoded — composition root reads from secret manager"
+      - "Secret-holding services registered as singletons to avoid repeated secret fetches"
+  monitoring:
+    requirements:
+      - "DI container initialization logged for debugging — without exposing secret values"
+
+compliance:
+  standards:
+    - name: "OWASP Injection Prevention"
+      relevance: "DI containers must not resolve services from user-controlled input"
+    - name: "ISO/IEC 25010"
+      relevance: "DI supports modularity, reusability, and testability quality attributes"
+
+  requirements_mapping:
+    - control: injection_prevention
+      description: "Service resolution paths are defined at compile/startup time, not from runtime input"
+      maps_to:
+        - "OWASP — Injection Prevention"
+    - control: modularity
+      description: "DI enables swapping implementations without modifying consumers"
+      maps_to:
+        - "ISO/IEC 25010 — Modularity"
+
+prompt_recipes:
+  - id: di_greenfield
+    scenario: greenfield
+    description: "Set up dependency injection for a new project"
+    prompt: |
+      Set up dependency injection for a {language} project using {framework}.
+
+      1. Define interfaces for all infrastructure dependencies (DB, APIs, messaging)
+      2. Create a composition root at the application entry point
+      3. Register all services with appropriate lifetimes (singleton, scoped, transient)
+      4. Wire environment-specific implementations (dev vs prod)
+      5. Show how to substitute fakes in unit tests
+
+      Use constructor injection as the primary pattern.
+      No service locator. No static resolution.
+
+  - id: di_migration
+    scenario: migration
+    description: "Introduce DI into an existing codebase"
+    prompt: |
+      Introduce dependency injection into this {language} codebase that currently
+      uses direct instantiation (new/create) throughout:
+
+      1. Identify all classes that create their own dependencies
+      2. Extract interfaces for external dependencies
+      3. Refactor to constructor injection one class at a time
+      4. Create a composition root to wire everything
+      5. Add unit tests using fake implementations
+
+      Migrate incrementally — don't rewrite everything at once.
+
+  - id: di_audit
+    scenario: audit
+    description: "Audit DI configuration for issues"
+    prompt: |
+      Audit the dependency injection configuration in this {language} project:
+
+      1. Find Service Locator usage (resolving from container outside composition root)
+      2. Check for concrete class injection (should be interfaces)
+      3. Identify captive dependencies (scoped injected into singleton)
+      4. Find classes with >5 constructor dependencies (SRP violation)
+      5. Check for work in constructors (I/O, complex logic)
+      6. Verify all interfaces have registered implementations
+
+  - id: di_testing
+    scenario: edge-case
+    description: "Handle complex DI scenarios"
+    prompt: |
+      Help me handle these DI challenges in {language}:
+
+      1. Factory pattern for objects needing runtime parameters
+      2. Decorator pattern for cross-cutting concerns (logging, caching)
+      3. Strategy pattern with multiple implementations of same interface
+      4. Lazy initialization for expensive dependencies
+      5. Conditional registration based on configuration
+
+      Use {framework}'s DI container capabilities. Show test approach for each.
+
+anti_patterns:
+  - name: "Service Locator"
+    description: >
+      Classes resolve their own dependencies from a global container or registry.
+      Dependencies are hidden — not visible in the constructor. Tightly couples
+      code to the container. Makes testing require global state configuration.
+    fix: "Use constructor injection; resolve dependencies only at the composition root"
+    severity: high
+    related_pattern: constructor_injection
+
+  - name: "Captive Dependency"
+    description: >
+      A shorter-lived service (scoped/transient) injected into a longer-lived
+      service (singleton). The shorter-lived instance is 'captured' and reused
+      beyond its intended lifetime, causing stale data or concurrency issues.
+    fix: "Verify lifetime hierarchies: singleton → singleton, scoped → scoped or transient; use factory for dynamic resolution"
+    severity: high
+    related_pattern: composition_root
+
+  - name: "Constructor Over-Injection"
+    description: >
+      Class constructor accepts more than 5 dependencies, indicating the class
+      has too many responsibilities and violates the Single Responsibility Principle.
+    fix: "Apply SRP: split the class or introduce a facade that groups related dependencies"
+    severity: medium
+    related_pattern: constructor_injection
+
+  - name: "Ambient Context"
+    description: >
+      Using static properties or thread-local storage to provide dependencies
+      implicitly. Dependencies are invisible, untestable, and thread-unsafe.
+    fix: "Replace with explicit constructor injection; pass context as a parameter"
+    severity: high
+    related_pattern: constructor_injection
+
+checklist:
+  - id: DI-01
+    category: design
+    description: "Constructor injection used as the primary DI pattern"
+    severity: high
+    verified_by: constructor_injection
+
+  - id: DI-02
+    category: design
+    description: "Single composition root at the application entry point"
+    severity: high
+    verified_by: composition_root
+
+  - id: DI-03
+    category: correctness
+    description: "Interfaces (abstractions) injected, not concrete implementations"
+    severity: high
+    verified_by: constructor_injection
+
+  - id: DI-04
+    category: correctness
+    description: "No Service Locator pattern — container not injected into classes"
+    severity: high
+    verified_by: constructor_injection
+
+  - id: DI-05
+    category: correctness
+    description: "No captive dependencies — lifetime hierarchies verified"
+    severity: high
+    verified_by: composition_root
+
+  - id: DI-06
+    category: maintainability
+    description: "No constructor over-injection — max 5 dependencies per class"
+    severity: medium
+    verified_by: constructor_injection
+
+  - id: DI-07
+    category: security
+    description: "Secrets injected via DI from secret manager, never hardcoded"
+    severity: critical
+    verified_by: composition_root
+
+  - id: DI-08
+    category: correctness
+    description: "Constructors perform no work — only assign dependencies to fields"
+    severity: medium
+    verified_by: constructor_injection
+
+  - id: DI-09
+    category: maintainability
+    description: "DI registrations organized by feature module or installer"
+    severity: low
+    verified_by: composition_root
+
+  - id: DI-10
+    category: reliability
+    description: "All registered interfaces have at least one implementation"
+    severity: high
+    verified_by: pure_di

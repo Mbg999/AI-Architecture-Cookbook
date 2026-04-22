@@ -1,0 +1,646 @@
+# =============================================================================
+# AI Architecture Cookbook — File Storage
+# Schema: v3 | Domain: file-storage
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: file-storage
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    File and object storage patterns including upload handling, CDN
+    integration, access control, lifecycle management, and secure
+    presigned URLs. Covers both cloud object storage and structured
+    file management.
+
+  tags:
+    - file-storage
+    - object-storage
+    - upload
+    - cdn
+    - s3
+    - blob-storage
+    - presigned-url
+
+  categories:
+    - integration-data
+
+  prerequisites:
+    - id: authentication
+      reason: "File access requires proper authorization"
+    - id: encryption
+      reason: "Files at rest and in transit must be encrypted"
+    - id: input-validation
+      reason: "File uploads must be validated (type, size, content)"
+
+  related_standards:
+    - id: cloud-architecture
+      relationship: complementary
+      context: "Object storage is a core cloud service primitive"
+    - id: performance-optimization
+      relationship: complementary
+      context: "CDN and caching strategies for file delivery"
+    - id: api-design
+      relationship: complementary
+      context: "File upload/download APIs follow RESTful patterns"
+
+context_inputs:
+  - name: storage_type
+    type: enum
+    description: "Type of file storage needed"
+    required: true
+    default: object_storage
+    enum_values:
+      - object_storage
+      - block_storage
+      - file_system
+      - database_blob
+
+  - name: access_pattern
+    type: enum
+    description: "How files are primarily accessed"
+    required: true
+    default: public_read
+    enum_values:
+      - public_read
+      - authenticated_read
+      - private
+      - write_once_read_many
+
+  - name: file_size
+    type: enum
+    description: "Typical file size range"
+    required: false
+    default: medium
+    enum_values:
+      - small
+      - medium
+      - large
+      - very_large
+
+  - name: compliance_needs
+    type: enum
+    description: "Regulatory requirements for stored files"
+    required: false
+    default: standard
+    enum_values:
+      - standard
+      - retention_required
+      - immutable
+      - gdpr_deletable
+
+decision_tree:
+  - id: large_uploads
+    priority: 1
+    if:
+      - file_size in [large, very_large]
+    then:
+      pattern: presigned_upload
+      standards:
+        - "S3 Presigned URLs"
+        - "Azure SAS Tokens"
+      notes: >
+        Large files must bypass your application server. Use presigned
+        URLs for direct client-to-storage uploads to avoid memory
+        pressure and timeout issues.
+    else:
+      pattern: presigned_upload
+      notes: "Presigned URLs are recommended for all file sizes to reduce server load"
+
+  - id: public_content
+    priority: 2
+    if:
+      - access_pattern == public_read
+    then:
+      pattern: cdn_delivery
+      notes: >
+        Public files should be served through a CDN for performance
+        and to reduce origin load.
+
+  - id: compliance_storage
+    priority: 3
+    if:
+      - compliance_needs in [retention_required, immutable]
+    then:
+      pattern: lifecycle_management
+      notes: >
+        Compliance requirements need lifecycle policies, retention locks,
+        and audit trails for all file operations.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: presigned_upload
+    description: "Presigned URLs are the safest default for most file storage needs"
+
+patterns:
+  - id: presigned_upload
+    name: "Presigned URL Upload/Download"
+    description: >
+      Client uploads files directly to object storage using time-limited,
+      pre-authorized URLs. Your server generates the presigned URL with
+      constraints (max size, content type, expiration) but never handles
+      the file bytes. Eliminates server as a bottleneck for large uploads.
+    use_when:
+      - "Any file upload from client to object storage"
+      - "Large files that would strain application servers"
+      - "Reducing server bandwidth and memory usage"
+    avoid_when:
+      - "Files need server-side processing before storage (virus scan, transformation)"
+      - "File content must be validated by application logic before storing"
+    tradeoffs:
+      pros:
+        - "Server never handles file bytes — no memory/bandwidth pressure"
+        - "Direct client-to-storage transfer — faster for users"
+        - "Time-limited and constrained — secure by default"
+        - "Scales independently of application servers"
+      cons:
+        - "Two-step process: get URL, then upload"
+        - "Post-upload processing must be event-driven (storage trigger)"
+        - "Client must handle the presigned URL flow"
+    implementation:
+      guidelines:
+        - "Set short expiration on presigned URLs (5-15 minutes)"
+        - "Constrain by content type, max file size, and target path"
+        - "Use unique object keys (UUID prefix) to prevent collisions"
+        - "Trigger post-upload processing via storage events (S3 notification, etc.)"
+        - "Validate file after upload — virus scan, content type verification"
+        - "Store metadata (uploader, purpose, original name) in database, not filename"
+        - "Never expose internal storage paths to clients"
+      common_errors:
+        - error: "Long-lived presigned URLs (hours or days)"
+          impact: "URL can be shared and reused beyond intended recipient"
+          fix: "Set expiration to 5-15 minutes; generate fresh URL per upload"
+        - error: "No content type constraint on presigned URL"
+          impact: "Client can upload any file type, bypassing validation"
+          fix: "Set allowed content types in presigned URL conditions"
+        - error: "Storing files with user-provided filenames"
+          impact: "Path traversal attacks, filename collisions, encoding issues"
+          fix: "Use UUID keys; store original filename as metadata in database"
+    maturity:
+      level: standard
+    standards:
+      - name: "AWS S3 Presigned URLs"
+        type: reference
+        role: "AWS documentation for presigned URL generation"
+        status: recommended
+      - name: "Azure Blob SAS Tokens"
+        type: reference
+        role: "Azure shared access signatures for blob storage"
+        status: recommended
+
+  - id: cdn_delivery
+    name: "CDN-Based File Delivery"
+    description: >
+      Serve files through a Content Delivery Network for global low-latency
+      access. Origin storage holds the master copy; CDN caches at edge
+      locations. Use signed URLs for access control with CDN.
+    use_when:
+      - "Public or semi-public file access (images, documents, media)"
+      - "Global user base needing low latency"
+      - "High read volume relative to writes"
+    avoid_when:
+      - "Strictly private files with per-request authorization"
+      - "Frequently changing files where caching causes staleness"
+    tradeoffs:
+      pros:
+        - "Low latency globally — served from edge"
+        - "Reduces origin storage load and bandwidth costs"
+        - "DDoS protection at CDN layer"
+        - "Automatic scaling for traffic spikes"
+      cons:
+        - "Cache invalidation complexity"
+        - "Additional cost for CDN service"
+        - "Stale content risk for frequently changing files"
+    implementation:
+      guidelines:
+        - "Set appropriate Cache-Control headers per file type"
+        - "Use immutable URLs for versioned assets (hash in filename/path)"
+        - "Implement cache invalidation for mutable content"
+        - "Use signed CDN URLs for access-controlled content"
+        - "Configure origin shield to reduce origin requests"
+        - "Monitor cache hit ratio as a key metric (target >90%)"
+      common_errors:
+        - error: "No cache invalidation strategy"
+          impact: "Users see stale content after updates"
+          fix: "Use versioned URLs (content hash) or explicit invalidation"
+        - error: "Caching private content without signed URLs"
+          impact: "CDN serves cached private content to unauthorized users"
+          fix: "Use signed CDN URLs with expiration for access-controlled content"
+        - error: "Same cache policy for all file types"
+          impact: "Static assets under-cached; dynamic content over-cached"
+          fix: "Set per-type policies: immutable for hashed assets, short TTL for dynamic"
+    maturity:
+      level: standard
+    standards:
+      - name: "RFC 9111"
+        type: rfc
+        role: "HTTP Caching specification"
+        status: recommended
+
+  - id: lifecycle_management
+    name: "Storage Lifecycle & Retention Management"
+    description: >
+      Automate file lifecycle transitions: hot storage for recent files,
+      cool/archive for old files, deletion after retention period.
+      Supports compliance requirements like retention locks and legal holds.
+    use_when:
+      - "Files have different access patterns over time"
+      - "Regulatory retention requirements"
+      - "Cost optimization for large storage volumes"
+      - "GDPR right-to-deletion requirements"
+    avoid_when:
+      - "All files are actively accessed throughout their lifetime"
+      - "Small storage volume where tiering savings are negligible"
+    tradeoffs:
+      pros:
+        - "Significant cost savings from storage tiering"
+        - "Automated compliance with retention policies"
+        - "Legal hold support for litigation"
+        - "Automated cleanup of expired content"
+      cons:
+        - "Retrieval latency for archived files"
+        - "Lifecycle transition costs (per-object)"
+        - "Complexity of managing multiple storage tiers"
+    implementation:
+      guidelines:
+        - "Define lifecycle rules per object prefix or tag"
+        - "Transition to cool storage after 30 days, archive after 90 (adjust per use case)"
+        - "Set retention locks for compliance-required files (WORM)"
+        - "Implement soft-delete with recovery period before hard delete"
+        - "Tag files with retention class at upload time"
+        - "Build GDPR deletion pipeline that handles all storage tiers"
+        - "Monitor storage costs by tier and lifecycle transition metrics"
+      common_errors:
+        - error: "No lifecycle policy — files accumulate forever"
+          impact: "Storage costs grow unbounded; no compliance enforcement"
+          fix: "Define lifecycle rules with appropriate transitions and expiration"
+        - error: "Hard-delete without retention period"
+          impact: "Accidental deletions are unrecoverable"
+          fix: "Soft-delete with 30-day recovery period before permanent deletion"
+        - error: "No legal hold mechanism"
+          impact: "Cannot preserve evidence during litigation"
+          fix: "Implement legal hold that overrides lifecycle deletion"
+    maturity:
+      level: advanced
+    standards:
+      - name: "SEC Rule 17a-4"
+        type: standard
+        role: "Financial records retention requirements"
+        status: recommended
+      - name: "GDPR Article 17"
+        type: standard
+        role: "Right to erasure requirements"
+        status: recommended
+
+examples:
+  - id: presigned_upload_example
+    title: "Secure File Upload with Presigned URL"
+    context: "User uploading a profile image through a web application"
+    correct: |
+      # Server-side: Generate presigned upload URL
+      import boto3
+      import uuid
+
+      def create_upload_url(user_id: str, content_type: str, max_size_mb: int = 5):
+          """Generate constrained presigned URL for direct upload."""
+          s3 = boto3.client("s3")
+
+          # UUID key — never use user-provided filenames
+          object_key = f"uploads/{user_id}/{uuid.uuid4()}"
+
+          # Constrained presigned URL
+          presigned = s3.generate_presigned_post(
+              Bucket=UPLOAD_BUCKET,
+              Key=object_key,
+              Conditions=[
+                  ["content-length-range", 1, max_size_mb * 1024 * 1024],
+                  ["starts-with", "$Content-Type", "image/"],
+              ],
+              ExpiresIn=300,  # 5 minutes
+          )
+
+          # Store metadata in database (not in filename)
+          db.save_upload_record(
+              user_id=user_id,
+              object_key=object_key,
+              status="pending",
+          )
+
+          return {"upload_url": presigned["url"], "fields": presigned["fields"]}
+
+      # S3 event trigger: validate after upload
+      def on_upload_complete(event):
+          """Triggered by S3 PutObject event."""
+          key = event["Records"][0]["s3"]["object"]["key"]
+          # Verify content type matches (don't trust client)
+          # Run virus scan
+          # Generate thumbnails if image
+          # Update DB record to "processed"
+    incorrect: |
+      # WRONG: Server handles file bytes with no validation
+      @app.route("/upload", methods=["POST"])
+      def upload_file():
+          file = request.files["file"]
+          # No size limit — 10GB upload will OOM the server
+          # No content type validation — accepts any file
+          # User-controlled filename — path traversal risk
+          file.save(f"/uploads/{file.filename}")
+          return "OK"
+
+      # Problems:
+      # 1. Server processes entire file — memory/bandwidth bottleneck
+      # 2. No file size limit — denial of service risk
+      # 3. No content type validation — any file type accepted
+      # 4. User-controlled filename — path traversal attack vector
+      # 5. No virus scanning — malicious files stored and served
+      # 6. Local filesystem — doesn't scale, no redundancy
+    explanation: >
+      The correct example uses presigned URLs so the server never handles file
+      bytes, constrains upload by content type and size, uses UUID keys to prevent
+      path traversal, and validates files post-upload via event triggers.
+
+  - id: cdn_delivery_example
+    title: "CDN Configuration for Static Assets"
+    context: "Serving user-uploaded images with CDN and signed URLs"
+    correct: |
+      # CloudFront signed URL for access-controlled content
+      import datetime
+      from botocore.signers import CloudFrontSigner
+
+      def get_signed_image_url(object_key: str, expiry_minutes: int = 60):
+          """Generate signed CDN URL for authorized access."""
+          cloudfront_signer = CloudFrontSigner(
+              KEY_PAIR_ID, rsa_signer_function
+          )
+
+          url = f"https://cdn.example.com/{object_key}"
+          expires = datetime.datetime.utcnow() + datetime.timedelta(
+              minutes=expiry_minutes
+          )
+
+          signed_url = cloudfront_signer.generate_presigned_url(
+              url, date_less_than=expires
+          )
+          return signed_url
+
+      # Cache-Control headers (set on S3 object metadata)
+      # Immutable hashed assets: max-age=31536000, immutable
+      # User content: max-age=3600, stale-while-revalidate=86400
+      # Profile images: max-age=300, must-revalidate
+    incorrect: |
+      # WRONG: Serving files directly from application server
+      @app.route("/images/<path:filename>")
+      def serve_image(filename):
+          # Server handles every request — no caching
+          # No CDN — high latency for distant users
+          # No access control — any file accessible by path
+          return send_from_directory("/uploads", filename)
+
+      # Problems:
+      # 1. Application server serves files — doesn't scale
+      # 2. No CDN — poor performance for global users
+      # 3. No signed URLs — anyone with the path gets the file
+      # 4. No Cache-Control — browser and proxy caching undefined
+    explanation: >
+      The correct example uses CDN with signed URLs for access control,
+      appropriate cache headers per content type, and separates origin from
+      edge delivery. The incorrect example serves files directly from the
+      application server with no caching or access control.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All file uploads and downloads over HTTPS only"
+      - "CDN configured with TLS 1.2+ and modern cipher suites"
+  data_protection:
+    requirements:
+      - "Server-side encryption enabled on all storage buckets"
+      - "Customer-managed encryption keys for sensitive file categories"
+  access_control:
+    requirements:
+      - "Storage buckets are private by default — no public access"
+      - "Presigned URLs are time-limited (5-15 minutes) and constrained"
+  input_output:
+    requirements:
+      - "Validate file content type server-side (don't trust client Content-Type)"
+      - "Enforce maximum file size limits"
+      - "Virus/malware scan all uploaded files before making accessible"
+  secrets:
+    requirements:
+      - "Storage access keys rotated regularly"
+      - "Use IAM roles instead of static credentials where possible"
+  monitoring:
+    requirements:
+      - "Log all file access with requester identity"
+      - "Alert on unusual upload/download patterns"
+
+compliance:
+  standards:
+    - name: "GDPR Article 17"
+      relevance: "Right to erasure — must be able to delete user files"
+      reference: "https://gdpr.eu/article-17-right-to-be-forgotten/"
+    - name: "SOC 2 Type II"
+      relevance: "Access controls and encryption for stored data"
+
+  requirements_mapping:
+    - control: encryption_at_rest
+      description: "All stored files encrypted with managed or customer keys"
+      maps_to:
+        - "SOC 2 — Encryption controls"
+    - control: access_control
+      description: "File access authorized via presigned URLs or IAM policies"
+      maps_to:
+        - "Principle of least privilege"
+    - control: data_retention
+      description: "Lifecycle policies enforce retention and deletion"
+      maps_to:
+        - "GDPR data minimization"
+
+prompt_recipes:
+  - id: fs_greenfield
+    scenario: greenfield
+    description: "Design file storage from scratch"
+    prompt: |
+      Design file storage for {application_type}.
+
+      Context:
+      - Storage type: [object_storage/block/filesystem/database]
+      - Access pattern: [public_read/authenticated/private/WORM]
+      - File sizes: [small/medium/large/very_large]
+      - Compliance: [standard/retention/immutable/gdpr]
+
+      Implement:
+      1. Presigned URL upload flow (client → storage direct)
+      2. Post-upload validation pipeline (content type, virus scan)
+      3. CDN delivery for public/semi-public content
+      4. Access control: private buckets + presigned/signed URLs
+      5. Lifecycle policies: hot → cool → archive → delete
+      6. Encryption at rest (server-side, managed keys)
+      7. Monitoring: access logs, upload/download metrics
+
+  - id: fs_audit
+    scenario: audit
+    description: "Audit file storage security"
+    prompt: |
+      Audit file storage security and compliance.
+
+      Checklist:
+      1. All storage buckets private by default?
+      2. Server-side encryption enabled?
+      3. No public bucket policies or ACLs?
+      4. Presigned URLs have short expiration?
+      5. File uploads validated (type, size, content)?
+      6. Virus scanning on all uploads?
+      7. Lifecycle policies configured?
+      8. Access logging enabled?
+      9. GDPR deletion capability verified?
+      10. Cross-region replication for disaster recovery?
+
+  - id: fs_optimization
+    scenario: optimization
+    description: "Optimize file storage costs and performance"
+    prompt: |
+      Optimize file storage for {application}.
+
+      Cost optimization:
+      1. Review storage tier distribution — are old files in hot storage?
+      2. Implement intelligent tiering or lifecycle transitions
+      3. Enable compression for compressible file types
+      4. Delete orphaned files (no DB reference)
+      5. Review CDN cache hit ratio — optimize cache policies
+
+      Performance optimization:
+      1. CDN for frequently accessed files (target >90% hit ratio)
+      2. Presigned URLs to bypass application server
+      3. Multipart upload for large files
+      4. Image optimization pipeline (resize, format conversion)
+      5. Range requests for partial file downloads
+
+  - id: fs_migration
+    scenario: migration
+    description: "Migrate file storage between providers"
+    prompt: |
+      Migrate file storage from {source} to {target}.
+
+      Steps:
+      1. Inventory all stored files (count, total size, types)
+      2. Map source permissions/ACLs to target equivalents
+      3. Set up cross-provider sync (parallel write during migration)
+      4. Migrate existing files in batches (verify checksums)
+      5. Update application to use new storage via abstraction layer
+      6. Run parallel reads during cutover window
+      7. Verify data integrity post-migration
+      8. Decommission old storage after retention period
+
+anti_patterns:
+  - name: "Server-Side File Proxying"
+    description: >
+      Application server reads file bytes from storage and streams to client.
+      Server becomes a bandwidth bottleneck, ties up threads, and doesn't
+      scale. Clients could have accessed storage directly via presigned URLs.
+    fix: "Use presigned URLs for direct client-to-storage transfer"
+    severity: high
+    related_pattern: presigned_upload
+
+  - name: "Public Storage Buckets"
+    description: >
+      Setting storage buckets to public access for convenience. All files are
+      accessible to anyone with the URL. Data breaches from public S3 buckets
+      are among the most common cloud security incidents.
+    fix: "Private buckets by default; use presigned/signed URLs for controlled access"
+    severity: critical
+    related_pattern: presigned_upload
+
+  - name: "User-Controlled File Paths"
+    description: >
+      Using user-provided filenames as storage keys. Enables path traversal
+      attacks, filename collisions, and encoding issues. Users can overwrite
+      other users' files by crafting filenames.
+    fix: "Use UUID-based keys; store original filename as metadata in database"
+    severity: critical
+    related_pattern: presigned_upload
+
+  - name: "No File Validation After Upload"
+    description: >
+      Trusting the client-provided Content-Type header without server-side
+      validation. Users can upload executables disguised as images, or
+      malware that bypasses client-side checks.
+    fix: "Validate file content server-side using magic bytes; virus scan all uploads"
+    severity: critical
+    related_pattern: presigned_upload
+
+checklist:
+  - id: FS-01
+    category: security
+    description: "Storage buckets are private — no public access policies"
+    severity: critical
+    verified_by: presigned_upload
+
+  - id: FS-02
+    category: security
+    description: "Server-side encryption enabled on all storage"
+    severity: critical
+    verified_by: lifecycle_management
+
+  - id: FS-03
+    category: security
+    description: "Presigned URLs time-limited (5-15 min) and constrained"
+    severity: high
+    verified_by: presigned_upload
+
+  - id: FS-04
+    category: security
+    description: "File uploads validated: type, size, virus scan"
+    severity: critical
+    verified_by: presigned_upload
+
+  - id: FS-05
+    category: security
+    description: "UUID-based storage keys — no user-controlled paths"
+    severity: critical
+    verified_by: presigned_upload
+
+  - id: FS-06
+    category: performance
+    description: "CDN configured for public/semi-public content"
+    severity: high
+    verified_by: cdn_delivery
+
+  - id: FS-07
+    category: performance
+    description: "CDN cache hit ratio monitored (target >90%)"
+    severity: medium
+    verified_by: cdn_delivery
+
+  - id: FS-08
+    category: compliance
+    description: "Lifecycle policies configured for storage tiering"
+    severity: high
+    verified_by: lifecycle_management
+
+  - id: FS-09
+    category: compliance
+    description: "GDPR deletion capability verified across all tiers"
+    severity: high
+    verified_by: lifecycle_management
+
+  - id: FS-10
+    category: observability
+    description: "File access logging enabled with requester identity"
+    severity: high
+    verified_by: lifecycle_management
+
+  - id: FS-11
+    category: reliability
+    description: "Cross-region replication for critical files"
+    severity: medium
+    verified_by: lifecycle_management
+
+  - id: FS-12
+    category: design
+    description: "File storage abstracted behind interface for portability"
+    severity: medium
+    verified_by: presigned_upload

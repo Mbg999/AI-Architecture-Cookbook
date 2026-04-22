@@ -1,0 +1,648 @@
+# =============================================================================
+# AI Architecture Cookbook — Repository Pattern
+# Schema: v3 | Domain: repository-pattern
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: repository-pattern
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Repository and data access patterns that abstract persistence from domain
+    logic. Covers generic repository, specification pattern, unit of work,
+    and query object patterns.
+
+  tags:
+    - repository
+    - data-access
+    - unit-of-work
+    - query-object
+    - specification
+    - persistence-abstraction
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - data-persistence
+
+  related_standards:
+    - id: domain-driven-design
+      relationship: complementary
+      context: "DDD defines aggregate roots that repositories persist and retrieve"
+    - id: dependency-injection
+      relationship: complementary
+      context: "Repositories are injected into services via DI to maintain abstraction"
+    - id: layered-architecture
+      relationship: complementary
+      context: "Repository implementations live in the infrastructure layer; interfaces in domain"
+    - id: data-persistence
+      relationship: complementary
+      context: "Repository pattern abstracts the data persistence technology choices"
+
+context_inputs:
+  - name: domain_complexity
+    type: enum
+    description: "Complexity of the business domain and query requirements"
+    required: true
+    default: moderate
+    enum_values:
+      - simple
+      - moderate
+      - complex
+
+  - name: query_complexity
+    type: enum
+    description: "How complex are the data query requirements?"
+    required: true
+    default: moderate
+    enum_values:
+      - simple_crud
+      - moderate
+      - complex_queries
+
+  - name: data_access_technology
+    type: enum
+    description: "Primary data access approach"
+    required: true
+    default: orm
+    enum_values:
+      - raw_sql
+      - orm
+      - document_store
+      - mixed
+
+  - name: testability_priority
+    type: enum
+    description: "How critical is testing persistence logic in isolation?"
+    required: true
+    default: high
+    enum_values:
+      - low
+      - medium
+      - high
+
+decision_tree:
+  - id: complex_domain_ddd
+    priority: 1
+    if:
+      - domain_complexity == complex
+      - testability_priority == high
+    then:
+      pattern: aggregate_repository
+      standards:
+        - "DDD Repository Pattern"
+      notes: >
+        Complex domains with DDD aggregates need repositories per aggregate root
+        that load and save complete aggregates.
+    else:
+      pattern: generic_repository
+      notes: "For simpler domains, generic repository provides a good abstraction"
+
+  - id: complex_queries
+    priority: 2
+    if:
+      - query_complexity == complex_queries
+    then:
+      pattern: specification_pattern
+      standards:
+        - "Specification Pattern"
+      notes: >
+        Complex query requirements benefit from the specification pattern — composable,
+        testable query criteria.
+
+  - id: simple_crud
+    priority: 3
+    if:
+      - domain_complexity == simple
+      - query_complexity == simple_crud
+    then:
+      pattern: generic_repository
+      standards:
+        - "Generic Repository"
+      notes: >
+        Simple CRUD operations are well-served by a generic repository with
+        standard CRUD operations.
+
+  - id: multi_operation_transactions
+    priority: 4
+    if:
+      - data_access_technology in [orm, raw_sql]
+    then:
+      pattern: unit_of_work
+      standards:
+        - "Unit of Work Pattern"
+      notes: >
+        When multiple repository operations must be atomic, Unit of Work
+        coordinates the transaction across repositories.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: generic_repository
+    description: "Generic repository is the simplest abstraction with broad applicability"
+
+patterns:
+  - id: aggregate_repository
+    name: "Aggregate Repository (DDD)"
+    description: >
+      One repository per aggregate root. The repository loads and saves the entire
+      aggregate as a unit. No repositories for child entities — they are accessed
+      only through the aggregate root. Enforces DDD aggregate boundaries.
+    use_when:
+      - "Using DDD with aggregate roots"
+      - "Aggregates have complex invariants that must be enforced on load/save"
+      - "Need to ensure aggregate consistency boundaries are respected"
+    avoid_when:
+      - "Simple CRUD without meaningful business rules"
+      - "No aggregate root design — entities are independent"
+    tradeoffs:
+      pros:
+        - "Enforces aggregate boundaries at the persistence level"
+        - "Aggregate loaded as a whole — invariants always checked"
+        - "Clear API: find by ID, save aggregate, delete aggregate"
+        - "Natural fit for event-sourced aggregates"
+      cons:
+        - "Loading entire aggregates can be expensive for large aggregates"
+        - "Query-heavy read paths may need separate read models (CQRS)"
+        - "One more abstraction layer on top of ORM"
+    implementation:
+      guidelines:
+        - "Repository interface defined in domain layer — implementation in infrastructure"
+        - "Find methods return complete aggregates, not partial projections"
+        - "Save method persists entire aggregate state atomically"
+        - "No generic CRUD — repository API reflects aggregate operations"
+        - "Use specifications or query objects for complex find criteria"
+      common_errors:
+        - error: "Repository for every entity instead of only aggregate roots"
+          impact: "Aggregate boundaries bypassed; child entities modified independently"
+          fix: "Only aggregate roots get repositories; access children through the root"
+        - error: "Repository returning partial aggregates or projections"
+          impact: "Aggregate invariants not enforced; inconsistent state"
+          fix: "Always load and return complete aggregates; use CQRS read models for projections"
+    maturity:
+      level: advanced
+    standards:
+      - name: "DDD Repository Pattern (Eric Evans)"
+        type: pattern
+        role: "Persistence abstraction for aggregate roots"
+        status: recommended
+
+  - id: generic_repository
+    name: "Generic Repository"
+    description: >
+      A reusable repository base providing standard CRUD operations for any
+      entity type. Reduces boilerplate by providing common operations through
+      a generic interface parameterized by entity type.
+    use_when:
+      - "Multiple entities with similar CRUD patterns"
+      - "Want to reduce repository boilerplate"
+      - "Simple to moderate domain complexity"
+      - "ORM-based data access with standard operations"
+    avoid_when:
+      - "DDD aggregates with complex domain logic — use aggregate repository instead"
+      - "Every entity has unique query requirements with no shared patterns"
+    tradeoffs:
+      pros:
+        - "Eliminates boilerplate — standard CRUD for free"
+        - "Consistent API across all entities"
+        - "Easy to test with in-memory implementations"
+        - "Quick to set up for new entities"
+      cons:
+        - "May expose operations that shouldn't be allowed (e.g., delete on immutable entities)"
+        - "Complex queries don't fit the generic interface — need extension points"
+        - "Can become a leaky abstraction if ORM specifics leak through"
+    implementation:
+      guidelines:
+        - "Define generic interface: find_by_id, find_all, save, delete"
+        - "Allow extension: entity-specific repositories extend generic with custom queries"
+        - "Use specifications or query objects for dynamic filtering"
+        - "Don't force-fit complex domain operations into generic CRUD"
+      common_errors:
+        - error: "Generic repository as the only abstraction — no entity-specific extensions"
+          impact: "Complex queries forced through awkward generic methods"
+          fix: "Generic base for CRUD; entity-specific interface for domain queries"
+        - error: "Exposing IQueryable or ORM-specific types through the generic interface"
+          impact: "Repository is no longer an abstraction — ORM leaks to consumers"
+          fix: "Return domain objects; use specifications for query criteria"
+    maturity:
+      level: standard
+    standards:
+      - name: "Generic Repository Pattern"
+        type: pattern
+        role: "Reusable CRUD abstraction"
+        status: recommended
+
+  - id: specification_pattern
+    name: "Specification Pattern"
+    description: >
+      Encapsulates query criteria in reusable, composable specification objects.
+      Specifications can be combined with AND, OR, NOT operators. Keeps query
+      logic testable and out of repository implementations.
+    use_when:
+      - "Complex, dynamic query requirements"
+      - "Query criteria need to be reusable across different contexts"
+      - "Business rules determine what data to query"
+      - "Need testable query logic without database dependency"
+    avoid_when:
+      - "Simple CRUD with fixed, straightforward queries"
+      - "Team unfamiliar with the pattern — adds learning curve"
+    tradeoffs:
+      pros:
+        - "Query logic is testable without database"
+        - "Specifications are composable — combine with AND, OR, NOT"
+        - "Reusable across repositories and services"
+        - "Business rules in specifications, not scattered in services"
+      cons:
+        - "Adds abstraction complexity — more classes to manage"
+        - "Translation to SQL/query language can be complex"
+        - "Over-engineering for simple queries"
+    implementation:
+      guidelines:
+        - "Specification encapsulates a single criterion (e.g., IsActiveCustomer)"
+        - "Composite specifications combine criteria (e.g., IsActive AND InRegion)"
+        - "Repository accepts specification as query parameter"
+        - "Infrastructure layer translates specification to SQL/ORM query"
+      common_errors:
+        - error: "Specification containing persistence-specific logic"
+          impact: "Specification is coupled to ORM; not testable in isolation"
+          fix: "Specification defines criteria in domain terms; translator in infrastructure"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Specification Pattern (Eric Evans, Martin Fowler)"
+        type: pattern
+        role: "Composable query criteria"
+        status: recommended
+
+  - id: unit_of_work
+    name: "Unit of Work"
+    description: >
+      Maintains a list of objects affected by a business transaction and
+      coordinates writing changes and resolving concurrency issues. Groups
+      multiple repository operations into a single atomic transaction.
+    use_when:
+      - "Multiple repository operations must be atomic"
+      - "Need to track changes across multiple aggregates/entities"
+      - "ORM provides change tracking (e.g., EF Core, Hibernate)"
+      - "Complex business transactions spanning multiple repositories"
+    avoid_when:
+      - "Single aggregate operations (aggregate is its own unit of work)"
+      - "Event-sourced systems where each aggregate saves independently"
+    tradeoffs:
+      pros:
+        - "Atomic commits across multiple repositories"
+        - "Change tracking reduces boilerplate save operations"
+        - "Consistent transaction management"
+      cons:
+        - "Can mask performance issues by batching too many changes"
+        - "Adds complexity when not needed (single-aggregate operations)"
+        - "Transaction scope can grow too large"
+    implementation:
+      guidelines:
+        - "Unit of Work wraps a database transaction"
+        - "Repositories registered with the Unit of Work share the transaction"
+        - "Commit once at the end of the business operation"
+        - "Rollback on any failure — atomic all-or-nothing"
+        - "Keep transaction scope small — don't batch unrelated operations"
+      common_errors:
+        - error: "Unit of Work spanning too many aggregates"
+          impact: "Long transactions; lock contention; reduced throughput"
+          fix: "Limit to a single bounded context; use domain events for cross-aggregate coordination"
+        - error: "Forgetting to call commit"
+          impact: "Changes never persisted; data loss"
+          fix: "Use context manager / using pattern that commits on success, rolls back on exception"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Unit of Work Pattern (Martin Fowler)"
+        type: pattern
+        role: "Transaction coordination across repositories"
+        status: recommended
+        reference: "https://martinfowler.com/eaaCatalog/unitOfWork.html"
+
+examples:
+  - id: aggregate_repo_example
+    title: "Aggregate Repository — Loading and Saving Complete Aggregates"
+    context: "Order aggregate with line items persisted as a whole"
+    correct: |
+      # Repository interface — defined in domain layer
+      class OrderRepository(Protocol):
+          def find_by_id(self, order_id: str) -> Order | None: ...
+          def save(self, order: Order) -> None: ...
+          def next_id(self) -> str: ...
+
+      # Infrastructure implementation
+      class SqlOrderRepository:
+          def find_by_id(self, order_id):
+              # Load entire aggregate — order + line items + status history
+              row = self.db.query("SELECT * FROM orders WHERE id = ?", order_id)
+              items = self.db.query("SELECT * FROM line_items WHERE order_id = ?", order_id)
+              return OrderMapper.to_domain(row, items)  # Returns complete aggregate
+
+          def save(self, order):
+              # Save entire aggregate atomically
+              with self.db.transaction():
+                  self.db.upsert("orders", OrderMapper.to_row(order))
+                  self.db.delete("line_items", {"order_id": order.id})
+                  for item in order.line_items:
+                      self.db.insert("line_items", ItemMapper.to_row(item))
+
+      # Usage — aggregate loaded whole, modified, saved whole
+      class PlaceOrderUseCase:
+          def __init__(self, orders: OrderRepository):
+              self.orders = orders
+
+          def execute(self, cmd):
+              order = Order.create(self.orders.next_id(), cmd.customer_id)
+              for item in cmd.items:
+                  order.add_item(item.product_id, item.quantity, item.price)
+              order.submit()
+              self.orders.save(order)
+    incorrect: |
+      # WRONG: Separate repositories for entities inside the aggregate
+      class OrderRepository:
+          def save(self, order): ...
+
+      class LineItemRepository:  # Should NOT exist — LineItem is inside Order aggregate
+          def save(self, item): ...
+          def find_by_order(self, order_id): ...
+          def delete(self, item_id): ...  # Can delete items bypassing Order rules!
+
+      class OrderService:
+          def add_item(self, order_id, product_id, qty, price):
+              item = LineItem(order_id, product_id, qty, price)
+              self.line_item_repo.save(item)  # Bypasses Order.add_item() invariants
+    explanation: >
+      The correct version has a single OrderRepository that loads and saves the
+      complete Order aggregate including line items. Business rules are enforced
+      through the Order aggregate root. The incorrect version has a separate
+      LineItemRepository allowing direct modification of child entities, bypassing
+      the Order's business rules.
+
+  - id: specification_example
+    title: "Specification Pattern — Composable Query Criteria"
+    context: "Finding customers matching complex, dynamic criteria"
+    correct: |
+      # Specification interface
+      class Specification(Protocol):
+          def is_satisfied_by(self, entity) -> bool: ...
+
+      # Concrete specifications
+      class IsActiveCustomer(Specification):
+          def is_satisfied_by(self, customer):
+              return customer.status == "active"
+
+      class InRegion(Specification):
+          def __init__(self, region):
+              self.region = region
+          def is_satisfied_by(self, customer):
+              return customer.region == self.region
+
+      class HasMinimumOrders(Specification):
+          def __init__(self, min_count):
+              self.min_count = min_count
+          def is_satisfied_by(self, customer):
+              return customer.order_count >= self.min_count
+
+      # Composite specification
+      class AndSpecification(Specification):
+          def __init__(self, *specs):
+              self.specs = specs
+          def is_satisfied_by(self, entity):
+              return all(s.is_satisfied_by(entity) for s in self.specs)
+
+      # Usage — composable, readable, testable
+      spec = AndSpecification(
+          IsActiveCustomer(),
+          InRegion("EMEA"),
+          HasMinimumOrders(5)
+      )
+      eligible_customers = customer_repo.find_matching(spec)
+    incorrect: |
+      # WRONG: Query logic scattered in service methods
+      class CustomerService:
+          def find_eligible_emea(self):
+              return self.db.query(
+                  "SELECT * FROM customers WHERE status = 'active' "
+                  "AND region = 'EMEA' AND order_count >= 5"
+              )
+          # Every new query variation = new method with duplicated SQL
+          def find_eligible_apac(self):
+              return self.db.query(
+                  "SELECT * FROM customers WHERE status = 'active' "
+                  "AND region = 'APAC' AND order_count >= 5"
+              )
+    explanation: >
+      The correct version encapsulates each criterion in a reusable specification
+      that can be composed dynamically. The incorrect version duplicates query logic
+      for each combination of criteria, leading to combinatorial explosion of methods.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Database connections use encrypted transport (TLS)"
+      - "Connection strings stored securely, not logged"
+  data_protection:
+    requirements:
+      - "Repository never returns more data than the consumer needs"
+      - "Sensitive fields encrypted at the repository layer before persistence"
+  access_control:
+    requirements:
+      - "Repository implementations use parameterized queries — never string concatenation"
+      - "Multi-tenant repositories enforce tenant isolation at the query level"
+  input_output:
+    requirements:
+      - "All query parameters validated and sanitized before use"
+      - "Specification criteria validated against allowed values"
+  secrets:
+    requirements:
+      - "Database credentials injected via DI — never hardcoded in repository"
+      - "Connection pooling configured securely with credential rotation support"
+  monitoring:
+    requirements:
+      - "Slow query detection and alerting at the repository layer"
+      - "Repository operation counts and durations exposed as metrics"
+
+compliance:
+  standards:
+    - name: "OWASP SQL Injection Prevention"
+      relevance: "Repository implementations must prevent SQL injection via parameterized queries"
+    - name: "GDPR"
+      relevance: "Repository layer must support data deletion and export for right-to-erasure"
+
+  requirements_mapping:
+    - control: sql_injection_prevention
+      description: "All database queries use parameterized statements, never string interpolation"
+      maps_to:
+        - "OWASP — SQL Injection"
+    - control: data_deletion_support
+      description: "Repository provides delete operations supporting right-to-erasure compliance"
+      maps_to:
+        - "GDPR — Article 17"
+
+prompt_recipes:
+  - id: repo_greenfield
+    scenario: greenfield
+    description: "Set up repository pattern for a new project"
+    prompt: |
+      Implement the repository pattern for a {language} project using {orm}:
+
+      1. Define repository interfaces in the domain layer
+      2. Create infrastructure implementations using {orm}
+      3. Set up a generic repository base with CRUD operations
+      4. Add entity-specific repositories extending the generic base
+      5. Configure DI registration for all repositories
+      6. Create in-memory implementations for unit testing
+
+      Follow DDD: one repository per aggregate root.
+      Use parameterized queries only — no string concatenation.
+
+  - id: repo_migration
+    scenario: migration
+    description: "Introduce repository pattern to existing direct-database-access code"
+    prompt: |
+      Refactor this {language} codebase to use the repository pattern:
+
+      1. Find all direct database calls in services and controllers
+      2. Group related queries by entity/aggregate
+      3. Extract repository interfaces with appropriate method signatures
+      4. Move query implementations into repository classes
+      5. Wire repositories via dependency injection
+      6. Add unit tests with in-memory repository implementations
+
+      Migrate one entity at a time. Ensure no raw SQL in services after migration.
+
+  - id: repo_audit
+    scenario: audit
+    description: "Audit repository implementations for issues"
+    prompt: |
+      Audit the repository layer in this {language} project:
+
+      1. Find SQL injection vulnerabilities (string concatenation in queries)
+      2. Check for repository methods returning ORM entities instead of domain objects
+      3. Identify repositories for non-aggregate-root entities
+      4. Find N+1 query problems in repository methods
+      5. Check for missing transaction management (Unit of Work)
+      6. Verify all repositories have test doubles for unit testing
+
+  - id: repo_specification
+    scenario: architecture
+    description: "Implement the specification pattern for complex queries"
+    prompt: |
+      Implement the specification pattern in {language} for the {entity_name} entity:
+
+      1. Define a Specification interface with is_satisfied_by method
+      2. Create concrete specifications for each business criterion
+      3. Implement AND, OR, NOT composite specifications
+      4. Add a repository method that accepts specifications
+      5. Implement specification-to-SQL translation in the infrastructure layer
+      6. Show unit tests verifying specification logic without database
+
+anti_patterns:
+  - name: "Repository Per Entity"
+    description: >
+      Creating a repository for every database entity instead of per aggregate
+      root. Allows bypassing aggregate invariants by modifying child entities directly.
+    fix: "One repository per aggregate root; access child entities only through the root"
+    severity: high
+    related_pattern: aggregate_repository
+
+  - name: "Leaky Repository Abstraction"
+    description: >
+      Repository interface exposes ORM-specific types (IQueryable, Session, DbSet)
+      or returns ORM entity objects instead of domain objects.
+    fix: "Repository returns domain objects; all ORM specifics contained in implementation"
+    severity: medium
+    related_pattern: generic_repository
+
+  - name: "God Repository"
+    description: >
+      Single repository class handling queries for multiple unrelated entities.
+      Grows into a massive class with dozens of methods and mixed responsibilities.
+    fix: "Separate repositories per aggregate; use specifications for query variations"
+    severity: medium
+    related_pattern: aggregate_repository
+
+  - name: "SQL Injection via Repository"
+    description: >
+      Repository methods using string concatenation or interpolation to build
+      SQL queries with user-provided values.
+    fix: "Always use parameterized queries; validate inputs at repository boundary"
+    severity: critical
+    related_pattern: generic_repository
+
+checklist:
+  - id: RP-01
+    category: design
+    description: "One repository per aggregate root — not per entity"
+    severity: high
+    verified_by: aggregate_repository
+
+  - id: RP-02
+    category: design
+    description: "Repository interface defined in domain layer; implementation in infrastructure"
+    severity: high
+    verified_by: aggregate_repository
+
+  - id: RP-03
+    category: security
+    description: "All queries use parameterized statements — no string concatenation"
+    severity: critical
+    verified_by: generic_repository
+
+  - id: RP-04
+    category: correctness
+    description: "Repository returns domain objects, not ORM entities or raw data"
+    severity: high
+    verified_by: aggregate_repository
+
+  - id: RP-05
+    category: maintainability
+    description: "In-memory repository implementations available for unit testing"
+    severity: high
+    verified_by: generic_repository
+
+  - id: RP-06
+    category: correctness
+    description: "Aggregate loaded and saved as a whole — no partial updates"
+    severity: high
+    verified_by: aggregate_repository
+
+  - id: RP-07
+    category: reliability
+    description: "Unit of Work used for multi-aggregate transactional operations"
+    severity: medium
+    verified_by: unit_of_work
+
+  - id: RP-08
+    category: performance
+    description: "N+1 query problems addressed via eager loading or batch queries"
+    severity: high
+    verified_by: generic_repository
+
+  - id: RP-09
+    category: security
+    description: "Multi-tenant isolation enforced at repository query level"
+    severity: high
+    verified_by: generic_repository
+
+  - id: RP-10
+    category: observability
+    description: "Repository operations instrumented with timing metrics"
+    severity: medium
+    verified_by: generic_repository
+
+  - id: RP-11
+    category: maintainability
+    description: "Specification pattern used for complex dynamic queries"
+    severity: low
+    verified_by: specification_pattern
+
+  - id: RP-12
+    category: compliance
+    description: "Repository supports data deletion for right-to-erasure compliance"
+    severity: high
+    verified_by: generic_repository

@@ -1,0 +1,614 @@
+# =============================================================================
+# AI Architecture Cookbook — Containerization
+# Schema: v3 | Domain: containerization
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: containerization
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Container image construction, runtime configuration, and security hardening.
+    Covers Dockerfile best practices, multi-stage builds, image scanning, and
+    production-ready container configurations for AI-assisted development.
+
+  tags:
+    - docker
+    - containers
+    - oci
+    - images
+    - runtime
+    - security
+
+  categories:
+    - infrastructure
+
+  prerequisites: []
+
+  related_standards:
+    - id: orchestration
+      relationship: complementary
+      context: "Orchestration platforms consume container images produced by containerization standards"
+    - id: ci-cd
+      relationship: complementary
+      context: "CI/CD pipelines build and push container images"
+
+context_inputs:
+  - name: runtime_language
+    type: enum
+    description: "Primary language/runtime for the container"
+    required: true
+    default: node
+    enum_values:
+      - node
+      - python
+      - java
+      - dotnet
+      - go
+      - rust
+      - ruby
+      - php
+      - multi
+
+  - name: image_purpose
+    type: enum
+    description: "What the container image is used for"
+    required: true
+    default: api_service
+    enum_values:
+      - api_service
+      - worker
+      - batch_job
+      - static_site
+      - database
+      - dev_environment
+
+  - name: security_posture
+    type: enum
+    description: "Security requirements for the container"
+    required: true
+    default: standard
+    enum_values:
+      - minimal
+      - standard
+      - hardened
+      - distroless
+
+decision_tree:
+  - id: distroless_hardened
+    priority: 1
+    if:
+      - security_posture in [hardened, distroless]
+    then:
+      pattern: distroless_images
+      standards:
+        - "CIS Docker Benchmark"
+        - "NIST SP 800-190"
+      notes: >
+        Distroless or scratch-based images minimize attack surface. No shell,
+        no package manager, no unnecessary binaries.
+    else:
+      pattern: multi_stage_builds
+      notes: "Multi-stage builds reduce image size while keeping build tools separate"
+
+  - id: multi_stage_default
+    priority: 2
+    if:
+      - security_posture == standard
+    then:
+      pattern: multi_stage_builds
+      standards:
+        - "Docker Official Best Practices"
+      notes: >
+        Multi-stage builds are the default for production containers. Build in
+        one stage, copy only artifacts to a slim runtime stage.
+
+  - id: dev_environment
+    priority: 3
+    if:
+      - image_purpose == dev_environment
+    then:
+      pattern: dev_containers
+      standards:
+        - "Dev Containers Specification"
+      notes: >
+        Dev containers standardize development environments with all tools
+        and extensions pre-configured.
+
+  - id: layer_optimization
+    priority: 4
+    if:
+      - image_purpose in [api_service, worker]
+    then:
+      pattern: layer_optimization
+      standards:
+        - "OCI Image Specification"
+      notes: >
+        Optimize layer ordering for build cache efficiency — least-changing
+        layers first, most-changing layers last.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: multi_stage_builds
+    description: "Multi-stage builds are safe default for any container workload"
+
+patterns:
+  - id: multi_stage_builds
+    name: "Multi-Stage Builds"
+    description: >
+      Separate build dependencies from runtime using multiple FROM statements.
+      The final stage contains only the application and its runtime dependencies,
+      dramatically reducing image size and attack surface.
+    use_when:
+      - "Any production container image"
+      - "Compiled languages (Go, Java, .NET, Rust)"
+      - "Frontend apps needing build toolchains"
+      - "Want to reduce image size without sacrificing build capabilities"
+    avoid_when:
+      - "Trivial scripts that don't need build tools"
+    tradeoffs:
+      pros:
+        - "Final image contains only runtime — no compilers, dev dependencies"
+        - "Build cache shared across stages"
+        - "Smaller images = faster pulls and deploys"
+        - "Reduced attack surface — no build tools in production"
+      cons:
+        - "More complex Dockerfiles"
+        - "Debugging requires separate debug stage or overrides"
+    implementation:
+      guidelines:
+        - "First stage: full SDK/build tools, compile/build application"
+        - "Final stage: slim runtime image, COPY --from=build only artifacts"
+        - "Pin base image versions with SHA digests for reproducibility"
+        - "Use .dockerignore to exclude unnecessary context"
+        - "Order COPY commands from least-changing (deps) to most-changing (source)"
+      common_errors:
+        - error: "Copying entire build context into final stage"
+          impact: "Image contains build tools and source code; large and insecure"
+          fix: "COPY --from=build only the compiled artifact and runtime configs"
+        - error: "Not pinning base image versions"
+          impact: "Builds break when base image updates; non-reproducible"
+          fix: "Use image@sha256:digest or specific version tags, never :latest in production"
+    maturity:
+      level: standard
+    standards:
+      - name: "Docker Multi-Stage Build Documentation"
+        type: practice
+        role: "Official Docker guidance for multi-stage patterns"
+        status: recommended
+
+  - id: distroless_images
+    name: "Distroless / Minimal Base Images"
+    description: >
+      Use distroless, scratch, or Alpine-based images that contain only the
+      application and its runtime. No shell, no package manager, no OS utilities.
+      Minimizes CVE exposure and reduces image size.
+    use_when:
+      - "High-security environments"
+      - "Compliance requires minimal attack surface"
+      - "Statically compiled binaries (Go, Rust)"
+      - "JVM or .NET runtime containers"
+    avoid_when:
+      - "Need shell access for debugging in production"
+      - "Application requires OS-level utilities"
+    tradeoffs:
+      pros:
+        - "Minimal CVE surface — no unnecessary packages"
+        - "Very small images (often <50MB)"
+        - "No shell access eliminates a class of attacks"
+        - "Passes CIS Docker benchmarks easily"
+      cons:
+        - "No shell for debugging — must use debug sidecars or ephemeral containers"
+        - "Must statically link or include all runtime dependencies"
+        - "More complex troubleshooting in production"
+    implementation:
+      guidelines:
+        - "Go/Rust: Build statically, use FROM scratch"
+        - "Java: Use gcr.io/distroless/java or eclipse-temurin slim"
+        - ".NET: Use mcr.microsoft.com/dotnet/runtime-deps"
+        - "Node: Use distroless/nodejs or Alpine with apk --no-cache"
+        - "Always run as non-root USER"
+      common_errors:
+        - error: "Using distroless but running as root"
+          impact: "Non-root constraint is the other half of hardening"
+          fix: "Add USER nonroot:nonroot or use the distroless nonroot variant"
+        - error: "Missing required shared libraries in distroless"
+          impact: "Application crashes at startup with missing .so errors"
+          fix: "Use ldd to identify dependencies; include them in the build stage"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Google Distroless Images"
+        type: practice
+        role: "Minimal container images for production"
+        status: recommended
+
+  - id: layer_optimization
+    name: "Layer Caching & Optimization"
+    description: >
+      Structure Dockerfile instructions to maximize build cache efficiency.
+      Least-changing layers first (OS packages, dependencies), most-changing
+      layers last (application code). Each instruction creates a layer;
+      minimize layer count while preserving cache boundaries.
+    use_when:
+      - "CI/CD builds where speed matters"
+      - "Large dependency trees (node_modules, pip packages)"
+      - "Frequent rebuilds during development"
+    avoid_when:
+      - "Single-file applications with no dependencies"
+    tradeoffs:
+      pros:
+        - "Faster rebuilds — only changed layers rebuilt"
+        - "CI/CD pipelines benefit from cached dependency layers"
+        - "Smaller push deltas to registries"
+      cons:
+        - "Must be intentional about instruction ordering"
+        - "Some operations (apt-get) must be combined to avoid stale caches"
+    implementation:
+      guidelines:
+        - "COPY package.json/requirements.txt BEFORE source code"
+        - "RUN dependency install BEFORE COPY source"
+        - "Combine apt-get update && apt-get install in one RUN"
+        - "Use --mount=type=cache for package manager caches (BuildKit)"
+        - "Group related RUN commands with && and backslash continuations"
+      common_errors:
+        - error: "COPY . . before dependency install"
+          impact: "Any source change invalidates dependency cache; full rebuild every time"
+          fix: "Copy only dependency manifests first, install, then copy source"
+        - error: "Separate RUN apt-get update and RUN apt-get install"
+          impact: "Stale package index cached; install may fail or get old versions"
+          fix: "Combine: RUN apt-get update && apt-get install -y --no-install-recommends pkg"
+    maturity:
+      level: standard
+    standards:
+      - name: "Docker BuildKit Cache Mounts"
+        type: practice
+        role: "Advanced caching for faster builds"
+        status: recommended
+
+  - id: dev_containers
+    name: "Dev Containers"
+    description: >
+      Standardized development environments using the Dev Containers specification.
+      Defines tools, extensions, settings, and services in a devcontainer.json
+      file that works across VS Code, GitHub Codespaces, and other IDEs.
+    use_when:
+      - "Team needs consistent development environments"
+      - "Onboarding new developers quickly"
+      - "Complex local setup with multiple services"
+      - "Using GitHub Codespaces or remote development"
+    avoid_when:
+      - "Solo developer with simple local setup"
+      - "Team prefers native development environment"
+    tradeoffs:
+      pros:
+        - "Consistent environment across team — no 'works on my machine'"
+        - "New developer productive in minutes, not hours"
+        - "Environment as code — versioned alongside the application"
+        - "Supports GPU, Docker-in-Docker, and complex topologies"
+      cons:
+        - "Requires Docker or compatible runtime"
+        - "Performance overhead on some platforms"
+        - "IDE-specific features may not work identically everywhere"
+    implementation:
+      guidelines:
+        - "Define devcontainer.json in .devcontainer/ directory"
+        - "Use official base images from mcr.microsoft.com/devcontainers"
+        - "Include all required extensions and settings"
+        - "Use docker-compose.yml for multi-service development (database, cache)"
+        - "Pin tool versions for reproducibility"
+      common_errors:
+        - error: "Dev container with excessive tools installed"
+          impact: "Slow build, large image, long startup time"
+          fix: "Include only tools needed for development; use features for optional tools"
+        - error: "Not persisting data volumes between rebuilds"
+          impact: "Database data lost every time container rebuilds"
+          fix: "Use named volumes for databases and caches in docker-compose"
+    maturity:
+      level: standard
+    standards:
+      - name: "Dev Containers Specification"
+        type: standard
+        role: "Open standard for development containers"
+        status: recommended
+
+examples:
+  - id: multi_stage_node
+    title: "Multi-Stage Build — Node.js API"
+    context: "Production Node.js API container with minimal runtime image"
+    correct: |
+      # Stage 1: Build
+      FROM node:20-alpine AS build
+      WORKDIR /app
+      COPY package.json package-lock.json ./
+      RUN npm ci --production=false
+      COPY src/ src/
+      COPY tsconfig.json ./
+      RUN npm run build
+      RUN npm prune --production
+
+      # Stage 2: Runtime (minimal)
+      FROM node:20-alpine AS runtime
+      RUN addgroup -S app && adduser -S app -G app
+      WORKDIR /app
+      COPY --from=build --chown=app:app /app/dist ./dist
+      COPY --from=build --chown=app:app /app/node_modules ./node_modules
+      COPY --from=build --chown=app:app /app/package.json ./
+      USER app
+      EXPOSE 3000
+      HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost:3000/health || exit 1
+      CMD ["node", "dist/index.js"]
+    incorrect: |
+      # WRONG: Single stage, runs as root, no health check
+      FROM node:20
+      WORKDIR /app
+      COPY . .
+      RUN npm install
+      RUN npm run build
+      EXPOSE 3000
+      CMD ["node", "dist/index.js"]
+      # Problems:
+      #   - Full node image (900MB+ vs 150MB)
+      #   - Dev dependencies in production
+      #   - Runs as root
+      #   - .dockerignore likely missing (copies .git, node_modules)
+      #   - No health check
+      #   - Source code in production image
+    explanation: >
+      The correct version uses multi-stage build to separate build tools from
+      runtime, runs as non-root user, includes health check, and only copies
+      production artifacts. The incorrect version ships everything including
+      dev dependencies and source code, runs as root, and uses the full
+      1GB+ Node image.
+
+  - id: layer_cache_python
+    title: "Layer Optimization — Python Application"
+    context: "Python FastAPI application with optimized layer caching"
+    correct: |
+      FROM python:3.12-slim AS base
+      # System deps change rarely — cached layer
+      RUN apt-get update && apt-get install -y --no-install-recommends \
+          libpq-dev \
+          && rm -rf /var/lib/apt/lists/*
+
+      # Dependencies change occasionally — cached layer
+      COPY requirements.txt .
+      RUN pip install --no-cache-dir -r requirements.txt
+
+      # Source changes frequently — rebuilt layer
+      COPY src/ /app/src/
+      WORKDIR /app
+      RUN adduser --system --no-create-home app
+      USER app
+      CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    incorrect: |
+      # WRONG: Source copied before dependencies
+      FROM python:3.12
+      COPY . /app
+      WORKDIR /app
+      RUN pip install -r requirements.txt
+      CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+      # Problems:
+      #   - Any source change invalidates pip cache
+      #   - Full python image (1GB+) instead of slim
+      #   - apt cache not cleaned
+      #   - Runs as root
+    explanation: >
+      The correct version copies requirements.txt first, installs dependencies,
+      then copies source code — so dependency layer is cached across source
+      changes. Uses slim base, cleans apt cache, and runs as non-root.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Container health checks verify TLS endpoints where applicable"
+  data_protection:
+    requirements:
+      - "No secrets baked into images — use runtime injection via env vars or mounted secrets"
+      - "Multi-stage builds ensure source code and build artifacts excluded from runtime image"
+  access_control:
+    requirements:
+      - "All containers run as non-root USER"
+      - "Read-only root filesystem where possible (--read-only flag)"
+      - "Drop all capabilities, add back only what's needed (--cap-drop=ALL)"
+  input_output:
+    requirements:
+      - "Container entrypoint validates required environment variables at startup"
+  secrets:
+    requirements:
+      - "Never COPY secrets into image layers — use BuildKit --mount=type=secret"
+      - "Use orchestrator secret management (Kubernetes Secrets, Docker Secrets)"
+  monitoring:
+    requirements:
+      - "HEALTHCHECK instruction in every Dockerfile"
+      - "Container logs written to stdout/stderr for log aggregation"
+      - "Image scanning (Trivy, Snyk) integrated into CI pipeline"
+
+compliance:
+  standards:
+    - name: "CIS Docker Benchmark"
+      relevance: "Industry standard for Docker security configuration"
+    - name: "NIST SP 800-190"
+      relevance: "Application container security guide"
+    - name: "OCI Image Specification"
+      relevance: "Open standard for container image format"
+
+  requirements_mapping:
+    - control: non_root_containers
+      description: "All containers must run as non-root user"
+      maps_to:
+        - "CIS Docker Benchmark 4.1"
+    - control: image_scanning
+      description: "All images scanned for vulnerabilities before deployment"
+      maps_to:
+        - "NIST SP 800-190 Section 3"
+
+prompt_recipes:
+  - id: container_greenfield
+    scenario: greenfield
+    description: "Create production-ready Dockerfile for a new application"
+    prompt: |
+      Create a production-ready Dockerfile for a {language} {framework} application:
+
+      1. Use multi-stage build (build stage + runtime stage)
+      2. Pin base image versions (no :latest)
+      3. Optimize layer ordering for cache efficiency
+      4. Run as non-root user
+      5. Include HEALTHCHECK instruction
+      6. Use .dockerignore to exclude unnecessary files
+      7. Apply security hardening (minimal base, no secrets in image)
+
+      Show the Dockerfile and .dockerignore file.
+
+  - id: container_audit
+    scenario: audit
+    description: "Audit existing Dockerfile for security and efficiency"
+    prompt: |
+      Audit this Dockerfile for production readiness:
+
+      1. **Security**: Running as root? Secrets in image? Unnecessary packages?
+      2. **Size**: Multi-stage build used? Minimal base image? Layer count?
+      3. **Caching**: Layer order optimized? Dependencies before source?
+      4. **Health**: HEALTHCHECK defined? Proper signal handling?
+      5. **Reproducibility**: Pinned versions? .dockerignore present?
+
+      Rate each area and provide specific fixes.
+
+  - id: container_optimization
+    scenario: optimization
+    description: "Optimize container image size and build time"
+    prompt: |
+      Optimize this container image for size and build speed:
+
+      1. Switch to multi-stage build if not already
+      2. Use slim/alpine/distroless base image
+      3. Optimize layer ordering for cache hits
+      4. Use BuildKit cache mounts for package managers
+      5. Remove unnecessary files and clean package caches
+      6. Show before/after image size comparison
+
+  - id: container_security
+    scenario: high-security
+    description: "Harden container for high-security environments"
+    prompt: |
+      Harden this container image for a high-security environment:
+
+      1. Switch to distroless or scratch base image
+      2. Run as non-root with minimal capabilities (--cap-drop=ALL)
+      3. Read-only root filesystem
+      4. No shell access in final image
+      5. Image scanning with zero critical/high CVEs
+      6. Signed images with cosign/notation
+      7. Show the hardened Dockerfile and runtime flags
+
+anti_patterns:
+  - name: "Fat Images"
+    description: >
+      Using full OS base images (ubuntu:latest, node:20) with development tools,
+      compilers, and unnecessary packages in production. Results in 1GB+ images
+      with hundreds of CVEs.
+    fix: "Use multi-stage builds with slim/alpine/distroless runtime stage"
+    severity: high
+    related_pattern: multi_stage_builds
+
+  - name: "Secrets in Image Layers"
+    description: >
+      Copying API keys, passwords, or certificates into the image via COPY or ENV.
+      Even if deleted in a later layer, secrets persist in earlier layers and
+      can be extracted.
+    fix: "Use BuildKit --mount=type=secret for build-time secrets; runtime secrets via env vars or mounted volumes"
+    severity: critical
+    related_pattern: distroless_images
+
+  - name: "Running as Root"
+    description: >
+      Container processes running as UID 0 (root). A container escape vulnerability
+      becomes a host root compromise. Most applications don't need root.
+    fix: "Add USER directive with non-root user; use --cap-drop=ALL and add only needed capabilities"
+    severity: critical
+    related_pattern: distroless_images
+
+  - name: "Cache-Busting Layer Order"
+    description: >
+      Copying entire application source before installing dependencies, causing
+      dependency layer to rebuild on every source change. Wastes CI time and
+      bandwidth.
+    fix: "Copy dependency manifests first, install, then copy source code"
+    severity: medium
+    related_pattern: layer_optimization
+
+checklist:
+  - id: CTR-01
+    category: security
+    description: "Container runs as non-root USER"
+    severity: critical
+    verified_by: distroless_images
+
+  - id: CTR-02
+    category: security
+    description: "No secrets baked into image layers"
+    severity: critical
+    verified_by: distroless_images
+
+  - id: CTR-03
+    category: performance
+    description: "Multi-stage build separates build and runtime"
+    severity: high
+    verified_by: multi_stage_builds
+
+  - id: CTR-04
+    category: performance
+    description: "Layer ordering optimized for cache efficiency"
+    severity: medium
+    verified_by: layer_optimization
+
+  - id: CTR-05
+    category: security
+    description: "Base image versions pinned (no :latest)"
+    severity: high
+    verified_by: multi_stage_builds
+
+  - id: CTR-06
+    category: reliability
+    description: "HEALTHCHECK instruction defined"
+    severity: high
+    verified_by: multi_stage_builds
+
+  - id: CTR-07
+    category: security
+    description: "Image scanned for CVEs in CI pipeline"
+    severity: high
+    verified_by: distroless_images
+
+  - id: CTR-08
+    category: observability
+    description: "Application logs to stdout/stderr"
+    severity: medium
+    verified_by: multi_stage_builds
+
+  - id: CTR-09
+    category: security
+    description: ".dockerignore excludes secrets, .git, node_modules, build artifacts"
+    severity: medium
+    verified_by: layer_optimization
+
+  - id: CTR-10
+    category: maintainability
+    description: "Dockerfile uses multi-stage with named stages for clarity"
+    severity: low
+    verified_by: multi_stage_builds
+
+  - id: CTR-11
+    category: security
+    description: "Minimal capabilities — CAP_DROP ALL with explicit adds"
+    severity: high
+    verified_by: distroless_images
+
+  - id: CTR-12
+    category: reliability
+    description: "Container handles SIGTERM gracefully for zero-downtime deploys"
+    severity: medium
+    verified_by: multi_stage_builds

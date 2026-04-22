@@ -1,0 +1,656 @@
+# =============================================================================
+# AI Architecture Cookbook — Infrastructure as Code
+# Schema: v3 | Domain: infrastructure-as-code
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: infrastructure-as-code
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Declarative infrastructure provisioning, state management, and drift
+    detection. Covers Terraform, Pulumi, Bicep, CloudFormation, and general
+    IaC patterns for reproducible, auditable infrastructure.
+
+  tags:
+    - iac
+    - terraform
+    - pulumi
+    - bicep
+    - cloudformation
+    - infrastructure
+
+  categories:
+    - infrastructure
+
+  prerequisites: []
+
+  related_standards:
+    - id: ci-cd
+      relationship: complementary
+      context: "IaC changes applied through CI/CD pipelines"
+    - id: cloud-architecture
+      relationship: complementary
+      context: "IaC implements the cloud architecture design"
+
+context_inputs:
+  - name: iac_tool
+    type: enum
+    description: "Primary IaC tool or framework"
+    required: true
+    default: terraform
+    enum_values:
+      - terraform
+      - pulumi
+      - bicep
+      - cloudformation
+      - cdk
+      - crossplane
+      - tool_agnostic
+
+  - name: cloud_provider
+    type: enum
+    description: "Target cloud provider"
+    required: true
+    default: multi_cloud
+    enum_values:
+      - aws
+      - azure
+      - gcp
+      - multi_cloud
+      - on_premises
+
+  - name: team_structure
+    type: enum
+    description: "How infrastructure is managed"
+    required: true
+    default: platform_team
+    enum_values:
+      - platform_team
+      - embedded_in_dev
+      - centralized_ops
+      - self_service
+
+decision_tree:
+  - id: multi_cloud
+    priority: 1
+    if:
+      - cloud_provider == multi_cloud
+    then:
+      pattern: declarative_iac
+      standards:
+        - "Terraform Documentation"
+        - "Pulumi Documentation"
+      notes: >
+        Terraform and Pulumi support multiple cloud providers with a single
+        tool. Terraform uses HCL; Pulumi uses general-purpose languages.
+    else:
+      pattern: declarative_iac
+      notes: "Declarative IaC is the right approach regardless of provider"
+
+  - id: modular_infra
+    priority: 2
+    if:
+      - team_structure in [platform_team, self_service]
+    then:
+      pattern: modular_infrastructure
+      standards:
+        - "Terraform Module Registry"
+      notes: >
+        Modular infrastructure lets platform teams publish reusable modules
+        that development teams consume as self-service.
+
+  - id: state_management
+    priority: 3
+    if:
+      - iac_tool in [terraform, pulumi]
+    then:
+      pattern: state_management
+      standards:
+        - "Terraform State Documentation"
+      notes: >
+        State management is critical for Terraform and Pulumi. Remote state
+        with locking prevents concurrent modifications.
+
+  - id: policy_as_code
+    priority: 4
+    if:
+      - team_structure in [platform_team, centralized_ops]
+    then:
+      pattern: policy_as_code
+      standards:
+        - "OPA/Rego"
+        - "Sentinel"
+      notes: >
+        Policy as code enforces guardrails — ensuring IaC changes comply
+        with organizational standards before apply.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: declarative_iac
+    description: "Declarative IaC is the foundation — start here"
+
+patterns:
+  - id: declarative_iac
+    name: "Declarative Infrastructure as Code"
+    description: >
+      Define infrastructure in declarative configuration files that describe the
+      desired end state. The IaC tool computes the diff and applies changes.
+      Version-controlled, reviewable, and reproducible. The foundation of
+      all modern infrastructure management.
+    use_when:
+      - "Any cloud infrastructure provisioning"
+      - "Need reproducible environments (dev, staging, production)"
+      - "Infrastructure changes must be auditable"
+      - "Multiple team members manage infrastructure"
+    avoid_when:
+      - "One-off experimental resources (use console, clean up after)"
+    tradeoffs:
+      pros:
+        - "Infrastructure is versioned, reviewable, and reproducible"
+        - "Drift detection shows when reality diverges from config"
+        - "Consistent environments across dev, staging, production"
+        - "Audit trail via version control"
+      cons:
+        - "Learning curve for IaC languages and concepts"
+        - "State management complexity (Terraform, Pulumi)"
+        - "Some resources easier to create manually (one-time setup)"
+    implementation:
+      guidelines:
+        - "All infrastructure defined in code — no manual console changes"
+        - "Use terraform plan / pulumi preview before apply"
+        - "Review IaC changes in pull requests like application code"
+        - "Tag all resources with team, environment, cost-center"
+        - "Use data sources to reference existing resources, not hardcoded IDs"
+      common_errors:
+        - error: "Hardcoded resource IDs and ARNs"
+          impact: "Config breaks across environments; not portable"
+          fix: "Use data sources, outputs, and variables for all references"
+        - error: "No terraform plan review before apply"
+          impact: "Unexpected resource destruction; production outage"
+          fix: "Always run plan in CI; require approval before apply"
+    maturity:
+      level: standard
+    standards:
+      - name: "Infrastructure as Code (Kief Morris)"
+        type: practice
+        role: "Foundational reference for IaC practices"
+        status: recommended
+
+  - id: modular_infrastructure
+    name: "Modular Infrastructure (Reusable Modules)"
+    description: >
+      Decompose infrastructure into reusable modules — each encapsulating a
+      logical group of resources (VPC, EKS cluster, database). Modules
+      accept inputs, produce outputs, and can be versioned independently.
+      Platform teams publish modules; dev teams consume them.
+    use_when:
+      - "Multiple services need similar infrastructure patterns"
+      - "Platform team provides self-service infrastructure"
+      - "Want to standardize infrastructure patterns across teams"
+    avoid_when:
+      - "Simple infrastructure with no reuse potential"
+      - "Single project with unique resources"
+    tradeoffs:
+      pros:
+        - "DRY infrastructure — define once, reuse everywhere"
+        - "Standardized patterns across teams"
+        - "Module versioning — update independently"
+        - "Self-service for development teams"
+      cons:
+        - "Module design requires upfront planning"
+        - "Breaking changes in modules affect all consumers"
+        - "Over-abstraction can make modules hard to use"
+    implementation:
+      guidelines:
+        - "One module per logical resource group (networking, compute, database)"
+        - "Expose only necessary variables; use sensible defaults"
+        - "Version modules with semantic versioning"
+        - "Document inputs, outputs, and usage examples"
+        - "Publish modules to private registry or Git"
+      common_errors:
+        - error: "God module that provisions everything"
+          impact: "Blast radius of changes is the entire stack; impossible to update incrementally"
+          fix: "Decompose into focused modules; compose in root configuration"
+        - error: "No module versioning"
+          impact: "Upstream changes break all consumers without warning"
+          fix: "Pin module versions; use semantic versioning; changelog for breaking changes"
+    maturity:
+      level: standard
+    standards:
+      - name: "Terraform Module Best Practices"
+        type: practice
+        role: "Guidance for module design and composition"
+        status: recommended
+
+  - id: state_management
+    name: "Remote State Management"
+    description: >
+      Store IaC state remotely with locking to prevent concurrent modifications.
+      State tracks the mapping between config and real resources. Remote backends
+      (S3, Azure Blob, GCS) provide team access, versioning, and locking.
+    use_when:
+      - "Team of >1 managing infrastructure"
+      - "CI/CD pipeline applies infrastructure changes"
+      - "Need state history and rollback capability"
+    avoid_when:
+      - "Solo developer with local-only infrastructure experiments"
+    tradeoffs:
+      pros:
+        - "Team can safely collaborate on infrastructure"
+        - "State locking prevents concurrent modifications"
+        - "State versioning enables rollback"
+        - "CI/CD pipeline can access state"
+      cons:
+        - "Remote state backend is itself infrastructure to manage"
+        - "State file contains sensitive data (must be encrypted)"
+        - "State corruption can be difficult to recover from"
+    implementation:
+      guidelines:
+        - "Use remote backend: S3+DynamoDB (AWS), Azure Blob (Azure), GCS (GCP)"
+        - "Enable state encryption at rest"
+        - "Enable state locking to prevent concurrent modifications"
+        - "Split state by domain — separate state per component/service"
+        - "Never manually edit state files; use terraform state commands"
+      common_errors:
+        - error: "Single state file for all infrastructure"
+          impact: "Blast radius is everything; slow plans; state lock contention"
+          fix: "Split state by domain (networking, compute, database); use data sources to cross-reference"
+        - error: "State file committed to version control"
+          impact: "Secrets in state exposed; concurrent access without locking"
+          fix: "Use remote backend; add *.tfstate to .gitignore"
+    maturity:
+      level: standard
+    standards:
+      - name: "Terraform Remote State Documentation"
+        type: standard
+        role: "Authoritative reference for state management"
+        status: recommended
+
+  - id: policy_as_code
+    name: "Policy as Code"
+    description: >
+      Define infrastructure compliance policies in code and enforce them
+      before changes are applied. Policies validate that IaC configurations
+      meet security, cost, and compliance requirements. Shift-left
+      infrastructure governance.
+    use_when:
+      - "Organization has compliance requirements for infrastructure"
+      - "Need guardrails for developer self-service"
+      - "Want to catch policy violations before apply"
+    avoid_when:
+      - "Small team with full infrastructure visibility"
+      - "No compliance or security requirements"
+    tradeoffs:
+      pros:
+        - "Violations caught before deployment — shift-left governance"
+        - "Policies versioned and reviewed like code"
+        - "Consistent enforcement across all teams"
+        - "Self-service with guardrails"
+      cons:
+        - "Additional tooling and learning curve"
+        - "Overly strict policies slow development"
+        - "False positives require exception mechanisms"
+    implementation:
+      guidelines:
+        - "Use OPA/Conftest for open-source policy; Sentinel for Terraform Cloud"
+        - "Policies run in CI before terraform apply"
+        - "Start with critical policies (no public S3 buckets, encrypted storage)"
+        - "Provide exception mechanism for legitimate overrides"
+        - "Test policies against both compliant and non-compliant configurations"
+      common_errors:
+        - error: "Policies too restrictive with no exception mechanism"
+          impact: "Developers can't deploy legitimate infrastructure; shadow IT"
+          fix: "Provide documented exception process; tag exceptions for audit"
+        - error: "Policies not tested"
+          impact: "False positives block legitimate changes; false negatives miss violations"
+          fix: "Unit test policies with known-good and known-bad configurations"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Open Policy Agent (OPA)"
+        type: tool
+        role: "General-purpose policy engine"
+        status: recommended
+
+examples:
+  - id: terraform_module_example
+    title: "Terraform Module — Reusable VPC"
+    context: "Platform team module consumed by development teams"
+    correct: |
+      # modules/vpc/main.tf
+      resource "aws_vpc" "main" {
+        cidr_block           = var.cidr_block
+        enable_dns_hostnames = true
+        enable_dns_support   = true
+
+        tags = merge(var.tags, {
+          Name        = "${var.name}-vpc"
+          Environment = var.environment
+          ManagedBy   = "terraform"
+        })
+      }
+
+      resource "aws_subnet" "private" {
+        count             = length(var.availability_zones)
+        vpc_id            = aws_vpc.main.id
+        cidr_block        = cidrsubnet(var.cidr_block, 8, count.index)
+        availability_zone = var.availability_zones[count.index]
+
+        tags = merge(var.tags, {
+          Name = "${var.name}-private-${var.availability_zones[count.index]}"
+          Tier = "private"
+        })
+      }
+
+      # modules/vpc/variables.tf
+      variable "name" {
+        type        = string
+        description = "Name prefix for all resources"
+      }
+
+      variable "cidr_block" {
+        type        = string
+        description = "VPC CIDR block"
+        default     = "10.0.0.0/16"
+      }
+
+      variable "environment" {
+        type        = string
+        description = "Environment name (dev, staging, production)"
+      }
+
+      variable "availability_zones" {
+        type        = list(string)
+        description = "List of AZs to use"
+      }
+
+      variable "tags" {
+        type        = map(string)
+        description = "Additional tags for all resources"
+        default     = {}
+      }
+
+      # Consumer usage:
+      # module "vpc" {
+      #   source      = "git::https://github.com/org/modules.git//vpc?ref=v1.2.0"
+      #   name        = "order-service"
+      #   environment = "production"
+      #   cidr_block  = "10.0.0.0/16"
+      #   availability_zones = ["us-east-1a", "us-east-1b", "us-east-1c"]
+      # }
+    incorrect: |
+      # WRONG: Hardcoded values, no module, no tags
+      resource "aws_vpc" "main" {
+        cidr_block = "10.0.0.0/16"
+      }
+
+      resource "aws_subnet" "subnet1" {
+        vpc_id     = aws_vpc.main.id
+        cidr_block = "10.0.1.0/24"
+        availability_zone = "us-east-1a"
+      }
+
+      resource "aws_subnet" "subnet2" {
+        vpc_id     = aws_vpc.main.id
+        cidr_block = "10.0.2.0/24"
+        availability_zone = "us-east-1b"
+      }
+      # Problems:
+      #   - Hardcoded CIDRs, AZs, and count
+      #   - No tags — untrackable resources
+      #   - Not a module — can't reuse
+      #   - Copy-paste for each subnet
+    explanation: >
+      The correct version uses a reusable module with variables, dynamic subnet
+      creation, consistent tagging, and version-pinned consumption. The incorrect
+      version hardcodes everything and uses copy-paste instead of loops.
+
+  - id: state_management_example
+    title: "Remote State Configuration"
+    context: "Terraform remote state with S3 backend and DynamoDB locking"
+    correct: |
+      # backend.tf — Remote state with encryption and locking
+      terraform {
+        backend "s3" {
+          bucket         = "myorg-terraform-state"
+          key            = "services/order-service/terraform.tfstate"
+          region         = "us-east-1"
+          encrypt        = true
+          dynamodb_table = "terraform-locks"
+        }
+      }
+
+      # Cross-reference another component's state (read-only)
+      data "terraform_remote_state" "networking" {
+        backend = "s3"
+        config = {
+          bucket = "myorg-terraform-state"
+          key    = "infrastructure/networking/terraform.tfstate"
+          region = "us-east-1"
+        }
+      }
+
+      # Use output from networking state
+      resource "aws_instance" "api" {
+        subnet_id = data.terraform_remote_state.networking.outputs.private_subnet_ids[0]
+        # ...
+      }
+    incorrect: |
+      # WRONG: Local state, no locking
+      # terraform.tfstate committed to Git
+      # No encryption, no locking
+      # Team members overwrite each other's state
+      terraform {
+        # No backend configured — defaults to local
+      }
+    explanation: >
+      The correct version uses S3 remote backend with encryption and DynamoDB
+      locking. State split per service with cross-references via data sources.
+      The incorrect version uses local state with no encryption or locking.
+
+security_hardening:
+  transport:
+    requirements:
+      - "IaC state stored in encrypted remote backends over TLS"
+  data_protection:
+    requirements:
+      - "State files encrypted at rest (contain resource details and sometimes secrets)"
+      - "Sensitive outputs marked as sensitive in IaC code"
+  access_control:
+    requirements:
+      - "IaC pipeline service accounts follow least-privilege"
+      - "State backend access restricted to authorized pipelines and operators"
+  input_output:
+    requirements:
+      - "Policy as code validates all IaC changes before apply"
+      - "terraform plan output reviewed before apply"
+  secrets:
+    requirements:
+      - "Secrets never hardcoded in IaC files — use secret manager references"
+      - "State backends encrypted to protect any secrets that leak into state"
+  monitoring:
+    requirements:
+      - "All terraform apply / pulumi up operations logged in audit trail"
+      - "Drift detection alerts when resources change outside IaC"
+
+compliance:
+  standards:
+    - name: "CIS Cloud Benchmarks"
+      relevance: "IaC should provision resources that meet CIS benchmarks"
+    - name: "Well-Architected Frameworks (AWS/Azure/GCP)"
+      relevance: "IaC patterns should follow cloud provider best practices"
+
+  requirements_mapping:
+    - control: infrastructure_audit
+      description: "All infrastructure changes traceable via version control"
+      maps_to:
+        - "SOC 2 CC8.1"
+    - control: encryption_at_rest
+      description: "IaC state and provisioned resources encrypted at rest"
+      maps_to:
+        - "CIS Cloud Benchmark — Encryption"
+
+prompt_recipes:
+  - id: iac_greenfield
+    scenario: greenfield
+    description: "Create IaC for new cloud infrastructure"
+    prompt: |
+      Create {iac_tool} configuration for {cloud_provider} infrastructure:
+
+      1. Remote state backend with encryption and locking
+      2. Networking module (VPC/VNet, subnets, security groups)
+      3. Compute module (EKS/AKS/GKE or EC2/VM)
+      4. Database module (RDS/Cloud SQL with encryption)
+      5. All resources tagged (team, environment, cost-center, managed-by)
+      6. Variables file with environment-specific defaults
+      7. Outputs for cross-module references
+
+  - id: iac_audit
+    scenario: audit
+    description: "Audit existing IaC for best practices"
+    prompt: |
+      Audit this {iac_tool} codebase for best practices:
+
+      1. **State**: Remote backend? Encryption? Locking? Split per domain?
+      2. **Modules**: Reusable? Versioned? Well-documented?
+      3. **Security**: No hardcoded secrets? Encryption enabled? Least privilege?
+      4. **Tagging**: All resources tagged? Consistent naming?
+      5. **DRY**: Variables and locals used? No hardcoded values?
+      6. **Policy**: Compliance checks in pipeline?
+
+  - id: iac_migration
+    scenario: migration
+    description: "Migrate infrastructure management to IaC"
+    prompt: |
+      Migrate existing {cloud_provider} resources to {iac_tool}:
+
+      1. Import existing resources into state (terraform import / pulumi import)
+      2. Generate configuration from current state
+      3. Verify plan shows no changes (config matches reality)
+      4. Add tags, variables, and module structure
+      5. Set up remote state backend
+      6. Integrate with CI/CD pipeline
+
+  - id: iac_refactor
+    scenario: optimization
+    description: "Refactor IaC for modularity and reuse"
+    prompt: |
+      Refactor this {iac_tool} codebase for modularity:
+
+      1. Identify reusable patterns (VPC, EKS, RDS provisioned multiple times)
+      2. Extract into versioned modules with inputs/outputs
+      3. Split monolithic state into domain-specific states
+      4. Add variable validation and type constraints
+      5. Document module usage with examples
+      6. Show before/after structure
+
+anti_patterns:
+  - name: "ClickOps"
+    description: >
+      Creating and managing infrastructure through cloud console UI. No
+      version control, no reproducibility, no audit trail. Each environment
+      is a unique snowflake.
+    fix: "Define all infrastructure in IaC; treat console as read-only for debugging"
+    severity: critical
+    related_pattern: declarative_iac
+
+  - name: "Monolithic State"
+    description: >
+      Single state file for all infrastructure. Every plan touches everything,
+      blast radius is the entire estate, and state locking blocks everyone.
+    fix: "Split state by domain (networking, compute, database); use data sources for cross-references"
+    severity: high
+    related_pattern: state_management
+
+  - name: "Hardcoded Values"
+    description: >
+      Resource IDs, CIDRs, regions, and account numbers hardcoded in
+      configuration. Not portable across environments.
+    fix: "Use variables with defaults, data sources for lookups, and outputs for cross-references"
+    severity: high
+    related_pattern: modular_infrastructure
+
+  - name: "Unencrypted State"
+    description: >
+      State file stored without encryption. State contains resource
+      attributes including database passwords, API keys, and connection strings.
+    fix: "Enable encryption at rest on state backend; restrict access with IAM policies"
+    severity: critical
+    related_pattern: state_management
+
+checklist:
+  - id: IAC-01
+    category: design
+    description: "All infrastructure defined in code — no manual console changes"
+    severity: critical
+    verified_by: declarative_iac
+
+  - id: IAC-02
+    category: security
+    description: "State encrypted at rest with locking enabled"
+    severity: critical
+    verified_by: state_management
+
+  - id: IAC-03
+    category: design
+    description: "State split by domain — not monolithic"
+    severity: high
+    verified_by: state_management
+
+  - id: IAC-04
+    category: maintainability
+    description: "Reusable modules for common patterns (VPC, compute, database)"
+    severity: medium
+    verified_by: modular_infrastructure
+
+  - id: IAC-05
+    category: maintainability
+    description: "Modules versioned with semantic versioning"
+    severity: medium
+    verified_by: modular_infrastructure
+
+  - id: IAC-06
+    category: security
+    description: "No secrets hardcoded in IaC files"
+    severity: critical
+    verified_by: declarative_iac
+
+  - id: IAC-07
+    category: compliance
+    description: "Policy as code validates changes before apply"
+    severity: high
+    verified_by: policy_as_code
+
+  - id: IAC-08
+    category: observability
+    description: "All resources tagged (team, environment, cost-center)"
+    severity: high
+    verified_by: declarative_iac
+
+  - id: IAC-09
+    category: reliability
+    description: "Plan reviewed before apply — no blind applies"
+    severity: high
+    verified_by: declarative_iac
+
+  - id: IAC-10
+    category: security
+    description: "IaC pipeline service accounts follow least-privilege"
+    severity: high
+    verified_by: policy_as_code
+
+  - id: IAC-11
+    category: reliability
+    description: "Drift detection alerts on manual changes"
+    severity: medium
+    verified_by: state_management
+
+  - id: IAC-12
+    category: maintainability
+    description: "No hardcoded values — variables and data sources used throughout"
+    severity: high
+    verified_by: modular_infrastructure

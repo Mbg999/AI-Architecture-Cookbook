@@ -1,0 +1,3 @@
+# Runtime Python dependencies for AI Architecture Cookbook tools and prompts
+pyyaml>=6.0
+jsonschema>=4.0

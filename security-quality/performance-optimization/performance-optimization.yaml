@@ -1,0 +1,684 @@
+# =============================================================================
+# AI Architecture Cookbook — Performance Optimization
+# Schema: v3 | Domain: performance-optimization
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: performance-optimization
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Performance profiling, optimization patterns, caching strategies, and
+    scalability. Covers the measure-first approach to performance, common
+    optimization patterns, and when to apply them.
+
+  tags:
+    - performance
+    - optimization
+    - caching
+    - profiling
+    - scalability
+    - latency
+
+  categories:
+    - security-quality
+
+  prerequisites: []
+
+  related_standards:
+    - id: logging-observability
+      relationship: complementary
+      context: "Observability provides the metrics needed to identify performance issues"
+    - id: data-persistence
+      relationship: complementary
+      context: "Database query optimization is a common performance bottleneck"
+    - id: cloud-architecture
+      relationship: complementary
+      context: "Cloud architecture decisions directly impact performance and scalability"
+
+context_inputs:
+  - name: performance_concern
+    type: enum
+    description: "Primary performance area of concern"
+    required: true
+    default: latency
+    enum_values:
+      - latency
+      - throughput
+      - memory
+      - startup_time
+      - database
+      - network
+
+  - name: application_tier
+    type: enum
+    description: "Which tier has the performance issue"
+    required: true
+    default: backend
+    enum_values:
+      - frontend
+      - backend
+      - database
+      - network
+      - full_stack
+
+  - name: optimization_stage
+    type: enum
+    description: "Where you are in the optimization process"
+    required: true
+    default: investigating
+    enum_values:
+      - designing
+      - investigating
+      - optimizing
+      - validating
+
+  - name: scale_requirements
+    type: enum
+    description: "Expected scale of the system"
+    required: false
+    default: moderate
+    enum_values:
+      - low
+      - moderate
+      - high
+      - extreme
+
+decision_tree:
+  - id: investigate_first
+    priority: 1
+    if:
+      - optimization_stage == investigating
+    then:
+      pattern: measure_first
+      standards:
+        - "Profile-Guided Optimization"
+      notes: >
+        Always profile before optimizing. Measure to find the real bottleneck.
+        Intuition about performance hotspots is wrong >50% of the time.
+    else:
+      pattern: caching_strategies
+      notes: "Caching is the most common optimization after identifying bottlenecks"
+
+  - id: database_bottleneck
+    priority: 2
+    if:
+      - performance_concern == database
+    then:
+      pattern: query_optimization
+      standards:
+        - "Database Query Optimization"
+      notes: >
+        Database queries are the most common backend performance bottleneck.
+        Optimize queries, add indexes, and implement connection pooling.
+
+  - id: high_scale_caching
+    priority: 3
+    if:
+      - scale_requirements in [high, extreme]
+      - performance_concern in [latency, throughput]
+    then:
+      pattern: caching_strategies
+      standards:
+        - "Cache-Aside Pattern"
+      notes: >
+        High-scale systems need multi-layer caching to reduce backend load
+        and improve response times.
+
+  - id: frontend_performance
+    priority: 4
+    if:
+      - application_tier == frontend
+    then:
+      pattern: frontend_performance
+      standards:
+        - "Core Web Vitals"
+      notes: >
+        Frontend performance focuses on initial load time, interactivity,
+        and visual stability measured by Core Web Vitals.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: measure_first
+    description: "Always measure before optimizing — find the real bottleneck first"
+
+patterns:
+  - id: measure_first
+    name: "Measure First — Profile-Guided Optimization"
+    description: >
+      Profile the application to identify actual bottlenecks before optimizing.
+      Developers' intuition about performance hotspots is wrong more than half
+      the time. Profiling provides data to focus effort where it matters most.
+    use_when:
+      - "Performance issue reported but root cause unknown"
+      - "Starting any optimization effort"
+      - "After deployment to validate performance meets SLOs"
+      - "Comparing before/after optimization effectiveness"
+    avoid_when:
+      - "Applying well-known best practices during initial design (e.g., database indexing)"
+    tradeoffs:
+      pros:
+        - "Focus optimization effort on actual bottlenecks"
+        - "Avoid wasting time optimizing code that isn't slow"
+        - "Data-driven decisions replace guesswork"
+        - "Provides baseline for measuring improvement"
+      cons:
+        - "Profiling adds overhead — may not reflect exact production behavior"
+        - "Production profiling requires careful instrumentation"
+        - "Sampling profilers may miss short-lived hotspots"
+    implementation:
+      guidelines:
+        - "Establish performance budget / SLOs before optimizing (e.g., p99 < 200ms)"
+        - "Profile in production-like conditions (same data volume, traffic pattern)"
+        - "Use language-appropriate profiler (pprof, py-spy, async-profiler, Chrome DevTools)"
+        - "Profile CPU, memory, I/O, and network separately"
+        - "Focus on p95/p99 latency, not average (averages hide tail latency)"
+        - "Create reproducible benchmarks for before/after comparison"
+        - "Optimize the top bottleneck, re-profile, repeat (Amdahl's Law)"
+      common_errors:
+        - error: "Optimizing without profiling (premature optimization)"
+          impact: "Wasted effort on code that contributes <1% of total latency"
+          fix: "Profile first; optimize only what the data shows is slow"
+        - error: "Using average latency as the performance metric"
+          impact: "Hides tail latency — 1% of users may see 10x slower response"
+          fix: "Use percentile metrics: p50, p95, p99, p99.9"
+        - error: "Benchmarking on developer machine, not production-like environment"
+          impact: "Results don't reflect production (different hardware, data, concurrency)"
+          fix: "Benchmark in staging with production-like data volume and traffic"
+    maturity:
+      level: standard
+    standards:
+      - name: "USE Method (Brendan Gregg)"
+        type: practice
+        role: "Systematic performance analysis methodology"
+        status: recommended
+        reference: "https://www.brendangregg.com/usemethod.html"
+      - name: "RED Method"
+        type: practice
+        role: "Request-focused performance monitoring (Rate, Errors, Duration)"
+        status: recommended
+
+  - id: caching_strategies
+    name: "Multi-Layer Caching"
+    description: >
+      Implement caching at multiple layers to reduce redundant computation
+      and I/O. Layers include: browser cache, CDN, API gateway cache,
+      application cache (Redis/Memcached), and database query cache.
+    use_when:
+      - "Read-heavy workloads (read:write ratio > 10:1)"
+      - "Expensive computations with stable results"
+      - "Database queries that repeat frequently"
+      - "Static or semi-static content serving"
+    avoid_when:
+      - "Write-heavy workloads where data changes constantly"
+      - "Data that must always be real-time fresh"
+      - "Simple applications where caching adds unnecessary complexity"
+    tradeoffs:
+      pros:
+        - "Dramatic latency reduction (cache hit: <1ms vs database: 5-50ms)"
+        - "Reduced backend load — fewer database queries"
+        - "Improved throughput — serve more requests with same resources"
+        - "Cost reduction — less compute and database I/O"
+      cons:
+        - "Cache invalidation complexity (the hard problem in CS)"
+        - "Stale data risk if TTL is too long"
+        - "Memory cost for cache storage"
+        - "Cache stampede/thundering herd on expiry"
+    implementation:
+      guidelines:
+        - "Use cache-aside (lazy loading) as default pattern"
+        - "Set TTL based on data freshness requirements"
+        - "Implement cache warming for predictable traffic patterns"
+        - "Use distributed cache (Redis) for multi-instance deployments"
+        - "Cache at the highest layer possible (CDN > API gateway > app > DB)"
+        - "Monitor cache hit ratio — target >90% for effective caching"
+        - "Handle cache failures gracefully — fall back to origin"
+      common_errors:
+        - error: "No cache invalidation strategy"
+          impact: "Users see stale data; data inconsistency between cache and source"
+          fix: "Implement TTL + event-driven invalidation; use write-through for critical data"
+        - error: "Cache stampede on expiry (thundering herd)"
+          impact: "All instances simultaneously query the database when cache expires"
+          fix: "Use cache locking, jittered TTL, or stale-while-revalidate pattern"
+        - error: "Caching unbounded data (no eviction policy)"
+          impact: "Cache grows until memory is exhausted"
+          fix: "Set max memory with LRU/LFU eviction policy"
+    maturity:
+      level: standard
+    standards:
+      - name: "Cache-Aside Pattern"
+        type: pattern
+        role: "Lazy-loading cache strategy"
+        status: recommended
+      - name: "HTTP Cache-Control"
+        type: rfc
+        role: "Browser and CDN caching directives"
+        status: recommended
+        reference: "https://www.rfc-editor.org/rfc/rfc9111"
+
+  - id: query_optimization
+    name: "Database Query Optimization"
+    description: >
+      Optimize database queries, indexes, and access patterns to reduce
+      latency and resource consumption. The database is the most common
+      backend bottleneck in data-driven applications.
+    use_when:
+      - "Database queries identified as bottleneck (via profiling)"
+      - "N+1 query patterns detected"
+      - "Slow queries appearing in database logs"
+      - "Growing data volume degrading performance"
+    avoid_when:
+      - "Database is not the bottleneck (profile first)"
+      - "Premature optimization before measuring"
+    tradeoffs:
+      pros:
+        - "Often the highest-impact optimization (10-100x improvement)"
+        - "Index additions require no code changes"
+        - "Query plan analysis provides clear optimization path"
+      cons:
+        - "Indexes consume storage and slow writes"
+        - "Over-indexing degrades write performance"
+        - "Query optimization can be database-specific"
+    implementation:
+      guidelines:
+        - "Enable slow query logging with a low threshold (100ms)"
+        - "Use EXPLAIN/EXPLAIN ANALYZE to understand query plans"
+        - "Add indexes for columns in WHERE, JOIN, and ORDER BY clauses"
+        - "Eliminate N+1 queries with eager loading or batch queries"
+        - "Use connection pooling (PgBouncer, HikariCP)"
+        - "Implement read replicas for read-heavy workloads"
+        - "Partition large tables by time or logical key"
+        - "Monitor query performance over time (pg_stat_statements, slow log)"
+      common_errors:
+        - error: "N+1 query pattern (loop querying related records one by one)"
+          impact: "100 items = 101 queries instead of 2; linear performance degradation"
+          fix: "Use eager loading (JOIN), batch loading (WHERE id IN (...)), or dataloader pattern"
+        - error: "Missing indexes on frequently queried columns"
+          impact: "Full table scan on every query; O(n) instead of O(log n)"
+          fix: "Add indexes based on query patterns; monitor with pg_stat_user_indexes"
+        - error: "SELECT * instead of specific columns"
+          impact: "Fetches unnecessary data; prevents covering index optimization"
+          fix: "Select only needed columns; use projections"
+    maturity:
+      level: standard
+    standards:
+      - name: "Database Query Optimization"
+        type: practice
+        role: "Systematic approach to query performance"
+        status: recommended
+
+  - id: frontend_performance
+    name: "Frontend Performance (Core Web Vitals)"
+    description: >
+      Optimize frontend performance targeting Core Web Vitals metrics:
+      Largest Contentful Paint (LCP), Interaction to Next Paint (INP),
+      and Cumulative Layout Shift (CLS). Directly impacts SEO ranking
+      and user experience.
+    use_when:
+      - "Web application with user-facing frontend"
+      - "SEO is important (Google uses Web Vitals for ranking)"
+      - "Mobile users on slow connections"
+      - "Core Web Vitals scores are below targets"
+    avoid_when:
+      - "Internal tools with no public-facing component"
+      - "Backend-only services"
+    tradeoffs:
+      pros:
+        - "Better SEO ranking (Google uses Web Vitals)"
+        - "Improved user experience and engagement"
+        - "Reduced bounce rate on mobile"
+        - "Measurable with standardized metrics"
+      cons:
+        - "Can require significant refactoring"
+        - "Trade-offs between functionality and performance"
+        - "Requires ongoing monitoring (metrics drift)"
+    implementation:
+      guidelines:
+        - "Target: LCP < 2.5s, INP < 200ms, CLS < 0.1"
+        - "Optimize critical rendering path: inline critical CSS, defer non-critical"
+        - "Use code splitting and lazy loading for JavaScript bundles"
+        - "Optimize images: use modern formats (WebP, AVIF), responsive sizes, lazy loading"
+        - "Implement resource hints: preload, prefetch, preconnect for critical resources"
+        - "Use CDN for static assets"
+        - "Minimize main-thread work: defer non-essential JavaScript"
+        - "Monitor with Real User Monitoring (RUM) and Lighthouse"
+      common_errors:
+        - error: "Render-blocking JavaScript and CSS"
+          impact: "Page appears blank until large bundles download and parse"
+          fix: "Code split, lazy load below-fold content, inline critical CSS"
+        - error: "Unoptimized images (PNG/JPEG, not responsive)"
+          impact: "Images are often 50-80% of page weight; slow LCP"
+          fix: "Use WebP/AVIF, responsive srcset, lazy loading for below-fold images"
+        - error: "Layout shifts from dynamic content (ads, images without dimensions)"
+          impact: "Content jumps around during load; poor CLS score"
+          fix: "Set explicit width/height on images/videos; reserve space for dynamic content"
+    maturity:
+      level: standard
+    standards:
+      - name: "Core Web Vitals"
+        type: standard
+        role: "Google's user experience metrics for web performance"
+        status: recommended
+        reference: "https://web.dev/vitals/"
+      - name: "Lighthouse"
+        type: tool
+        role: "Automated web performance auditing"
+        status: recommended
+
+examples:
+  - id: caching_pattern
+    title: "Cache-Aside Pattern — Redis"
+    context: "Implementing cache-aside with Redis for a product catalog"
+    correct: |
+      # Cache-aside (lazy loading) with jittered TTL
+      CACHE_TTL_BASE = 300  # 5 minutes
+      CACHE_TTL_JITTER = 60  # ±60 seconds to prevent stampede
+
+      async function get_product(product_id):
+        cache_key = f"product:{product_id}"
+
+        # 1. Try cache first
+        cached = await redis.get(cache_key)
+        if cached:
+          metrics.increment("cache.hit")
+          return deserialize(cached)
+
+        # 2. Cache miss — query database
+        metrics.increment("cache.miss")
+        product = await database.query("SELECT ... WHERE id = ?", product_id)
+        if not product:
+          return null
+
+        # 3. Populate cache with jittered TTL
+        ttl = CACHE_TTL_BASE + random(-CACHE_TTL_JITTER, CACHE_TTL_JITTER)
+        await redis.set(cache_key, serialize(product), ex=ttl)
+
+        return product
+
+      # Invalidation on write
+      async function update_product(product_id, data):
+        await database.update("products", product_id, data)
+        await redis.delete(f"product:{product_id}")  # Invalidate cache
+        metrics.increment("cache.invalidation")
+    incorrect: |
+      # WRONG: Cache without TTL, no invalidation, no metrics
+      products_cache = {}  # In-memory — lost on restart, not shared
+
+      function get_product(product_id):
+        if product_id in products_cache:
+          return products_cache[product_id]
+        product = database.query("SELECT * FROM products WHERE id = ?", product_id)
+        products_cache[product_id] = product  # Never expires!
+        return product
+
+      # No invalidation — stale data forever
+      # No TTL — cache grows until OOM
+      # In-memory — each instance has different data
+      # No metrics — no visibility into cache effectiveness
+    explanation: >
+      Correct cache-aside pattern uses Redis (shared across instances), jittered
+      TTL (prevents stampede), explicit invalidation on writes, and metrics for
+      monitoring. The incorrect version uses in-memory cache with no TTL, no
+      invalidation, and no observability.
+
+  - id: n_plus_one_fix
+    title: "N+1 Query Fix"
+    context: "Fixing N+1 query pattern in order listing"
+    correct: |
+      # FIXED: Single query with JOIN (or 2 queries with batch loading)
+
+      # Option A: JOIN query
+      orders = database.query("""
+        SELECT o.id, o.status, o.created_at,
+               oi.product_id, oi.quantity, oi.price,
+               p.name as product_name
+        FROM orders o
+        JOIN order_items oi ON o.id = oi.order_id
+        JOIN products p ON oi.product_id = p.id
+        WHERE o.user_id = ?
+        ORDER BY o.created_at DESC
+        LIMIT 20
+      """, user_id)
+      # Result: 1 query regardless of order count
+
+      # Option B: Batch loading (when ORM is used)
+      orders = Order.query.filter_by(user_id=user_id)
+                   .options(joinedload(Order.items).joinedload(OrderItem.product))
+                   .limit(20).all()
+      # Result: 1-3 queries (ORM batches related records)
+    incorrect: |
+      # WRONG: N+1 — one query per order, per item, per product
+      orders = database.query("SELECT * FROM orders WHERE user_id = ?", user_id)
+      for order in orders:  # N orders
+        items = database.query("SELECT * FROM order_items WHERE order_id = ?", order.id)
+        for item in items:  # M items per order
+          product = database.query("SELECT * FROM products WHERE id = ?", item.product_id)
+          item.product = product
+      # 20 orders × 3 items each = 1 + 20 + 60 = 81 queries!
+    explanation: >
+      N+1 queries scale linearly with data size. 20 orders with 3 items each
+      causes 81 database round-trips. A single JOIN or ORM eager loading reduces
+      this to 1-3 queries, providing 10-50x latency improvement.
+
+security_hardening:
+  transport:
+    requirements:
+      - "CDN and cache layers use TLS for origin connections"
+  data_protection:
+    requirements:
+      - "Never cache sensitive data (PII, credentials, tokens) without encryption"
+      - "Cache-Control: private for user-specific responses"
+      - "Clear cache on user logout / permission change"
+  access_control:
+    requirements:
+      - "Cache keys include user context to prevent data leakage between users"
+  input_output:
+    requirements:
+      - "Query parameters used in cache keys are validated (prevent cache poisoning)"
+  secrets:
+    requirements:
+      - "Redis/cache credentials managed via secret manager"
+  monitoring:
+    requirements:
+      - "Cache hit ratio monitored (target >90%)"
+      - "Slow query logging enabled with alerting"
+      - "Performance budgets monitored with Real User Monitoring"
+
+compliance:
+  standards:
+    - name: "Core Web Vitals"
+      relevance: "Google's web performance metrics that affect SEO ranking"
+      reference: "https://web.dev/vitals/"
+    - name: "ISO 25010 Performance Efficiency"
+      relevance: "Quality characteristic for time behavior, resource utilization, capacity"
+
+  requirements_mapping:
+    - control: performance_monitoring
+      description: "Application performance monitored with SLOs for latency and throughput"
+      maps_to:
+        - "ISO 25010 — Performance Efficiency"
+    - control: frontend_performance
+      description: "Web frontend meets Core Web Vitals thresholds"
+      maps_to:
+        - "Core Web Vitals (LCP < 2.5s, INP < 200ms, CLS < 0.1)"
+
+prompt_recipes:
+  - id: perf_greenfield
+    scenario: greenfield
+    description: "Design for performance in a new application"
+    prompt: |
+      Design performance architecture for a new application.
+
+      Context:
+      - Application tier: [frontend/backend/database/full_stack]
+      - Expected scale: [low/moderate/high/extreme]
+      - Primary concern: [latency/throughput/memory/startup_time]
+
+      Requirements:
+      - Define performance SLOs (p95, p99 latency targets)
+      - Identify caching layers needed
+      - Plan database access patterns to avoid N+1 queries
+      - Set up performance monitoring and alerting
+      - Establish performance budget for frontend (if applicable)
+      - Plan load testing strategy
+
+  - id: perf_audit
+    scenario: audit
+    description: "Audit application performance"
+    prompt: |
+      Audit the application performance:
+
+      1. Are performance SLOs defined (p95, p99 targets)?
+      2. Is profiling data available for the main request paths?
+      3. Are database queries optimized (no N+1, proper indexes)?
+      4. Is caching implemented where appropriate?
+      5. Cache hit ratio? (target >90%)
+      6. Is connection pooling configured for database and HTTP?
+      7. Frontend: Core Web Vitals scores?
+      8. Are slow queries logged and monitored?
+      9. Is Real User Monitoring (RUM) in place?
+      10. When was the last load test run?
+
+  - id: perf_optimization
+    scenario: optimization
+    description: "Optimize a specific performance bottleneck"
+    prompt: |
+      Optimize a performance bottleneck.
+
+      Process:
+      1. Profile the application (CPU, memory, I/O, network)
+      2. Identify top bottleneck (Amdahl's Law — biggest impact first)
+      3. Establish baseline metrics (before)
+      4. Apply targeted optimization (cache, query, algorithm, architecture)
+      5. Measure improvement (after vs before)
+      6. Verify no regressions in other areas
+      7. Document optimization and add monitoring
+
+  - id: perf_load_testing
+    scenario: performance
+    description: "Design and execute a load test"
+    prompt: |
+      Design a load test for the application.
+
+      Steps:
+      1. Define load test scenarios (typical traffic, peak traffic, stress)
+      2. Set success criteria (p99 < Xms, error rate < Y%, throughput > Z rps)
+      3. Use realistic test data and traffic patterns
+      4. Ramp up gradually (not sudden spike)
+      5. Run for sufficient duration (30+ minutes for steady-state)
+      6. Monitor all tiers: frontend, backend, database, cache, network
+      7. Identify breaking point and document capacity limits
+
+anti_patterns:
+  - name: "Premature Optimization"
+    description: >
+      Optimizing code before measuring where the bottleneck actually is.
+      Developers spend days optimizing a function that accounts for 0.1%
+      of total latency while the real bottleneck (database, network) is
+      ignored.
+    fix: "Profile first; optimize only what the data shows is slow (measure-first pattern)"
+    severity: high
+    related_pattern: measure_first
+
+  - name: "N+1 Query Pattern"
+    description: >
+      Loading a collection, then issuing one additional database query per
+      item to fetch related data. Results in O(n) database round-trips
+      instead of O(1). Extremely common in ORM-based applications.
+    fix: "Use eager loading (JOIN), batch loading (WHERE IN), or dataloader pattern"
+    severity: high
+    related_pattern: query_optimization
+
+  - name: "Unbounded Cache Growth"
+    description: >
+      Cache with no TTL, no eviction policy, and no maximum size. Cache grows
+      until memory is exhausted, causing out-of-memory crashes or excessive
+      garbage collection.
+    fix: "Set TTL on all cache entries; configure max memory with LRU/LFU eviction"
+    severity: high
+    related_pattern: caching_strategies
+
+  - name: "Render-Blocking Resources"
+    description: >
+      Large JavaScript bundles and CSS files that block page rendering until
+      fully downloaded and parsed. Users see a blank page for seconds while
+      resources load.
+    fix: "Code split, lazy load non-critical JS, inline critical CSS, defer below-fold content"
+    severity: medium
+    related_pattern: frontend_performance
+
+checklist:
+  - id: PERF-01
+    category: performance
+    description: "Performance SLOs defined (p95, p99 latency targets)"
+    severity: high
+    verified_by: measure_first
+
+  - id: PERF-02
+    category: performance
+    description: "Application profiled before optimization (no premature optimization)"
+    severity: high
+    verified_by: measure_first
+
+  - id: PERF-03
+    category: performance
+    description: "Database queries optimized (no N+1 patterns)"
+    severity: high
+    verified_by: query_optimization
+
+  - id: PERF-04
+    category: performance
+    description: "Caching implemented for read-heavy paths"
+    severity: medium
+    verified_by: caching_strategies
+
+  - id: PERF-05
+    category: performance
+    description: "Cache hit ratio monitored (target >90%)"
+    severity: medium
+    verified_by: caching_strategies
+
+  - id: PERF-06
+    category: performance
+    description: "Connection pooling configured for database and HTTP clients"
+    severity: high
+    verified_by: query_optimization
+
+  - id: PERF-07
+    category: performance
+    description: "Slow query logging enabled with alerting"
+    severity: medium
+    verified_by: query_optimization
+
+  - id: PERF-08
+    category: performance
+    description: "Frontend meets Core Web Vitals targets (if web application)"
+    severity: medium
+    verified_by: frontend_performance
+
+  - id: PERF-09
+    category: performance
+    description: "Load testing performed for expected and peak traffic"
+    severity: medium
+    verified_by: measure_first
+
+  - id: PERF-10
+    category: observability
+    description: "Real User Monitoring (RUM) in place for production"
+    severity: medium
+    verified_by: measure_first
+
+  - id: PERF-11
+    category: reliability
+    description: "Cache failures handled gracefully (fallback to origin)"
+    severity: high
+    verified_by: caching_strategies
+
+  - id: PERF-12
+    category: security
+    description: "Sensitive data never cached without encryption"
+    severity: critical
+    verified_by: caching_strategies

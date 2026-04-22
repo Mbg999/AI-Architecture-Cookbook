@@ -1,0 +1,729 @@
+# =============================================================================
+# AI Architecture Cookbook — Third-Party Integration
+# Schema: v3 | Domain: third-party-integration
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: third-party-integration
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Patterns for integrating with external APIs and third-party services.
+    Covers vendor abstraction, resilience (circuit breakers, retries, bulkheads),
+    contract management, and graceful degradation when dependencies fail.
+
+  tags:
+    - integration
+    - third-party
+    - circuit-breaker
+    - resilience
+    - vendor-abstraction
+    - external-api
+
+  categories:
+    - integration-data
+
+  prerequisites:
+    - id: error-handling
+      reason: "Third-party failures must be handled gracefully"
+    - id: logging-observability
+      reason: "External calls need distributed tracing and latency monitoring"
+
+  related_standards:
+    - id: rate-limiting
+      relationship: complementary
+      context: "Respect third-party rate limits and implement client-side throttling"
+    - id: authentication
+      relationship: complementary
+      context: "API key management, OAuth client credentials for service-to-service auth"
+    - id: encryption
+      relationship: complementary
+      context: "All external API communication must use TLS"
+    - id: webhooks
+      relationship: complementary
+      context: "Webhooks are an inbound integration pattern from third parties"
+
+context_inputs:
+  - name: integration_criticality
+    type: enum
+    description: "How critical is the third-party service to your application"
+    required: true
+    default: important
+    enum_values:
+      - critical
+      - important
+      - nice_to_have
+
+  - name: integration_pattern
+    type: enum
+    description: "Primary integration pattern"
+    required: true
+    default: synchronous_api
+    enum_values:
+      - synchronous_api
+      - asynchronous_messaging
+      - batch_import
+      - event_driven
+
+  - name: vendor_lock_in_tolerance
+    type: enum
+    description: "Tolerance for vendor-specific coupling"
+    required: false
+    default: low
+    enum_values:
+      - none
+      - low
+      - medium
+      - high
+
+  - name: failure_tolerance
+    type: enum
+    description: "How the system should behave when the integration fails"
+    required: false
+    default: degrade_gracefully
+    enum_values:
+      - fail_fast
+      - degrade_gracefully
+      - queue_and_retry
+      - use_cached_data
+
+decision_tree:
+  - id: critical_sync
+    priority: 1
+    if:
+      - integration_criticality == critical
+      - integration_pattern == synchronous_api
+    then:
+      pattern: circuit_breaker
+      standards:
+        - "Resilience4j"
+        - "Polly (.NET)"
+      notes: >
+        Critical synchronous integrations need circuit breakers to prevent
+        cascading failures. Combine with retries and timeouts.
+    else:
+      pattern: vendor_abstraction
+      notes: "Default to abstracting vendor specifics behind an interface"
+
+  - id: low_lock_in
+    priority: 2
+    if:
+      - vendor_lock_in_tolerance in [none, low]
+    then:
+      pattern: vendor_abstraction
+      notes: >
+        When vendor lock-in must be minimized, wrap all external APIs behind
+        an abstraction layer (adapter/port pattern).
+
+  - id: async_integration
+    priority: 3
+    if:
+      - integration_pattern in [asynchronous_messaging, event_driven]
+    then:
+      pattern: async_integration
+      notes: >
+        Asynchronous patterns decouple timing from external services. Use
+        message queues or event streams for non-real-time integrations.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: circuit_breaker
+    description: "Circuit breakers protect against cascading failures from any integration"
+
+patterns:
+  - id: circuit_breaker
+    name: "Circuit Breaker with Retry & Timeout"
+    description: >
+      Protect your application from cascading failures when third-party
+      services are slow or unavailable. The circuit breaker monitors failure
+      rates and trips open when a threshold is exceeded, failing fast instead
+      of waiting. Combined with exponential backoff retries and hard timeouts.
+    use_when:
+      - "Synchronous calls to external APIs"
+      - "Service has history of intermittent failures"
+      - "Failure of external service could cascade to your users"
+    avoid_when:
+      - "Fire-and-forget operations where failure is acceptable"
+      - "Batch jobs with built-in retry mechanisms"
+    tradeoffs:
+      pros:
+        - "Prevents cascading failures from slow/down services"
+        - "Fails fast — doesn't tie up threads waiting for timeouts"
+        - "Auto-recovery via half-open state"
+        - "Observable — circuit state is a health indicator"
+      cons:
+        - "Adds complexity to call paths"
+        - "Tuning thresholds requires production traffic data"
+        - "Half-open probes may impact already-stressed services"
+    implementation:
+      guidelines:
+        - "Set aggressive timeouts (e.g., 3s connect, 10s read for most APIs)"
+        - "Use exponential backoff with jitter for retries (not fixed intervals)"
+        - "Limit retry count (typically 2-3 retries max)"
+        - "Circuit trips open after N failures in a sliding window (e.g., 5 in 60s)"
+        - "Half-open state allows single probe request to test recovery"
+        - "Log circuit state transitions for alerting"
+        - "Provide fallback behavior when circuit is open"
+      common_errors:
+        - error: "No timeout on HTTP client calls"
+          impact: "Thread pool exhaustion when third-party hangs; cascading failure"
+          fix: "Always set connect and read timeouts on every HTTP client"
+        - error: "Retrying non-idempotent operations"
+          impact: "Duplicate side effects (double charges, duplicate records)"
+          fix: "Only retry idempotent operations (GET, PUT, DELETE with idempotency key)"
+        - error: "Same retry timing for all services"
+          impact: "Retry storms overwhelm recovering services"
+          fix: "Use exponential backoff with jitter; tune per-service"
+    maturity:
+      level: standard
+    standards:
+      - name: "Resilience4j"
+        type: framework
+        role: "JVM circuit breaker and resilience library"
+        status: recommended
+      - name: "Polly"
+        type: framework
+        role: ".NET resilience and transient-fault-handling library"
+        status: recommended
+
+  - id: vendor_abstraction
+    name: "Vendor Abstraction Layer (Anti-Corruption Layer)"
+    description: >
+      Wrap third-party APIs behind your own interfaces to prevent vendor
+      coupling from leaking into your domain. Uses the Ports & Adapters
+      pattern: your code depends on a port (interface), and the vendor-specific
+      adapter implements it. Switching vendors only requires a new adapter.
+    use_when:
+      - "Vendor lock-in must be minimized"
+      - "Multiple vendors may be evaluated or swapped"
+      - "Third-party API models conflict with your domain model"
+    avoid_when:
+      - "Prototyping / proof-of-concept with a single known vendor"
+      - "One-time integrations with no future change risk"
+    tradeoffs:
+      pros:
+        - "Swap vendors without changing business logic"
+        - "Test with fakes/stubs instead of real API calls"
+        - "Your domain model stays clean — no vendor types leaking in"
+        - "Multiple implementations for multi-provider strategies"
+      cons:
+        - "Upfront abstraction cost (define interfaces, map models)"
+        - "Risk of leaky abstraction if interface is too vendor-shaped"
+        - "May lose access to vendor-specific optimizations"
+    implementation:
+      guidelines:
+        - "Define interfaces in YOUR domain language, not the vendor's"
+        - "Map vendor responses to your domain models at the adapter boundary"
+        - "Keep adapter implementations thin — translate, don't add business logic"
+        - "Use dependency injection to wire adapters"
+        - "Create a stub/fake adapter for testing from day one"
+        - "Document vendor-specific quirks in the adapter, not in business code"
+      common_errors:
+        - error: "Interface shaped exactly like one vendor's API"
+          impact: "Abstraction is useless — switching vendors still requires interface changes"
+          fix: "Design interface around YOUR needs, not the vendor's endpoint shapes"
+        - error: "Business logic in adapters"
+          impact: "Logic must be duplicated across adapters when switching vendors"
+          fix: "Adapters only translate — business logic lives in domain services"
+        - error: "Vendor types in domain model"
+          impact: "Vendor dependency spreads through codebase; switching is a rewrite"
+          fix: "Map at the boundary; domain model uses its own types"
+    maturity:
+      level: standard
+    standards:
+      - name: "Hexagonal Architecture"
+        type: pattern
+        role: "Ports & Adapters pattern for external dependency isolation"
+        status: recommended
+      - name: "Anti-Corruption Layer"
+        type: pattern
+        role: "DDD pattern for isolating external model influence"
+        status: recommended
+
+  - id: async_integration
+    name: "Asynchronous Integration with Message Queues"
+    description: >
+      Decouple from third-party timing by using message queues or event streams
+      as an intermediary. Your application publishes a message; a consumer
+      processes it and calls the external API. Failures are retried from the
+      queue with dead-letter handling for poison messages.
+    use_when:
+      - "Integration doesn't need synchronous response"
+      - "Third-party service is unreliable or slow"
+      - "Need to buffer/smooth traffic spikes to external APIs"
+      - "Batch processing of external API calls"
+    avoid_when:
+      - "User expects immediate synchronous response from third party"
+      - "Simple request-response patterns with reliable services"
+    tradeoffs:
+      pros:
+        - "Decouples your latency from external service latency"
+        - "Built-in retry via queue redelivery"
+        - "Dead-letter queue captures persistent failures for investigation"
+        - "Smooths traffic spikes — external API sees steady rate"
+      cons:
+        - "Added infrastructure (message broker)"
+        - "Eventual consistency — result not immediately available"
+        - "More complex error handling and monitoring"
+    implementation:
+      guidelines:
+        - "Use dead-letter queue for messages that fail after max retries"
+        - "Make consumers idempotent — messages may be delivered more than once"
+        - "Set visibility timeout longer than expected processing time"
+        - "Monitor queue depth and consumer lag as health indicators"
+        - "Implement poison message detection (repeated failures on same message)"
+        - "Store correlation IDs for tracing async flows end-to-end"
+      common_errors:
+        - error: "No dead-letter queue configured"
+          impact: "Poison messages block the queue indefinitely"
+          fix: "Always configure DLQ with alerting on DLQ depth"
+        - error: "Non-idempotent consumers"
+          impact: "Duplicate processing on redelivery"
+          fix: "Use idempotency keys; check before processing"
+        - error: "No visibility timeout tuning"
+          impact: "Message redelivered while still being processed — duplicate work"
+          fix: "Set visibility timeout to 2-3x expected processing time"
+    maturity:
+      level: standard
+    standards:
+      - name: "CloudEvents"
+        type: spec
+        role: "Specification for describing event data in a common format"
+        status: recommended
+
+  - id: contract_testing
+    name: "Consumer-Driven Contract Testing"
+    description: >
+      Verify that third-party API behavior matches your expectations by
+      recording contract tests. Contracts capture the specific fields, types,
+      and behaviors your code depends on — not the full API surface. Run
+      contracts regularly to detect breaking changes early.
+    use_when:
+      - "Depending on third-party APIs that may change without notice"
+      - "Multiple microservices consume the same external API differently"
+      - "Want early warning of breaking API changes"
+    avoid_when:
+      - "Third-party provides their own contract/SDK with strong versioning"
+      - "One-off data imports with no ongoing dependency"
+    tradeoffs:
+      pros:
+        - "Early detection of breaking changes from third parties"
+        - "Documents exactly which API fields your code depends on"
+        - "Faster feedback than end-to-end tests"
+      cons:
+        - "Contracts must be maintained as your usage evolves"
+        - "Can't test third-party business logic, only structure"
+        - "Requires running contracts on a schedule (not just on deploy)"
+    implementation:
+      guidelines:
+        - "Record contracts from actual API responses (not from docs alone)"
+        - "Test only fields your code reads — not the full response"
+        - "Run contract tests on schedule (daily) not just on your deploys"
+        - "Version your contracts alongside the code that depends on them"
+        - "Alert on contract failures — they indicate upstream breaking changes"
+        - "Use Pact or similar tool for consumer-driven contracts"
+      common_errors:
+        - error: "Testing the full API response instead of consumed fields"
+          impact: "False positives on irrelevant field changes"
+          fix: "Contract should only assert on fields your code actually uses"
+        - error: "Running contracts only on deploy"
+          impact: "Third-party changes between your deploys go undetected"
+          fix: "Schedule contract tests to run daily regardless of your deploy cycle"
+        - error: "Writing contracts from documentation instead of real responses"
+          impact: "Contract may not match actual API behavior"
+          fix: "Record from real API responses; update contracts from production traffic"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Pact"
+        type: tool
+        role: "Consumer-driven contract testing framework"
+        status: recommended
+      - name: "OpenAPI"
+        type: spec
+        role: "API specification for structural contract definition"
+        status: recommended
+
+examples:
+  - id: circuit_breaker_example
+    title: "Circuit Breaker with Fallback for Payment Gateway"
+    context: "E-commerce service calling a payment gateway"
+    correct: |
+      # Python — using tenacity for retries + custom circuit breaker
+      import httpx
+      from tenacity import retry, stop_after_attempt, wait_exponential_jitter
+
+      class PaymentGatewayAdapter:
+          """Adapter wrapping payment vendor behind our PaymentPort interface."""
+
+          def __init__(self, base_url: str, api_key: str):
+              self._client = httpx.Client(
+                  base_url=base_url,
+                  timeout=httpx.Timeout(connect=3.0, read=10.0),  # Always set timeouts
+                  headers={"Authorization": f"Bearer {api_key}"},
+              )
+              self._circuit = CircuitBreaker(
+                  failure_threshold=5,
+                  recovery_timeout=30,
+              )
+
+          @retry(
+              stop=stop_after_attempt(3),
+              wait=wait_exponential_jitter(initial=1, max=10),
+              retry=retry_if_exception_type(httpx.TransportError),
+          )
+          def charge(self, amount_cents: int, idempotency_key: str) -> ChargeResult:
+              """Charge with circuit breaker, retries, and idempotency."""
+              if self._circuit.is_open:
+                  raise ServiceUnavailableError("Payment gateway circuit open")
+
+              try:
+                  response = self._client.post(
+                      "/v1/charges",
+                      json={"amount": amount_cents, "currency": "usd"},
+                      headers={"Idempotency-Key": idempotency_key},
+                  )
+                  response.raise_for_status()
+                  self._circuit.record_success()
+                  return self._map_to_domain(response.json())
+              except httpx.HTTPStatusError as e:
+                  if e.response.status_code >= 500:
+                      self._circuit.record_failure()
+                      raise  # Retry on server errors
+                  raise PaymentError(self._map_error(e))  # Don't retry client errors
+
+          def _map_to_domain(self, vendor_response: dict) -> ChargeResult:
+              """Map vendor response to our domain model — adapter boundary."""
+              return ChargeResult(
+                  id=vendor_response["id"],
+                  status=ChargeStatus(vendor_response["status"]),
+                  amount_cents=vendor_response["amount"],
+              )
+    incorrect: |
+      # WRONG: No timeouts, no circuit breaker, vendor types leak through
+      import requests
+
+      def charge_customer(amount, card_token):
+          # No timeout — will hang if gateway is slow
+          response = requests.post(
+              "https://api.payment-vendor.com/v1/charges",
+              json={"amount": amount, "source": card_token},
+              headers={"Authorization": f"Bearer {API_KEY}"},
+          )
+          # No retry logic — one failure = user error
+          # No circuit breaker — keeps calling failing service
+          return response.json()  # Vendor JSON leaks into domain
+
+      # Problems:
+      # 1. No timeout → thread pool exhaustion
+      # 2. No retry → transient failures become user-facing errors
+      # 3. No circuit breaker → cascading failure risk
+      # 4. No idempotency key → retries cause double charges
+      # 5. Vendor response leaks into domain
+    explanation: >
+      The correct example uses timeouts, retries with exponential backoff,
+      circuit breaker, idempotency keys, and maps vendor responses to domain
+      types at the adapter boundary. The incorrect example has none of these
+      protections.
+
+  - id: vendor_abstraction_example
+    title: "Vendor Abstraction for Email Service"
+    context: "Application sending emails through a third-party email service"
+    correct: |
+      # Domain port — defines what WE need, not what the vendor provides
+      from abc import ABC, abstractmethod
+
+      class EmailPort(ABC):
+          @abstractmethod
+          def send(self, to: str, subject: str, body_html: str,
+                   reply_to: str | None = None) -> EmailResult:
+              ...
+
+      # Vendor adapter — translates between our model and vendor API
+      class SendGridAdapter(EmailPort):
+          def __init__(self, api_key: str):
+              self._client = sendgrid.SendGridAPIClient(api_key=api_key)
+
+          def send(self, to: str, subject: str, body_html: str,
+                   reply_to: str | None = None) -> EmailResult:
+              message = Mail(
+                  from_email=Email("noreply@ourapp.com"),
+                  to_emails=To(to),
+                  subject=subject,
+                  html_content=Content("text/html", body_html),
+              )
+              response = self._client.send(message)
+              return EmailResult(
+                  success=response.status_code == 202,
+                  provider_id=response.headers.get("X-Message-Id"),
+              )
+
+      # Test fake — no external calls needed
+      class FakeEmailAdapter(EmailPort):
+          def __init__(self):
+              self.sent: list[dict] = []
+
+          def send(self, to, subject, body_html, reply_to=None) -> EmailResult:
+              self.sent.append({"to": to, "subject": subject})
+              return EmailResult(success=True, provider_id="fake-123")
+
+      # Switching to Mailgun = new adapter, zero business logic changes
+    incorrect: |
+      # WRONG: SendGrid coupled directly into business logic
+      import sendgrid
+      from sendgrid.helpers.mail import Mail, Email, To, Content
+
+      class OrderService:
+          def complete_order(self, order):
+              # SendGrid types used directly in business logic
+              message = Mail(
+                  from_email=Email("noreply@ourapp.com"),
+                  to_emails=To(order.customer_email),
+                  subject=f"Order {order.id} confirmed",
+                  html_content=Content("text/html", render_template(order)),
+              )
+              sg = sendgrid.SendGridAPIClient(api_key=os.environ["SENDGRID_KEY"])
+              sg.send(message)  # No error handling, no abstraction
+
+      # Problems:
+      # 1. SendGrid types in business logic — vendor lock-in
+      # 2. Can't test without calling SendGrid (or mocking their SDK)
+      # 3. Switching to Mailgun requires rewriting OrderService
+      # 4. No error handling for send failures
+    explanation: >
+      The correct example defines an EmailPort in domain language, implements
+      vendor-specific adapters, and provides a fake for testing. Switching
+      vendors only requires a new adapter. The incorrect example couples vendor
+      SDK types directly into business logic.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All external API calls use TLS 1.2+ — never plain HTTP"
+      - "Verify TLS certificates — never disable certificate validation"
+  data_protection:
+    requirements:
+      - "Do not log full request/response bodies from third parties (may contain PII)"
+      - "Sanitize external data before storing — treat as untrusted input"
+  access_control:
+    requirements:
+      - "Use least-privilege API keys scoped to required operations only"
+      - "Rotate API keys on a scheduled basis (at least annually)"
+  input_output:
+    requirements:
+      - "Validate and sanitize all data received from third-party APIs"
+      - "Never pass external data directly to SQL, HTML, or shell execution"
+  secrets:
+    requirements:
+      - "Store API keys in secrets manager — never in code or config files"
+      - "Use separate API keys per environment (dev, staging, prod)"
+  monitoring:
+    requirements:
+      - "Monitor third-party API latency, error rates, and circuit breaker state"
+      - "Alert on rate limit proximity and circuit breaker state changes"
+
+compliance:
+  standards:
+    - name: "OpenAPI 3.1"
+      relevance: "Define and validate third-party API contracts"
+      reference: "https://spec.openapis.org/oas/latest.html"
+    - name: "CloudEvents"
+      relevance: "Standard format for event-driven integrations"
+      reference: "https://cloudevents.io/"
+
+  requirements_mapping:
+    - control: dependency_isolation
+      description: "External dependencies isolated behind abstraction layers"
+      maps_to:
+        - "Hexagonal Architecture — Ports & Adapters"
+    - control: resilience
+      description: "Circuit breakers, retries, and timeouts on all external calls"
+      maps_to:
+        - "Resilience patterns"
+    - control: contract_management
+      description: "Third-party API contracts tested and monitored"
+      maps_to:
+        - "Consumer-driven contract testing"
+
+prompt_recipes:
+  - id: tpi_greenfield
+    scenario: greenfield
+    description: "Design third-party integration from scratch"
+    prompt: |
+      Design the integration with {third_party_service}.
+
+      Context:
+      - Criticality: [critical/important/nice_to_have]
+      - Pattern: [sync API/async messaging/batch/event-driven]
+      - Vendor lock-in tolerance: [none/low/medium/high]
+
+      Implement with:
+      1. Vendor abstraction layer (port + adapter pattern)
+      2. Circuit breaker with configurable thresholds
+      3. Exponential backoff retries with jitter (idempotent calls only)
+      4. Hard timeouts on all HTTP calls (connect + read)
+      5. Fallback behavior when circuit is open
+      6. Contract tests for consumed API fields
+      7. Structured logging of call latency and outcomes
+
+  - id: tpi_migration
+    scenario: migration
+    description: "Migrate from direct SDK usage to abstracted integration"
+    prompt: |
+      Refactor the existing {vendor_name} integration to use vendor abstraction.
+
+      Steps:
+      1. Identify all call sites using vendor SDK directly
+      2. Define a port interface in domain language (not vendor-shaped)
+      3. Implement adapter wrapping existing vendor calls
+      4. Add circuit breaker and timeout to adapter
+      5. Replace direct SDK calls with port injection
+      6. Create test fake implementing the port
+      7. Verify all existing behavior preserved
+
+  - id: tpi_audit
+    scenario: audit
+    description: "Audit third-party integration resilience"
+    prompt: |
+      Audit all third-party integrations for resilience and security.
+
+      Checklist:
+      1. Every external HTTP call has connect + read timeouts?
+      2. Circuit breakers configured for synchronous integrations?
+      3. Retries use exponential backoff with jitter?
+      4. Only idempotent operations are retried?
+      5. API keys stored in secrets manager (not code/config)?
+      6. Separate API keys per environment?
+      7. Vendor abstractions in place (ports & adapters)?
+      8. Contract tests running on schedule?
+      9. Monitoring: latency, error rate, circuit state?
+      10. Fallback behavior defined for critical integrations?
+
+  - id: tpi_debugging
+    scenario: debugging
+    description: "Debug third-party integration failures"
+    prompt: |
+      Debug failures in the {service_name} third-party integration.
+
+      Investigation steps:
+      1. Check circuit breaker state — is it open/half-open?
+      2. Review error rates — transient or persistent failures?
+      3. Check timeout configuration — are timeouts too aggressive?
+      4. Verify API key is valid and not expired
+      5. Check rate limit headers — are we being throttled?
+      6. Review retry behavior — are we creating retry storms?
+      7. Check for upstream incidents — is the third party down?
+      8. Verify TLS/certificate — has the cert changed or expired?
+
+anti_patterns:
+  - name: "No Timeouts on External Calls"
+    description: >
+      Making HTTP calls to third-party services without setting connect and
+      read timeouts. When the external service hangs, your threads hang with
+      it, leading to thread pool exhaustion and cascading failure.
+    fix: "Always set connect timeout (3-5s) and read timeout (10-30s) on every HTTP client"
+    severity: critical
+    related_pattern: circuit_breaker
+
+  - name: "Vendor Coupling in Domain Logic"
+    description: >
+      Using third-party SDK types and vendor-specific data structures directly
+      in business logic. Switching vendors requires rewriting business code.
+      Testing requires mocking vendor internals.
+    fix: "Define ports in domain language; implement vendor adapters at the boundary"
+    severity: high
+    related_pattern: vendor_abstraction
+
+  - name: "Retrying Non-Idempotent Operations"
+    description: >
+      Automatically retrying operations that have side effects (create payment,
+      send notification) without idempotency keys. Each retry creates a
+      duplicate side effect.
+    fix: "Only retry idempotent operations; use idempotency keys for side-effecting calls"
+    severity: critical
+    related_pattern: circuit_breaker
+
+  - name: "Swallowing Integration Errors"
+    description: >
+      Catching all exceptions from third-party calls and returning empty/default
+      data without logging or alerting. Integration failures go undetected
+      until users report missing data or functionality.
+    fix: "Log errors with context, emit metrics, alert on error rate thresholds"
+    severity: high
+    related_pattern: circuit_breaker
+
+checklist:
+  - id: TPI-01
+    category: reliability
+    description: "All external HTTP calls have connect and read timeouts configured"
+    severity: critical
+    verified_by: circuit_breaker
+
+  - id: TPI-02
+    category: reliability
+    description: "Circuit breakers configured for synchronous third-party calls"
+    severity: critical
+    verified_by: circuit_breaker
+
+  - id: TPI-03
+    category: reliability
+    description: "Retries use exponential backoff with jitter"
+    severity: high
+    verified_by: circuit_breaker
+
+  - id: TPI-04
+    category: correctness
+    description: "Only idempotent operations are retried automatically"
+    severity: critical
+    verified_by: circuit_breaker
+
+  - id: TPI-05
+    category: design
+    description: "Vendor APIs wrapped behind domain-language abstractions"
+    severity: high
+    verified_by: vendor_abstraction
+
+  - id: TPI-06
+    category: security
+    description: "API keys stored in secrets manager, not code or config"
+    severity: critical
+    verified_by: vendor_abstraction
+
+  - id: TPI-07
+    category: security
+    description: "TLS 1.2+ enforced for all external API calls"
+    severity: critical
+    verified_by: circuit_breaker
+
+  - id: TPI-08
+    category: observability
+    description: "External call latency, error rate, and circuit state monitored"
+    severity: high
+    verified_by: circuit_breaker
+
+  - id: TPI-09
+    category: correctness
+    description: "Contract tests validate consumed third-party API fields"
+    severity: high
+    verified_by: contract_testing
+
+  - id: TPI-10
+    category: reliability
+    description: "Fallback behavior defined for critical integration failures"
+    severity: high
+    verified_by: circuit_breaker
+
+  - id: TPI-11
+    category: security
+    description: "Data received from third parties validated and sanitized"
+    severity: high
+    verified_by: vendor_abstraction
+
+  - id: TPI-12
+    category: observability
+    description: "Distributed tracing spans cover external API calls"
+    severity: medium
+    verified_by: circuit_breaker

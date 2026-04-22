@@ -1,0 +1,831 @@
+# =============================================================================
+# AI Architecture Cookbook — Authentication & Authorization
+# Schema: v3 | Domain: authentication
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: authentication
+  version: "2.0.0"
+  last_updated: 2026-04-22
+  description: >
+    Authentication and authorization decision framework including federated identity,
+    token-based auth, proof-of-possession mechanisms, mTLS, and compliance mapping.
+
+  tags:
+    - security
+    - authentication
+    - authorization
+    - identity
+    - oauth
+    - oidc
+    - tokens
+
+  categories:
+    - foundational
+    - security-quality
+
+  prerequisites: []
+
+  related_standards:
+    - id: encryption
+      relationship: complementary
+      context: "Encryption standards apply to token storage and transport security"
+    - id: input-validation
+      relationship: complementary
+      context: "All authentication inputs must be validated per input-validation standard"
+    - id: rate-limiting
+      relationship: complementary
+      context: "Login endpoints require rate limiting to prevent brute-force attacks"
+
+context_inputs:
+  - name: client_types
+    type: enum
+    description: "Type of client that will authenticate"
+    required: true
+    default: web
+    enum_values:
+      - web
+      - mobile
+      - server
+      - third_party
+
+  - name: needs_login
+    type: boolean
+    description: "Does the system require user login (human identity)?"
+    required: true
+    default: true
+
+  - name: third_party_access
+    type: boolean
+    description: "Do external parties need delegated access to resources?"
+    required: true
+    default: false
+
+  - name: session_type
+    type: enum
+    description: "How is user session maintained?"
+    required: true
+    default: stateless
+    enum_values:
+      - stateful
+      - stateless
+
+  - name: security_level
+    type: enum
+    description: "Required security posture based on data sensitivity and regulatory needs"
+    required: true
+    default: medium
+    enum_values:
+      - low
+      - medium
+      - high
+      - critical
+
+  - name: data_sensitivity
+    type: enum
+    description: "Sensitivity classification of data being protected"
+    required: true
+    default: medium
+    enum_values:
+      - low
+      - medium
+      - high
+
+  - name: regulatory_required
+    type: boolean
+    description: "Is the system subject to regulatory compliance (HIPAA, PCI-DSS, SOX, etc.)?"
+    required: false
+    default: false
+
+  - name: user_count
+    type: enum
+    description: "Expected number of concurrent authenticated users"
+    required: false
+    default: medium
+    enum_values:
+      - small
+      - medium
+      - large
+      - massive
+
+decision_tree:
+  - id: login_requires_oidc
+    priority: 1
+    if:
+      - needs_login == true
+    then:
+      pattern: federated_authentication
+      standards:
+        - OpenID Connect
+        - OAuth 2.0
+      notes: "Never use OAuth2 alone for authentication — it is an authorization protocol"
+    else:
+      pattern: delegated_authorization
+      notes: "No human login needed — use OAuth2 for machine-to-machine or delegated access"
+
+  - id: third_party_requires_oauth
+    priority: 2
+    if:
+      - third_party_access == true
+    then:
+      pattern: delegated_authorization
+      standards:
+        - OAuth 2.0
+      notes: "Third-party access always requires explicit authorization grants with scoped permissions"
+
+  - id: stateless_requires_tokens
+    priority: 3
+    if:
+      - session_type == stateless
+    then:
+      pattern: token_based_auth
+      standards:
+        - JWT
+        - OAuth 2.0
+      notes: "Stateless architectures require self-contained tokens for request authentication"
+
+  - id: high_security_requires_pop
+    priority: 4
+    if:
+      - security_level in [high, critical]
+      - data_sensitivity == high
+    then:
+      pattern: sender_constrained_tokens
+      standards:
+        - DPoP
+        - Mutual TLS
+      notes: "Prevent token replay and theft via cryptographic sender binding"
+
+  - id: service_to_service_mtls
+    priority: 5
+    if:
+      - client_types == server
+      - security_level in [high, critical]
+    then:
+      pattern: mtls_authentication
+      standards:
+        - Mutual TLS
+      notes: "Machine-to-machine in high-security environments requires certificate-based mutual authentication"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: critical
+  fallback:
+    pattern: federated_authentication
+    description: "OAuth2 Authorization Code + PKCE + short-lived JWT with OpenID Connect"
+
+patterns:
+  - id: federated_authentication
+    name: Federated Authentication
+    description: >
+      Delegates identity verification to a trusted Identity Provider (IdP) using
+      OpenID Connect. Enables SSO, centralizes credential management, and separates
+      authentication concerns from application logic.
+
+    use_when:
+      - "Multiple client types (web, mobile, SPA) need to authenticate"
+      - "Single Sign-On (SSO) is required across applications"
+      - "Centralized identity management is needed"
+      - "Regulatory compliance requires auditable authentication"
+
+    avoid_when:
+      - "System has no human users (pure machine-to-machine)"
+      - "Extreme latency constraints prevent IdP round-trips (rare)"
+
+    tradeoffs:
+      pros:
+        - "Centralizes credential management and rotation"
+        - "Enables SSO across multiple applications"
+        - "IdP handles password policies, MFA, brute-force protection"
+        - "Reduces application attack surface"
+      cons:
+        - "Depends on external IdP availability"
+        - "Additional network latency for token exchange"
+        - "Complexity of OIDC/OAuth2 flows"
+
+    implementation:
+      guidelines:
+        - "Use Authorization Code Flow for server-side applications"
+        - "Enforce PKCE for all public clients (SPA, mobile, CLI)"
+        - "Validate ID token signature, issuer (iss), audience (aud), and expiration (exp)"
+        - "Use state parameter to prevent CSRF in authorization requests"
+        - "Store tokens securely — never in localStorage for web apps"
+
+      common_errors:
+        - error: "Using OAuth2 Implicit Flow"
+          impact: "Token exposed in URL fragment, vulnerable to interception"
+          fix: "Use Authorization Code Flow + PKCE instead"
+        - error: "Skipping ID token validation"
+          impact: "Accepting forged or expired tokens allows impersonation"
+          fix: "Validate signature, iss, aud, exp, and nonce on every ID token"
+        - error: "Storing tokens in localStorage"
+          impact: "XSS can steal tokens"
+          fix: "Use httpOnly cookies or in-memory storage with refresh token rotation"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: OpenID Connect
+        type: protocol
+        role: "Authentication layer on top of OAuth 2.0"
+        status: recommended
+        reference: "https://openid.net/specs/openid-connect-core-1_0.html"
+      - name: OAuth 2.0
+        type: protocol
+        role: "Authorization framework for delegated access"
+        status: recommended
+        reference: "RFC 6749"
+
+  - id: delegated_authorization
+    name: Delegated Authorization
+    description: >
+      Grants scoped, time-limited access to resources on behalf of a user or service
+      without sharing credentials. Core OAuth 2.0 pattern for third-party integrations.
+
+    use_when:
+      - "Third-party applications need access to user resources"
+      - "Service-to-service authorization with scoped permissions"
+      - "API marketplace or partner integration scenarios"
+
+    avoid_when:
+      - "You need to verify user identity (use federated_authentication instead)"
+      - "Internal services in a trusted network with mutual TLS"
+
+    tradeoffs:
+      pros:
+        - "User never shares credentials with third party"
+        - "Granular scope control"
+        - "Revocable access without changing credentials"
+      cons:
+        - "Complex grant flows to implement correctly"
+        - "Token management overhead"
+
+    implementation:
+      guidelines:
+        - "Use Authorization Code Flow for user-facing apps"
+        - "Use Client Credentials Flow for machine-to-machine"
+        - "Define minimal scopes — never grant blanket access"
+        - "Implement token revocation endpoints"
+
+      common_errors:
+        - error: "Overly broad OAuth scopes"
+          impact: "Third parties get more access than needed"
+          fix: "Define granular, resource-specific scopes"
+        - error: "No token revocation mechanism"
+          impact: "Cannot revoke compromised third-party access"
+          fix: "Implement RFC 7009 token revocation"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: OAuth 2.0
+        type: protocol
+        role: "Delegated authorization framework"
+        status: recommended
+        reference: "RFC 6749"
+      - name: OAuth 2.0 Token Revocation
+        type: spec
+        role: "Token revocation mechanism"
+        status: recommended
+        reference: "RFC 7009"
+
+  - id: token_based_auth
+    name: Token-Based Authentication
+    description: >
+      Uses self-contained signed tokens (JWT) to authenticate requests without
+      server-side session state. Enables horizontal scaling and stateless architectures.
+
+    use_when:
+      - "Stateless architecture required (microservices, serverless)"
+      - "Horizontal scaling without sticky sessions"
+      - "API-first or mobile-first applications"
+
+    avoid_when:
+      - "Immediate token revocation is critical (prefer stateful sessions)"
+      - "Token payload size becomes a concern (many claims)"
+
+    tradeoffs:
+      pros:
+        - "No server-side session storage needed"
+        - "Scales horizontally without session affinity"
+        - "Self-contained — reduces database lookups per request"
+      cons:
+        - "Cannot be revoked before expiration without a denylist"
+        - "Token payload adds to every request size"
+        - "Clock skew between services can cause issues"
+
+    implementation:
+      guidelines:
+        - "Short-lived access tokens (5–15 minutes)"
+        - "Refresh token rotation — issue new refresh token on each use"
+        - "Asymmetric signing (RS256 or ES256) — never symmetric for distributed systems"
+        - "Minimal claims — only include what the resource server needs"
+        - "Validate exp, iss, aud on every request"
+
+      common_errors:
+        - error: "Long-lived access tokens (hours or days)"
+          impact: "Extended window for stolen token abuse"
+          fix: "5-15 minute TTL with refresh token rotation"
+        - error: "Sensitive data in JWT payload"
+          impact: "JWT payload is base64-encoded, not encrypted — visible to anyone"
+          fix: "Minimal claims only; use token introspection for sensitive data"
+        - error: "Symmetric signing (HS256) in distributed systems"
+          impact: "Shared secret must be distributed to all services"
+          fix: "Use asymmetric signing (RS256/ES256) with public key distribution via JWKS"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: JWT
+        type: format
+        role: "Self-contained signed token format"
+        status: recommended
+        reference: "RFC 7519"
+      - name: JWK
+        type: format
+        role: "JSON Web Key format for key distribution"
+        status: recommended
+        reference: "RFC 7517"
+
+  - id: sender_constrained_tokens
+    name: Proof-of-Possession Tokens
+    description: >
+      Tokens cryptographically bound to a specific client, preventing token replay
+      and theft. The token is useless without the corresponding proof key.
+
+    use_when:
+      - "High-security APIs handling financial or personal data"
+      - "Zero-trust architectures where network position is not trusted"
+      - "Regulatory requirements mandate token binding"
+
+    avoid_when:
+      - "Low-security internal tools where implementation cost is unjustified"
+      - "Client environments cannot perform cryptographic operations"
+
+    tradeoffs:
+      pros:
+        - "Prevents token theft and replay attacks"
+        - "Strong cryptographic client binding"
+        - "Aligns with zero-trust principles"
+      cons:
+        - "Higher implementation complexity"
+        - "Client must manage cryptographic keys"
+        - "Additional latency for proof generation and validation"
+
+    implementation:
+      guidelines:
+        - "Prefer DPoP for public clients (SPA, mobile, CLI)"
+        - "Prefer mTLS certificate binding for backend services"
+        - "Validate proof on every request — not just at token issuance"
+        - "Include token hash in DPoP proof to bind proof to specific token"
+
+      common_errors:
+        - error: "Validating proof only at token issuance"
+          impact: "Stolen token can be replayed without proof after issuance"
+          fix: "Validate DPoP proof or mTLS certificate on every API request"
+        - error: "Reusing DPoP proof JWTs"
+          impact: "Replay attack possible with captured proof"
+          fix: "Require unique jti and enforce nonce freshness"
+
+    maturity:
+      level: enterprise
+
+    standards:
+      - name: DPoP
+        type: spec
+        role: "Demonstrating Proof-of-Possession for OAuth tokens"
+        status: recommended
+        reference: "RFC 9449"
+      - name: Mutual TLS Client Certificate Binding
+        type: spec
+        role: "TLS certificate-based token binding"
+        status: recommended
+        reference: "RFC 8705"
+
+  - id: mtls_authentication
+    name: Mutual TLS Authentication
+    description: >
+      Both client and server present X.509 certificates during TLS handshake,
+      providing strong mutual identity verification at the transport layer.
+
+    use_when:
+      - "Service-to-service communication in high-security environments"
+      - "Zero-trust network architectures"
+      - "Regulatory requirements mandate transport-level authentication"
+
+    avoid_when:
+      - "Client environments cannot manage certificates (end-user browsers)"
+      - "Certificate management infrastructure is not available"
+      - "Dynamic or ephemeral clients that cannot be pre-provisioned"
+
+    tradeoffs:
+      pros:
+        - "Strong identity at transport layer — before application code runs"
+        - "No tokens to steal — identity tied to TLS session"
+        - "Works with or without application-layer authentication"
+      cons:
+        - "Certificate provisioning and rotation complexity"
+        - "Requires PKI infrastructure"
+        - "Cannot traverse certain proxies/load balancers without termination handling"
+
+    implementation:
+      guidelines:
+        - "Issue client certificates from a private CA — never self-signed in production"
+        - "Validate full certificate chain including revocation (CRL or OCSP)"
+        - "Automate certificate rotation with short lifetimes"
+        - "Configure TLS termination points to pass client certificate to backend"
+
+      common_errors:
+        - error: "Self-signed certificates in production"
+          impact: "No trust chain — any self-signed cert would be accepted"
+          fix: "Use a private CA with proper certificate chain validation"
+        - error: "No certificate revocation checking"
+          impact: "Compromised certificates remain valid until expiration"
+          fix: "Enable CRL or OCSP checking on all TLS endpoints"
+
+    maturity:
+      level: enterprise
+
+    standards:
+      - name: Mutual TLS
+        type: protocol
+        role: "Transport-layer mutual authentication"
+        status: recommended
+        reference: "RFC 8446 (TLS 1.3)"
+      - name: X.509
+        type: format
+        role: "Certificate format for identity"
+        status: recommended
+        reference: "RFC 5280"
+
+examples:
+  - id: oidc_auth_code_pkce
+    title: "Authorization Code Flow with PKCE"
+    context: "Web or mobile app authenticating a user via OpenID Connect"
+    correct: |
+      # 1. Generate PKCE code verifier and challenge
+      code_verifier = random_string(43..128)
+      code_challenge = base64url(sha256(code_verifier))
+
+      # 2. Redirect to IdP with PKCE challenge
+      redirect_to(idp_authorize_url,
+        response_type = "code",
+        client_id = CLIENT_ID,
+        redirect_uri = CALLBACK_URL,
+        scope = "openid profile email",
+        state = random_csrf_token(),
+        code_challenge = code_challenge,
+        code_challenge_method = "S256"
+      )
+
+      # 3. Exchange code for tokens (server-side)
+      tokens = post(idp_token_url,
+        grant_type = "authorization_code",
+        code = received_code,
+        code_verifier = code_verifier,
+        client_id = CLIENT_ID,
+        redirect_uri = CALLBACK_URL
+      )
+
+      # 4. Validate ID token
+      assert tokens.id_token.iss == EXPECTED_ISSUER
+      assert tokens.id_token.aud == CLIENT_ID
+      assert tokens.id_token.exp > now()
+      assert verify_signature(tokens.id_token, idp_jwks)
+    incorrect: |
+      # WRONG: Implicit flow — token exposed in URL
+      redirect_to(idp_authorize_url,
+        response_type = "token",    # BAD: implicit flow
+        client_id = CLIENT_ID,
+        redirect_uri = CALLBACK_URL
+      )
+      # Token appears in URL fragment — vulnerable to interception
+      # No PKCE, no code exchange, no server-side validation
+    explanation: >
+      Authorization Code + PKCE keeps tokens off the URL, exchanges a short-lived
+      code server-side, and PKCE prevents code interception attacks. Implicit flow
+      is deprecated (OAuth 2.0 Security BCP).
+
+  - id: jwt_validation
+    title: "JWT Access Token Validation"
+    context: "API resource server validating an incoming access token"
+    correct: |
+      function validate_token(token, jwks, expected_issuer, expected_audience):
+        header = decode_header(token)
+        key = jwks.find_key(header.kid)
+
+        claims = verify_and_decode(token, key)
+
+        assert claims.iss == expected_issuer
+        assert claims.aud == expected_audience
+        assert claims.exp > now()
+        assert claims.iat <= now()
+
+        return claims
+    incorrect: |
+      # WRONG: No validation — just decode and trust
+      function validate_token(token):
+        claims = base64_decode(token.split(".")[1])
+        return claims    # No signature check, no expiry check
+    explanation: >
+      JWTs are signed, not encrypted. Anyone can read the payload. Without signature
+      verification, an attacker can forge tokens. Without expiry checks, stolen tokens
+      work forever.
+
+security_hardening:
+  transport:
+    requirements:
+      - "TLS 1.2+ required for all authentication endpoints"
+      - "HSTS enabled with min 1-year max-age and includeSubDomains"
+      - "Secure cookie flag set on all authentication cookies"
+
+  data_protection:
+    requirements:
+      - "Tokens stored in httpOnly cookies (web) or secure keychain (mobile)"
+      - "Never store tokens in localStorage or sessionStorage"
+      - "Refresh tokens encrypted at rest if persisted server-side"
+
+  access_control:
+    requirements:
+      - "Authorization Code Flow for all user-facing auth"
+      - "PKCE enforced for all public clients"
+      - "State parameter validated to prevent CSRF"
+
+  input_output:
+    requirements:
+      - "Redirect URIs validated against registered allowlist"
+      - "Token claims validated on every request (iss, aud, exp)"
+      - "ID token nonce validated to prevent replay"
+
+  secrets:
+    requirements:
+      - "JWKS endpoint for public key distribution"
+      - "Key rotation on a regular schedule"
+      - "Asymmetric keys only (RS256 or ES256)"
+      - "Client secrets stored in secrets manager, never in code"
+
+  monitoring:
+    requirements:
+      - "Log all authentication events (success and failure)"
+      - "Alert on repeated authentication failures (brute-force detection)"
+      - "Monitor token issuance rates for anomalies"
+      - "Track and alert on authentication from unusual geographies"
+
+compliance:
+  standards:
+    - name: ISO/IEC 27001
+      relevance: "Information Security Management System — authentication controls"
+      reference: "ISO/IEC 27001:2022"
+
+    - name: ISO/IEC 27002
+      relevance: "Security controls — access control and cryptography"
+      reference: "ISO/IEC 27002:2022 Section 8"
+
+    - name: NIST SP 800-63
+      relevance: "Digital Identity Guidelines — authentication assurance levels"
+      reference: "https://pages.nist.gov/800-63-4/"
+
+    - name: OWASP ASVS
+      relevance: "Application Security Verification Standard — auth requirements"
+      reference: "https://owasp.org/www-project-application-security-verification-standard/"
+
+  requirements_mapping:
+    - control: authentication_strength
+      description: "Authentication mechanisms meet required assurance level"
+      maps_to:
+        - "NIST SP 800-63 AAL2"
+        - "OWASP ASVS 2.x (Authentication)"
+
+    - control: session_management
+      description: "Sessions are securely created, maintained, and destroyed"
+      maps_to:
+        - "OWASP ASVS 3.x (Session Management)"
+        - "ISO 27002 8.5 (Secure Authentication)"
+
+    - control: credential_storage
+      description: "Credentials stored using adaptive hashing algorithms"
+      maps_to:
+        - "OWASP ASVS 2.4 (Credential Storage)"
+        - "NIST SP 800-63B Section 5.1.1.2"
+
+prompt_recipes:
+  - id: greenfield_auth
+    scenario: greenfield
+    description: "Design authentication for a new application"
+    prompt: |
+      Design an authentication system for a new application.
+
+      Context:
+      - Client type: [web/mobile/server/third_party]
+      - Needs user login: [yes/no]
+      - Session type: [stateful/stateless]
+      - Security level: [low/medium/high/critical]
+
+      Requirements:
+      - Use OpenID Connect for user authentication
+      - Enforce PKCE for all public clients
+      - Short-lived access tokens (5-15 min) with refresh token rotation
+      - Validate all token claims (iss, aud, exp) on every request
+
+      Avoid: Implicit flow, long-lived tokens, localStorage token storage,
+      symmetric signing in distributed systems.
+
+  - id: high_security_api
+    scenario: high-security
+    description: "Design authentication for high-security API with PoP tokens"
+    prompt: |
+      Design an authentication system for a high-security API handling sensitive data.
+
+      Requirements:
+      - Prevent token replay attacks using Proof-of-Possession
+      - Stateless architecture with JWT access tokens
+      - Support web and mobile clients
+      - Zero-trust: do not rely on network position for security
+
+      Use:
+      - OAuth2 Authorization Code with PKCE
+      - OpenID Connect for identity
+      - DPoP for public clients, mTLS for backend services
+      - Asymmetric signing (ES256 preferred)
+
+      Avoid: Bearer tokens without sender binding, implicit flow,
+      symmetric signing, long-lived tokens.
+
+  - id: audit_existing
+    scenario: audit
+    description: "Audit an existing authentication implementation"
+    prompt: |
+      Audit the existing authentication implementation against these criteria:
+
+      1. Is OIDC used for authentication (not raw OAuth2)?
+      2. Is PKCE enforced for all public clients?
+      3. Are access tokens short-lived (≤15 minutes)?
+      4. Is refresh token rotation implemented?
+      5. Are tokens signed asymmetrically (RS256/ES256)?
+      6. Are all claims validated (iss, aud, exp) on every request?
+      7. Is token storage secure (httpOnly cookies, not localStorage)?
+      8. Is brute-force protection on login endpoints?
+      9. Are credentials hashed with adaptive algorithms?
+      10. Is PoP (DPoP/mTLS) used if security_level is high/critical?
+
+      For each item: report compliant/non-compliant/not-applicable with evidence.
+
+  - id: migration_legacy
+    scenario: migration
+    description: "Migrate from session-based to token-based authentication"
+    prompt: |
+      Plan a migration from server-side session authentication to token-based (JWT)
+      authentication.
+
+      Current state: [describe current session-based auth]
+
+      Migration plan must:
+      - Support both old (session) and new (token) auth during transition
+      - Not require all clients to upgrade simultaneously
+      - Maintain security guarantees during migration
+      - Include rollback plan if issues arise
+
+      Key decisions:
+      - Token signing algorithm: ES256 (recommended) or RS256
+      - Token lifetime: 5-15 minutes with refresh rotation
+      - Session-to-token bridge: validate existing session, issue token
+
+anti_patterns:
+  - name: "OAuth2 without OIDC for user authentication"
+    description: >
+      Using OAuth2 alone for login. OAuth2 is an authorization protocol — it proves
+      what you can access, not who you are. Without OIDC's ID token, there is no
+      standard, validated assertion of user identity.
+    fix: "Always use OpenID Connect on top of OAuth2 when authenticating users"
+    severity: critical
+    related_pattern: federated_authentication
+
+  - name: "Bearer tokens in high-security environments"
+    description: >
+      Using plain bearer tokens (anyone who has the token can use it) in environments
+      handling sensitive data. A stolen bearer token gives full access until expiration.
+    fix: "Use sender-constrained tokens (DPoP or mTLS certificate binding)"
+    severity: high
+    related_pattern: sender_constrained_tokens
+
+  - name: "Long-lived access tokens"
+    description: >
+      Access tokens with TTL of hours or days. Extends the window for stolen token abuse
+      and makes revocation difficult in stateless architectures.
+    fix: "Short TTL (5-15 min) with refresh token rotation"
+    severity: high
+    related_pattern: token_based_auth
+
+  - name: "Implicit Flow"
+    description: >
+      OAuth2 Implicit Flow (response_type=token) returns tokens in URL fragments,
+      exposing them to browser history, referrer headers, and intermediary proxies.
+      Deprecated by OAuth 2.0 Security Best Current Practice.
+    fix: "Authorization Code Flow + PKCE"
+    severity: critical
+    related_pattern: federated_authentication
+
+  - name: "Tokens in localStorage"
+    description: >
+      Storing access or refresh tokens in browser localStorage. Any XSS vulnerability
+      gives attackers direct access to stored tokens.
+    fix: "Use httpOnly cookies with Secure, SameSite=Strict flags, or in-memory storage with refresh rotation"
+    severity: high
+    related_pattern: token_based_auth
+
+  - name: "Symmetric signing (HS256) in distributed systems"
+    description: >
+      Using HS256 requires sharing the signing secret with every service that validates
+      tokens. Secret compromise affects all services simultaneously.
+    fix: "Use asymmetric signing (RS256 or ES256) with JWKS public key distribution"
+    severity: medium
+    related_pattern: token_based_auth
+
+checklist:
+  - id: AUTH-01
+    category: security
+    description: "OpenID Connect used for all user authentication (not raw OAuth2)"
+    severity: critical
+    verified_by: federated_authentication
+
+  - id: AUTH-02
+    category: security
+    description: "PKCE enforced for all public clients (SPA, mobile, CLI)"
+    severity: critical
+    verified_by: federated_authentication
+
+  - id: AUTH-03
+    category: security
+    description: "Access tokens are short-lived (≤15 minutes)"
+    severity: high
+    verified_by: token_based_auth
+
+  - id: AUTH-04
+    category: security
+    description: "Refresh token rotation implemented (new token on each use)"
+    severity: high
+    verified_by: token_based_auth
+
+  - id: AUTH-05
+    category: security
+    description: "Asymmetric signing used (RS256 or ES256), not HS256"
+    severity: high
+    verified_by: token_based_auth
+
+  - id: AUTH-06
+    category: correctness
+    description: "All token claims validated on every request (iss, aud, exp)"
+    severity: critical
+    verified_by: token_based_auth
+
+  - id: AUTH-07
+    category: security
+    description: "Proof-of-Possession (DPoP/mTLS) used when security_level is high/critical"
+    severity: high
+    verified_by: sender_constrained_tokens
+
+  - id: AUTH-08
+    category: security
+    description: "HTTPS enforced on all authentication endpoints (TLS 1.2+)"
+    severity: critical
+    verified_by: federated_authentication
+
+  - id: AUTH-09
+    category: security
+    description: "Signing keys rotated on a regular schedule via JWKS"
+    severity: high
+    verified_by: token_based_auth
+
+  - id: AUTH-10
+    category: security
+    description: "Brute-force protection on login endpoints (lockout, delay, or CAPTCHA)"
+    severity: high
+    verified_by: federated_authentication
+
+  - id: AUTH-11
+    category: security
+    description: "Tokens stored securely (httpOnly cookies for web, keychain for mobile)"
+    severity: high
+    verified_by: token_based_auth
+
+  - id: AUTH-12
+    category: compliance
+    description: "Authentication meets NIST AAL2 or higher for regulated environments"
+    severity: high
+    verified_by: federated_authentication
+
+  - id: AUTH-13
+    category: reliability
+    description: "Redirect URIs validated against registered allowlist"
+    severity: critical
+    verified_by: federated_authentication
+
+  - id: AUTH-14
+    category: security
+    description: "No deprecated flows used (Implicit, Resource Owner Password)"
+    severity: critical
+    verified_by: federated_authentication

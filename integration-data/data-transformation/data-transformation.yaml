@@ -1,0 +1,659 @@
+# =============================================================================
+# AI Architecture Cookbook — Data Transformation
+# Schema: v3 | Domain: data-transformation
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: data-transformation
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Data transformation patterns including ETL/ELT pipelines, schema
+    evolution, data mapping, validation, and format conversion. Covers
+    both batch and streaming data transformation for integration,
+    migration, and analytics use cases.
+
+  tags:
+    - data-transformation
+    - etl
+    - elt
+    - data-pipeline
+    - schema-evolution
+    - data-mapping
+
+  categories:
+    - integration-data
+
+  prerequisites:
+    - id: data-persistence
+      reason: "Data sources and sinks are storage systems"
+    - id: error-handling
+      reason: "Pipeline failures need structured error handling and recovery"
+    - id: logging-observability
+      reason: "Pipeline monitoring and data lineage tracking"
+
+  related_standards:
+    - id: search
+      relationship: complementary
+      context: "Search indexing pipelines are a data transformation use case"
+    - id: messaging-events
+      relationship: complementary
+      context: "Event streams are a common data source for transformation pipelines"
+    - id: input-validation
+      relationship: complementary
+      context: "Data validation is a core transformation step"
+
+context_inputs:
+  - name: pipeline_type
+    type: enum
+    description: "Type of data transformation pipeline"
+    required: true
+    default: batch_etl
+    enum_values:
+      - batch_etl
+      - batch_elt
+      - streaming
+      - micro_batch
+
+  - name: data_volume
+    type: enum
+    description: "Volume of data being transformed"
+    required: true
+    default: medium
+    enum_values:
+      - small
+      - medium
+      - large
+      - very_large
+
+  - name: transformation_complexity
+    type: enum
+    description: "Complexity of transformation logic"
+    required: false
+    default: moderate
+    enum_values:
+      - simple
+      - moderate
+      - complex
+      - ml_enriched
+
+  - name: freshness_requirement
+    type: enum
+    description: "How fresh the transformed data must be"
+    required: false
+    default: daily
+    enum_values:
+      - realtime
+      - hourly
+      - daily
+      - weekly
+
+decision_tree:
+  - id: realtime_streaming
+    priority: 1
+    if:
+      - freshness_requirement == realtime
+    then:
+      pattern: streaming_transformation
+      standards:
+        - "Apache Kafka Streams"
+        - "Apache Flink"
+      notes: >
+        Real-time freshness requires streaming transformation processing
+        events as they arrive.
+    else:
+      pattern: batch_pipeline
+      notes: "Batch pipelines are simpler and sufficient for non-real-time needs"
+
+  - id: large_batch
+    priority: 2
+    if:
+      - pipeline_type in [batch_etl, batch_elt]
+      - data_volume in [large, very_large]
+    then:
+      pattern: batch_pipeline
+      standards:
+        - "Apache Spark"
+        - "dbt"
+      notes: >
+        Large batch transformations need distributed processing frameworks
+        for performance and reliability.
+
+  - id: schema_changes
+    priority: 3
+    if:
+      - transformation_complexity in [moderate, complex, ml_enriched]
+    then:
+      pattern: schema_evolution
+      notes: >
+        Complex transformations inevitably encounter schema changes.
+        Plan for schema evolution from the start.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: batch_pipeline
+    description: "Batch pipelines are simpler, well-understood, and sufficient for most use cases"
+
+patterns:
+  - id: batch_pipeline
+    name: "Batch ETL/ELT Pipeline"
+    description: >
+      Process data in scheduled batches: extract from sources, transform
+      (clean, validate, enrich, aggregate), and load to destinations.
+      ETL transforms before loading; ELT loads raw then transforms in the
+      destination (usually a data warehouse). Batch is simpler, cheaper,
+      and sufficient when real-time freshness is not required.
+    use_when:
+      - "Data freshness measured in hours or days (not seconds)"
+      - "Bounded datasets that can be processed completely in a batch"
+      - "Analytics and reporting pipelines"
+      - "Data warehouse loading"
+    avoid_when:
+      - "Real-time or near-real-time freshness required"
+      - "Unbounded data streams (use streaming)"
+    tradeoffs:
+      pros:
+        - "Simple to understand, build, and debug"
+        - "Complete data available — can do global aggregations"
+        - "Easier error recovery — rerun the entire batch"
+        - "Lower infrastructure cost than streaming"
+      cons:
+        - "Data latency — freshness depends on batch schedule"
+        - "Large batches take long to process"
+        - "All-or-nothing failure risk without checkpointing"
+    implementation:
+      guidelines:
+        - "Idempotent pipelines: rerunning the same batch produces the same result"
+        - "Partition data by time or key for parallel processing"
+        - "Validate data at entry (schema, types, ranges) — reject or quarantine bad records"
+        - "Checkpoint progress for long-running batches (resume from checkpoint on failure)"
+        - "Log record counts at each stage (extracted, transformed, loaded, rejected)"
+        - "Use staging tables — load to staging, validate, then promote to production"
+        - "Store rejected records with reasons for investigation"
+      common_errors:
+        - error: "Non-idempotent pipeline — rerun creates duplicates"
+          impact: "Recovery from failure corrupts data"
+          fix: "Use UPSERT/MERGE semantics; truncate-and-load or partition-based overwrite"
+        - error: "No data validation between stages"
+          impact: "Bad data propagates through pipeline and corrupts downstream systems"
+          fix: "Validate after extract and after transform; quarantine bad records"
+        - error: "No record count reconciliation"
+          impact: "Silent data loss — records disappear without detection"
+          fix: "Log counts at each stage; alert on unexpected count differences"
+    maturity:
+      level: standard
+    standards:
+      - name: "dbt"
+        type: tool
+        role: "SQL-based transformation framework for ELT"
+        status: recommended
+      - name: "Apache Airflow"
+        type: tool
+        role: "Workflow orchestration for batch pipelines"
+        status: recommended
+
+  - id: streaming_transformation
+    name: "Streaming Data Transformation"
+    description: >
+      Process data records as they arrive in a continuous stream. Each
+      record is transformed independently or in windowed aggregations.
+      Enables real-time dashboards, alerts, and derived data products.
+    use_when:
+      - "Real-time or near-real-time data freshness required"
+      - "Unbounded event streams (logs, IoT, user activity)"
+      - "Event-driven architectures producing continuous events"
+    avoid_when:
+      - "Bounded datasets with batch schedule (simpler as batch)"
+      - "Global aggregations requiring complete dataset"
+      - "Simple one-time data migrations"
+    tradeoffs:
+      pros:
+        - "Real-time data freshness"
+        - "Processes data incrementally — constant resource usage"
+        - "Natural fit for event-driven architectures"
+      cons:
+        - "More complex than batch — ordering, late events, state management"
+        - "Harder to debug and test"
+        - "Higher infrastructure cost (always running)"
+    implementation:
+      guidelines:
+        - "Design for exactly-once semantics (or idempotent at-least-once)"
+        - "Handle late-arriving events with watermarks and allowed lateness"
+        - "Use windowing for time-based aggregations (tumbling, sliding, session)"
+        - "Manage state carefully — use framework-provided state stores"
+        - "Dead-letter topic for records that fail transformation"
+        - "Monitor consumer lag as a key health metric"
+        - "Build replay capability for reprocessing from offset"
+      common_errors:
+        - error: "Assuming events arrive in order"
+          impact: "Incorrect aggregations and calculations"
+          fix: "Use event timestamps and watermarks for ordering; handle late events"
+        - error: "Unbounded state accumulation"
+          impact: "Memory exhaustion and crash"
+          fix: "Use windowed state with TTL; evict old state"
+        - error: "No dead-letter handling for failed transformations"
+          impact: "Bad records block the stream or are silently dropped"
+          fix: "Route failed records to dead-letter topic with error context"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Apache Kafka Streams"
+        type: framework
+        role: "Stream processing library for Java/Kotlin"
+        status: recommended
+      - name: "Apache Flink"
+        type: framework
+        role: "Distributed stream processing framework"
+        status: recommended
+
+  - id: schema_evolution
+    name: "Schema Evolution & Versioning"
+    description: >
+      Manage changes to data schemas over time without breaking existing
+      pipelines or consumers. Use schema registries to track versions,
+      enforce compatibility rules, and enable gradual migration. Critical
+      for long-lived data systems where source schemas change frequently.
+    use_when:
+      - "Data schemas change over time (new fields, type changes)"
+      - "Multiple consumers read the same data with different schema versions"
+      - "Long-term data retention where old data has old schemas"
+    avoid_when:
+      - "One-time data migration (transform once, no ongoing changes)"
+      - "Single producer-single consumer with coordinated deployments"
+    tradeoffs:
+      pros:
+        - "Non-breaking schema changes without pipeline downtime"
+        - "Multiple schema versions coexist (gradual migration)"
+        - "Schema registry provides documentation and governance"
+        - "Backward/forward compatibility enforced automatically"
+      cons:
+        - "Additional infrastructure (schema registry)"
+        - "Must plan schema changes carefully (compatibility constraints)"
+        - "Migration of existing data may still be needed for breaking changes"
+    implementation:
+      guidelines:
+        - "Use a schema registry (Confluent, AWS Glue, Apicurio)"
+        - "Default to backward-compatible changes (add optional fields)"
+        - "Never remove or rename fields without deprecation period"
+        - "Version schemas explicitly (semantic versioning)"
+        - "Encode schema ID with each record (Avro, Protobuf)"
+        - "Test schema compatibility before deploying changes"
+        - "Document migration path for breaking changes"
+      common_errors:
+        - error: "Breaking schema change without versioning"
+          impact: "All downstream consumers break simultaneously"
+          fix: "Version schemas; use compatibility modes; deprecate before removing"
+        - error: "No schema registry — schemas defined in code"
+          impact: "No central documentation; compatibility not enforced"
+          fix: "Use schema registry with compatibility checking"
+        - error: "Renaming fields instead of adding new ones"
+          impact: "Existing consumers can't find the field — breaking change"
+          fix: "Add new field, populate both, deprecate old field, remove after migration"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Apache Avro"
+        type: format
+        role: "Schema-based data serialization with evolution support"
+        status: recommended
+      - name: "Protocol Buffers"
+        type: format
+        role: "Google's schema-based serialization format"
+        status: recommended
+
+examples:
+  - id: batch_pipeline_example
+    title: "Idempotent Batch ETL Pipeline"
+    context: "Daily pipeline loading customer orders into analytics warehouse"
+    correct: |
+      # Python — Idempotent batch pipeline with validation
+      from datetime import date
+
+      class DailyOrdersPipeline:
+          """Idempotent ETL: rerunning for the same date produces identical results."""
+
+          def run(self, run_date: date) -> PipelineResult:
+              # EXTRACT — bounded by date partition
+              raw_orders = self.extract_orders(run_date)
+              extracted_count = len(raw_orders)
+
+              # VALIDATE — quarantine bad records
+              valid, rejected = self.validate(raw_orders)
+
+              # TRANSFORM — clean, enrich, aggregate
+              transformed = [self.transform_order(o) for o in valid]
+
+              # LOAD — partition overwrite (idempotent!)
+              self.load_to_warehouse(
+                  records=transformed,
+                  partition_key=run_date.isoformat(),
+                  mode="overwrite",  # Rerunnable — same result
+              )
+
+              # QUARANTINE — store rejected with reasons
+              if rejected:
+                  self.quarantine_records(rejected, run_date)
+
+              # RECONCILE — count check
+              loaded_count = self.count_loaded(run_date)
+              return PipelineResult(
+                  extracted=extracted_count,
+                  valid=len(valid),
+                  rejected=len(rejected),
+                  loaded=loaded_count,
+                  reconciled=(len(valid) == loaded_count),
+              )
+
+          def validate(self, records):
+              valid, rejected = [], []
+              for r in records:
+                  errors = self.schema_validator.validate(r)
+                  if errors:
+                      rejected.append({"record": r, "errors": errors})
+                  else:
+                      valid.append(r)
+              return valid, rejected
+    incorrect: |
+      # WRONG: Non-idempotent pipeline with no validation
+      def load_daily_orders(run_date):
+          orders = db.query("SELECT * FROM orders WHERE date = :d", d=run_date)
+
+          for order in orders:
+              # INSERT — not idempotent! Rerun creates duplicates
+              warehouse.execute(
+                  "INSERT INTO fact_orders VALUES (:id, :amount, :date)",
+                  id=order.id, amount=order.amount, date=run_date,
+              )
+
+          # No validation — bad data flows through
+          # No record counts — silent data loss possible
+          # No rejected record handling — bad records just fail silently
+          # No partitioning — can't rerun cleanly
+    explanation: >
+      The correct pipeline uses partition-based overwrite for idempotency,
+      validates records before transformation, quarantines rejected records
+      with reasons, and reconciles record counts. Rerunning for the same
+      date produces identical results.
+
+  - id: schema_evolution_example
+    title: "Backward-Compatible Schema Evolution"
+    context: "Adding a field to an event schema without breaking consumers"
+    correct: |
+      # Schema evolution — backward compatible change
+
+      # Version 1 (existing)
+      # {
+      #   "type": "record",
+      #   "name": "OrderCreated",
+      #   "fields": [
+      #     {"name": "order_id", "type": "string"},
+      #     {"name": "customer_id", "type": "string"},
+      #     {"name": "total_amount", "type": "double"},
+      #     {"name": "created_at", "type": "string"}
+      #   ]
+      # }
+
+      # Version 2 — ADD optional field with default (backward compatible)
+      schema_v2 = {
+          "type": "record",
+          "name": "OrderCreated",
+          "fields": [
+              {"name": "order_id", "type": "string"},
+              {"name": "customer_id", "type": "string"},
+              {"name": "total_amount", "type": "double"},
+              {"name": "created_at", "type": "string"},
+              # NEW: optional field with default — existing consumers unaffected
+              {"name": "currency", "type": "string", "default": "USD"},
+              {"name": "shipping_method", "type": ["null", "string"], "default": None},
+          ]
+      }
+
+      # Existing consumers reading v1 schema:
+      # - New fields are ignored (forward compatible)
+      # Existing consumers reading v2 schema on old data:
+      # - New fields get default values (backward compatible)
+    incorrect: |
+      # WRONG: Breaking schema changes
+      # Renamed field: total_amount → order_total
+      # Removed field: customer_id
+      # Changed type: created_at from string to long
+
+      # All existing consumers break:
+      # - "total_amount" field not found
+      # - "customer_id" field not found
+      # - "created_at" type mismatch
+    explanation: >
+      Backward-compatible changes add optional fields with defaults. Existing
+      consumers are unaffected. Breaking changes (rename, remove, type change)
+      require a new schema version and coordinated consumer migration.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Pipeline connections to data sources use encrypted transport"
+      - "Inter-node communication in distributed pipelines uses TLS"
+  data_protection:
+    requirements:
+      - "PII fields masked or tokenized during transformation"
+      - "Temporary pipeline storage encrypted at rest"
+  access_control:
+    requirements:
+      - "Pipeline service accounts have least-privilege access to sources and sinks"
+      - "Schema registry changes require approval workflow"
+  input_output:
+    requirements:
+      - "All input data validated against expected schema before transformation"
+      - "Rejected records quarantined with full error context"
+  secrets:
+    requirements:
+      - "Database credentials and API keys in pipeline configs stored in secrets manager"
+      - "Pipeline credentials rotated on schedule"
+  monitoring:
+    requirements:
+      - "Pipeline run status, duration, and record counts monitored"
+      - "Data quality metrics tracked (rejection rate, null rates, distribution shifts)"
+
+compliance:
+  standards:
+    - name: "GDPR"
+      relevance: "PII handling, data minimization, and right to erasure in pipelines"
+    - name: "SOC 2"
+      relevance: "Data processing controls and audit trails"
+
+  requirements_mapping:
+    - control: data_lineage
+      description: "Track data from source through transformation to destination"
+      maps_to:
+        - "Data governance — lineage tracking"
+    - control: data_quality
+      description: "Validate data at pipeline boundaries; quarantine bad records"
+      maps_to:
+        - "Data quality management"
+    - control: idempotency
+      description: "Pipelines produce identical results when rerun"
+      maps_to:
+        - "Batch processing reliability"
+
+prompt_recipes:
+  - id: dt_greenfield
+    scenario: greenfield
+    description: "Design data transformation pipeline"
+    prompt: |
+      Design a data transformation pipeline for {use_case}.
+
+      Context:
+      - Pipeline type: [batch_etl/batch_elt/streaming/micro_batch]
+      - Data volume: [small/medium/large/very_large]
+      - Freshness: [realtime/hourly/daily/weekly]
+
+      Implement:
+      1. Idempotent pipeline (rerunnable without duplicates)
+      2. Schema validation at entry and exit
+      3. Rejected record quarantine with error reasons
+      4. Record count reconciliation at each stage
+      5. Checkpoint/resume for long-running jobs
+      6. Monitoring: run status, duration, record counts, rejection rate
+      7. Data lineage tracking
+
+  - id: dt_debugging
+    scenario: debugging
+    description: "Debug data pipeline failures"
+    prompt: |
+      Debug data pipeline failure.
+
+      Investigation:
+      1. Check pipeline run logs — where did it fail?
+      2. Review rejected records — schema change upstream?
+      3. Check source data — volume or format unexpected?
+      4. Verify credentials — expired or rotated?
+      5. Check resource limits — OOM, disk space, timeout?
+      6. Review checkpoint — can we resume from last checkpoint?
+      7. Compare record counts — where are records being lost?
+      8. Check schema registry — was there a schema change?
+
+  - id: dt_migration
+    scenario: migration
+    description: "Migrate data between systems"
+    prompt: |
+      Migrate data from {source} to {target}.
+
+      Steps:
+      1. Profile source data (volume, schema, quality)
+      2. Define mapping: source fields → target fields
+      3. Build validation rules for target schema
+      4. Run pilot migration on sample data
+      5. Execute full migration in batches with checkpointing
+      6. Reconcile: count, checksum, sample comparison
+      7. Run parallel reads during cutover
+      8. Verify application functionality with migrated data
+
+  - id: dt_audit
+    scenario: audit
+    description: "Audit data pipeline quality"
+    prompt: |
+      Audit data pipeline quality and reliability.
+
+      Checklist:
+      1. Pipelines are idempotent (rerunnable)?
+      2. Schema validation at entry and exit?
+      3. Rejected records quarantined with reasons?
+      4. Record count reconciliation at each stage?
+      5. PII masked or tokenized appropriately?
+      6. Pipeline credentials in secrets manager?
+      7. Monitoring and alerting configured?
+      8. Data lineage tracked source-to-destination?
+      9. Schema evolution handled (backward compatible)?
+      10. Recovery tested (resume from checkpoint)?
+
+anti_patterns:
+  - name: "Non-Idempotent Pipeline"
+    description: >
+      Pipeline that creates duplicate records when rerun. After a failure
+      and rerun, the destination has duplicated data. Recovery requires
+      manual cleanup of partial results before rerunning.
+    fix: "Use partition overwrite, UPSERT/MERGE, or truncate-and-reload per partition"
+    severity: critical
+    related_pattern: batch_pipeline
+
+  - name: "No Data Validation"
+    description: >
+      Pipeline accepts any input without validation. Bad data flows through
+      transformation and corrupts the destination. Downstream systems and
+      reports produce incorrect results.
+    fix: "Validate at entry (schema, types, ranges) and quarantine bad records"
+    severity: high
+    related_pattern: batch_pipeline
+
+  - name: "Silent Data Loss"
+    description: >
+      Records disappear during transformation without detection. No record
+      count reconciliation between stages. Missing data is only discovered
+      when downstream reports show gaps.
+    fix: "Log record counts at each stage; reconcile extracted vs loaded; alert on differences"
+    severity: critical
+    related_pattern: batch_pipeline
+
+  - name: "Breaking Schema Changes"
+    description: >
+      Changing data schemas without versioning or compatibility checking.
+      All downstream consumers break simultaneously. No rollback path for
+      schema changes.
+    fix: "Use schema registry with compatibility enforcement; add fields, don't remove"
+    severity: high
+    related_pattern: schema_evolution
+
+checklist:
+  - id: DT-01
+    category: correctness
+    description: "Pipeline is idempotent — rerun produces identical results"
+    severity: critical
+    verified_by: batch_pipeline
+
+  - id: DT-02
+    category: correctness
+    description: "Schema validation at pipeline entry and exit"
+    severity: high
+    verified_by: batch_pipeline
+
+  - id: DT-03
+    category: correctness
+    description: "Record count reconciliation at each stage"
+    severity: high
+    verified_by: batch_pipeline
+
+  - id: DT-04
+    category: correctness
+    description: "Rejected records quarantined with error reasons"
+    severity: high
+    verified_by: batch_pipeline
+
+  - id: DT-05
+    category: security
+    description: "PII masked or tokenized during transformation"
+    severity: high
+    verified_by: batch_pipeline
+
+  - id: DT-06
+    category: security
+    description: "Pipeline credentials stored in secrets manager"
+    severity: critical
+    verified_by: batch_pipeline
+
+  - id: DT-07
+    category: reliability
+    description: "Checkpoint/resume capability for long-running pipelines"
+    severity: high
+    verified_by: batch_pipeline
+
+  - id: DT-08
+    category: design
+    description: "Schema evolution with backward compatibility enforced"
+    severity: high
+    verified_by: schema_evolution
+
+  - id: DT-09
+    category: observability
+    description: "Pipeline run status, duration, and record counts monitored"
+    severity: high
+    verified_by: batch_pipeline
+
+  - id: DT-10
+    category: observability
+    description: "Data quality metrics tracked (rejection rate, null rate)"
+    severity: medium
+    verified_by: batch_pipeline
+
+  - id: DT-11
+    category: compliance
+    description: "Data lineage tracked from source to destination"
+    severity: medium
+    verified_by: batch_pipeline
+
+  - id: DT-12
+    category: reliability
+    description: "Dead-letter handling for streaming transformation failures"
+    severity: high
+    verified_by: streaming_transformation

@@ -1,91 +1,214 @@
-# Architectural Decision-Making Template, use this to create a structured approach
-#for AI to recommend architectural patterns based on context and trade-offs.
-#Fill in the sections with relevant information to guide the decision-making process.
-meta:
-  domain: <string>
-  version: 2.0
-  last_updated: <date>
-  description: <short summary>
+# =============================================================================
+# AI Architecture Cookbook — Entry Schema v3
+# =============================================================================
+# Canonical format for architectural standards consumed by AI code assistants.
+# Every cookbook entry MUST validate against this schema.
+#
+# CHANGELOG:
+#   v3 — Added schema_version, required/default on context_inputs, decision_tree
+#         priority/else, structured security_hardening, tags, prerequisites,
+#         related_standards, structured checklist, examples, operator spec.
+#   v2 — Initial public template with decision_tree, patterns, prompt_recipes.
+# =============================================================================
 
+# ---------------------------------------------------------------------------
+# 1. META — Entry identity and versioning
+# ---------------------------------------------------------------------------
+meta:
+  schema_version: 3                 # Schema version (this file). MUST be 3.
+  domain: <string>                  # Kebab-case identifier (e.g., "api-design")
+  version: <semver>                 # Content version (e.g., "1.0.0")
+  last_updated: <date>              # ISO 8601 date (YYYY-MM-DD)
+  description: <short summary>     # One-line summary of the standard
+
+  tags:                             # For search, filtering, MCP tool queries
+    - <tag>                         # e.g., "security", "api", "data", "resilience"
+
+  categories:                       # Primary domain categories this entry belongs to
+    - <category>                    # One of: foundational | application-architecture |
+                                    #   infrastructure | security-quality | integration-data
+
+  prerequisites:                    # Other cookbook entries this one depends on
+    - <domain-id>                   # e.g., "authentication" (must exist as a cookbook entry)
+
+  related_standards:                # Cross-references to competing/complementary standards
+    - id: <domain-id>              # e.g., "graphql-api" when this is "rest-api"
+      relationship: <enum>          # alternative | complementary | superset | subset
+      context: <when to prefer>     # e.g., "Prefer GraphQL when clients need flexible queries"
+
+# ---------------------------------------------------------------------------
+# 2. CONTEXT INPUTS — What the AI must collect before making a recommendation
+# ---------------------------------------------------------------------------
+# Operators for conditions (used in decision_tree):
+#   ==    exact match          (e.g., needs_login == true)
+#   !=    not equal            (e.g., session_type != stateless)
+#   in    membership           (e.g., security_level in [high, critical])
+#   not_in  exclusion          (e.g., client_types not_in [third_party])
+#   >  <  >=  <=  numeric      (e.g., expected_rps > 10000)
+#   AND   all conditions       (implicit — list items are AND-ed)
+# ---------------------------------------------------------------------------
 context_inputs:
   - name: <input_name>
-    type: <string|boolean|enum>
+    type: <string | boolean | enum | integer | float>
     description: <what the AI needs to know>
+    required: <true | false>        # MUST the AI collect this before deciding?
+    default: <value | null>         # Default when not provided (opinionated default)
+    enum_values:                    # Required when type is enum
+      - <value>
 
+# ---------------------------------------------------------------------------
+# 3. DECISION TREE — Context-aware conditional logic
+# ---------------------------------------------------------------------------
+# Nodes are evaluated in priority order (lowest number first).
+# First matching node wins. If no node matches, fallback is used.
+# ---------------------------------------------------------------------------
 decision_tree:
   - id: <decision_id>
-    if:
+    priority: <integer>             # Evaluation order (1 = highest priority)
+    if:                             # Conditions (AND-ed). Use operators above.
       - <condition>
     then:
-      - pattern: <pattern_id>
-      - standards: [<standard1>, <standard2>]
-      - notes: <why>
+      pattern: <pattern_id>
+      standards:
+        - <standard_name>
+      notes: <why this recommendation>
+    else:                           # Optional — alternative when condition fails
+      pattern: <alternative_pattern_id>
+      notes: <why this alternative>
 
 decision_metadata:
-  confidence: <low|medium|high>
-  risk_if_wrong: <low|medium|high|critical>
+  confidence: <low | medium | high>
+  risk_if_wrong: <low | medium | high | critical>
   fallback:
-    - <safe default decision>
+    pattern: <safe_default_pattern_id>
+    description: <safe default decision>
 
+# ---------------------------------------------------------------------------
+# 4. PATTERNS — Named architectural patterns with full treatment
+# ---------------------------------------------------------------------------
 patterns:
   - id: <pattern_id>
     name: <pattern name>
-    description: <what it is>
+    description: <what it is and why it matters>
 
     use_when:
-      - <conditions>
+      - <condition>
 
     avoid_when:
-      - <anti-patterns>
+      - <condition>
 
     tradeoffs:
       pros:
-        - <...>
+        - <benefit>
       cons:
-        - <...>
+        - <cost>
 
     implementation:
       guidelines:
-        - <rules>
+        - <rule>
 
       common_errors:
-        - <mistakes>
+        - error: <mistake description>
+          impact: <what goes wrong>
+          fix: <how to correct>
 
     maturity:
-      level: <standard|advanced|enterprise>
+      level: <standard | advanced | enterprise>
 
     standards:
       - name: <standard>
-        type: <protocol|format|spec>
-        role: <what it does>
-        status: <recommended|deprecated|emerging>
+        type: <protocol | format | spec | rfc | pattern | practice | tool | framework | standard | reference>
+        role: <what it does in this pattern>
+        status: <recommended | deprecated | emerging>
+        reference: <URL or RFC number>   # Optional — canonical spec link
 
+# ---------------------------------------------------------------------------
+# 5. EXAMPLES — Concrete correct vs incorrect snippets (technology-agnostic)
+# ---------------------------------------------------------------------------
+# Use pseudocode or generic language. AI adapts to target stack.
+# ---------------------------------------------------------------------------
+examples:
+  - id: <example_id>
+    title: <short title>
+    context: <when this example applies>
+    correct: |
+      <pseudocode or generic code showing the RIGHT way>
+    incorrect: |
+      <pseudocode or generic code showing the WRONG way>
+    explanation: <why correct is better>
+
+# ---------------------------------------------------------------------------
+# 6. SECURITY HARDENING — Structured security controls per domain
+# ---------------------------------------------------------------------------
+# Consistent structure across all entries. Omit sections that don't apply.
+# ---------------------------------------------------------------------------
 security_hardening:
-  <free structure per domain>
-  # example:
-  # token_protection, encryption, network, etc.
+  transport:                        # Network/transport layer controls
+    requirements:
+      - <requirement>
+  data_protection:                  # Data at rest and in transit
+    requirements:
+      - <requirement>
+  access_control:                   # Authentication and authorization controls
+    requirements:
+      - <requirement>
+  input_output:                     # Input validation, output encoding
+    requirements:
+      - <requirement>
+  secrets:                          # Key management, credential handling
+    requirements:
+      - <requirement>
+  monitoring:                       # Security monitoring and alerting
+    requirements:
+      - <requirement>
 
+# ---------------------------------------------------------------------------
+# 7. COMPLIANCE — Industry standard mapping
+# ---------------------------------------------------------------------------
 compliance:
   standards:
     - name: <standard>
       relevance: <why it matters>
+      reference: <URL or document ID>   # Optional
 
   requirements_mapping:
     - control: <control_name>
+      description: <what this control ensures>
       maps_to:
         - <standard_ref>
 
+# ---------------------------------------------------------------------------
+# 8. PROMPT RECIPES — Reusable prompts for AI code assistants
+# ---------------------------------------------------------------------------
+# Multiple scenarios covered: happy path, edge cases, migration, audit.
+# ---------------------------------------------------------------------------
 prompt_recipes:
   - id: <recipe_id>
+    scenario: <enum>                # One of: greenfield | migration | audit |
+                                    #   edge-case | high-security | performance
     description: <what this prompt achieves>
     prompt: |
       <reusable prompt>
 
+# ---------------------------------------------------------------------------
+# 9. ANTI-PATTERNS — Named bad practices
+# ---------------------------------------------------------------------------
 anti_patterns:
   - name: <bad practice>
     description: <why it's bad>
     fix: <recommended fix>
-    severity: <low|medium|high|critical>
+    severity: <low | medium | high | critical>
+    related_pattern: <pattern_id>   # Which correct pattern fixes this
 
+# ---------------------------------------------------------------------------
+# 10. CHECKLIST — Structured validation items
+# ---------------------------------------------------------------------------
+# Each item is verifiable, categorized, and linked to its source.
+# ---------------------------------------------------------------------------
 checklist:
-  - <validation item>
+  - id: <check_id>
+    category: <enum>                # One of: security | performance | reliability |
+                                    #   maintainability | compliance | correctness
+    description: <validation item>
+    severity: <low | medium | high | critical>
+    verified_by: <pattern_id | anti_pattern_name | compliance_control>

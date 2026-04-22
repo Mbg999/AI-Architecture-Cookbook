@@ -1,0 +1,684 @@
+# =============================================================================
+# AI Architecture Cookbook — State Management
+# Schema: v3 | Domain: state-management
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: state-management
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    State management patterns for client, server, and distributed systems.
+    Covers server-side session, client-side state, distributed caching,
+    and event-sourced state reconstruction.
+
+  tags:
+    - state
+    - session
+    - cache
+    - distributed-state
+    - event-sourcing
+    - cqrs
+    - stateless
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - data-persistence
+
+  related_standards:
+    - id: data-persistence
+      relationship: complementary
+      context: "State management determines what to store; data persistence determines how and where"
+    - id: messaging-events
+      relationship: complementary
+      context: "Event-sourced state relies on messaging infrastructure for event storage and replay"
+    - id: configuration-management
+      relationship: complementary
+      context: "Application configuration is a form of state that must be managed consistently"
+    - id: error-handling
+      relationship: complementary
+      context: "State recovery after failures requires resilience patterns"
+
+context_inputs:
+  - name: application_type
+    type: enum
+    description: "Primary application delivery type"
+    required: true
+    default: web_api
+    enum_values:
+      - web_api
+      - web_spa
+      - mobile
+      - distributed_system
+      - real_time
+
+  - name: scalability_model
+    type: enum
+    description: "How will the application scale?"
+    required: true
+    default: horizontal
+    enum_values:
+      - single_instance
+      - vertical
+      - horizontal
+
+  - name: consistency_requirements
+    type: enum
+    description: "How consistent must state be across nodes/requests?"
+    required: true
+    default: eventual
+    enum_values:
+      - strong
+      - eventual
+      - session_consistent
+
+  - name: state_volume
+    type: enum
+    description: "Volume and frequency of state changes"
+    required: true
+    default: moderate
+    enum_values:
+      - low
+      - moderate
+      - high
+
+  - name: audit_requirements
+    type: boolean
+    description: "Do you need a full audit trail of every state change?"
+    required: true
+    default: false
+
+decision_tree:
+  - id: audit_trail_required
+    priority: 1
+    if:
+      - audit_requirements == true
+      - state_volume in [moderate, high]
+    then:
+      pattern: event_sourced_state
+      standards:
+        - "Event Sourcing Pattern"
+      notes: >
+        When full audit trail is required, event sourcing captures every
+        state change as an immutable event — perfect compliance trail.
+    else:
+      pattern: server_side_state
+      notes: "Without audit requirements, simpler state patterns suffice"
+
+  - id: horizontal_scale_eventual
+    priority: 2
+    if:
+      - scalability_model == horizontal
+      - consistency_requirements == eventual
+    then:
+      pattern: distributed_cache
+      standards:
+        - "Distributed Caching"
+      notes: >
+        Horizontal scaling with eventual consistency is best served by
+        distributed cache for shared state.
+
+  - id: stateless_api
+    priority: 3
+    if:
+      - application_type == web_api
+      - scalability_model == horizontal
+    then:
+      pattern: stateless_with_external_store
+      standards:
+        - "Stateless Service Pattern"
+      notes: >
+        Horizontally scaled APIs should be stateless; any shared state
+        lives in an external store (Redis, database).
+
+  - id: single_instance_simple
+    priority: 4
+    if:
+      - scalability_model == single_instance
+    then:
+      pattern: server_side_state
+      standards:
+        - "In-Memory State"
+      notes: >
+        Single-instance applications can use simple in-memory state
+        with persistence for durability.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: stateless_with_external_store
+    description: "Stateless services with external state store is the safest default for most systems"
+
+patterns:
+  - id: stateless_with_external_store
+    name: "Stateless Service with External State Store"
+    description: >
+      Services are stateless — each request is self-contained. Any shared state
+      (sessions, caches, user data) lives in an external store like Redis,
+      Memcached, or a database. Enables horizontal scaling with no sticky sessions.
+    use_when:
+      - "Horizontally scaled web APIs or microservices"
+      - "Container or serverless deployments"
+      - "Load-balanced services without sticky sessions"
+      - "Most modern web applications as the default pattern"
+    avoid_when:
+      - "Single-instance application where in-memory state is sufficient"
+      - "Ultra-low-latency requirements where external store adds unacceptable overhead"
+    tradeoffs:
+      pros:
+        - "Any instance can handle any request — perfect horizontal scaling"
+        - "Instance failures don't lose state"
+        - "Simple deployment — instances are disposable"
+        - "Easy auto-scaling without session affinity concerns"
+      cons:
+        - "Network round-trip to external store for every state access"
+        - "External store becomes a critical dependency"
+        - "Serialization overhead for complex state objects"
+        - "External store must be highly available and performant"
+    implementation:
+      guidelines:
+        - "Use Redis or Memcached for session and cache state — sub-millisecond access"
+        - "Set TTL on all cached state — no indefinite entries"
+        - "Use database for durable state that must survive cache loss"
+        - "Include state store health in readiness probes"
+        - "Design for state store unavailability — graceful degradation"
+      common_errors:
+        - error: "Storing large objects in session state"
+          impact: "Session store performance degrades; serialization overhead"
+          fix: "Store only IDs and references in session; load full objects from DB as needed"
+        - error: "No TTL on cached state entries"
+          impact: "Memory leak in cache; stale data served indefinitely"
+          fix: "Set explicit TTL on every cache entry; implement cache invalidation strategy"
+        - error: "Relying on in-memory state in a horizontally scaled service"
+          impact: "State lost on instance restart; inconsistency across instances"
+          fix: "Move all shared state to external store; keep services stateless"
+    maturity:
+      level: standard
+    standards:
+      - name: "Stateless Service Pattern"
+        type: pattern
+        role: "Core pattern for scalable service design"
+        status: recommended
+      - name: "12-Factor App — Factor VI"
+        type: spec
+        role: "Processes are stateless and share-nothing"
+        status: recommended
+        reference: "https://12factor.net/processes"
+
+  - id: distributed_cache
+    name: "Distributed Cache"
+    description: >
+      Shared caching layer accessible by all service instances. Provides
+      fast state access with configurable consistency. Supports partitioning,
+      replication, and eviction policies for different workload profiles.
+    use_when:
+      - "Read-heavy workloads where database queries are expensive"
+      - "Session state shared across service instances"
+      - "Frequently accessed reference data that changes infrequently"
+      - "Rate limiting or throttling state across instances"
+    avoid_when:
+      - "Strong consistency required — distributed cache is eventually consistent"
+      - "Data is rarely read or not shared across instances"
+      - "Cache coherency is too complex for the team to manage"
+    tradeoffs:
+      pros:
+        - "Sub-millisecond access for hot data"
+        - "Offloads read pressure from primary database"
+        - "Shared across service instances without sticky sessions"
+        - "Configurable replication for availability"
+      cons:
+        - "Eventually consistent — stale reads possible"
+        - "Cache invalidation is a hard problem"
+        - "Additional infrastructure to operate"
+        - "Cold cache after restart requires warm-up strategy"
+    implementation:
+      guidelines:
+        - "Cache-aside pattern: read from cache, miss → read from DB → populate cache"
+        - "Write-through: update cache and DB together for write-intensive data"
+        - "Set appropriate TTL based on data staleness tolerance"
+        - "Use consistent hashing for cache partitioning"
+        - "Implement circuit breaker around cache access — fall back to DB on cache failure"
+      common_errors:
+        - error: "No cache invalidation strategy"
+          impact: "Stale data served until TTL expires; incorrect application behavior"
+          fix: "Implement explicit invalidation on write; use event-driven invalidation for distributed systems"
+        - error: "Caching mutable data without versioning"
+          impact: "Concurrent updates cause lost updates or stale reads"
+          fix: "Use optimistic locking with version stamps; check-and-set (CAS) operations"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Cache-Aside Pattern"
+        type: pattern
+        role: "Primary caching strategy for read-heavy workloads"
+        status: recommended
+
+  - id: event_sourced_state
+    name: "Event-Sourced State"
+    description: >
+      State is not stored as current values but as an immutable sequence of
+      events. Current state is reconstructed by replaying events. Provides
+      complete audit trail, temporal queries, and the ability to rebuild
+      state from any point in time.
+    use_when:
+      - "Complete audit trail required for compliance"
+      - "Need to know not just current state but how it got there"
+      - "Temporal queries (what was the state at time T?)"
+      - "Complex domain with many state transitions and business rules"
+      - "CQRS implementation where read and write models differ"
+    avoid_when:
+      - "Simple CRUD with no audit requirements"
+      - "Team unfamiliar with event sourcing — steep learning curve"
+      - "Read-heavy workload where projection rebuilds are expensive"
+    tradeoffs:
+      pros:
+        - "Complete audit trail of every change — immutable event history"
+        - "Temporal queries: reconstruct state at any point in time"
+        - "Natural fit for event-driven architectures"
+        - "Can rebuild read models from events when requirements change"
+      cons:
+        - "Complexity: eventual consistency, projection management, event versioning"
+        - "Performance: state reconstruction requires event replay (mitigate with snapshots)"
+        - "Event schema evolution is challenging"
+        - "Steep learning curve for the team"
+    implementation:
+      guidelines:
+        - "Store events in an append-only event store — never modify or delete events"
+        - "Aggregate loads by replaying events from the event store"
+        - "Use snapshots to optimize aggregate loading for long event streams"
+        - "Project events to read-optimized views (CQRS query side)"
+        - "Version events with schema evolution strategy (upcasting)"
+        - "Implement idempotent event handlers for at-least-once delivery"
+      common_errors:
+        - error: "Modifying events after they are stored"
+          impact: "Breaks audit trail; makes state reconstruction unreliable"
+          fix: "Events are immutable; use compensating events to correct mistakes"
+        - error: "No snapshot strategy for long-lived aggregates"
+          impact: "State reconstruction becomes increasingly slow as event count grows"
+          fix: "Create snapshots periodically; reconstruct from latest snapshot + subsequent events"
+        - error: "Coupling event schema to read model"
+          impact: "Event store becomes a shared database; events can't evolve independently"
+          fix: "Events represent domain facts; projections transform events to read model independently"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Event Sourcing Pattern"
+        type: pattern
+        role: "Primary pattern for immutable state management"
+        status: recommended
+      - name: "CQRS Pattern"
+        type: pattern
+        role: "Companion pattern separating read and write models"
+        status: recommended
+
+  - id: server_side_state
+    name: "Server-Side In-Memory State"
+    description: >
+      State held in application memory on the server. Simplest approach for
+      single-instance applications. Often backed by periodic persistence to
+      database for durability. Requires sticky sessions in multi-instance
+      scenarios.
+    use_when:
+      - "Single-instance application"
+      - "Ultra-low-latency state access required"
+      - "Prototype or development environment"
+      - "State is small and fits in memory"
+    avoid_when:
+      - "Horizontally scaled deployment"
+      - "State must survive process restarts"
+      - "Multiple instances serve the same users"
+    tradeoffs:
+      pros:
+        - "Zero network latency for state access"
+        - "Simplest implementation — no external dependencies"
+        - "No serialization overhead"
+      cons:
+        - "State lost on process restart unless persisted"
+        - "Cannot scale horizontally without sticky sessions"
+        - "Memory-bound — limited by single process memory"
+        - "Sticky sessions reduce load balancing effectiveness"
+    implementation:
+      guidelines:
+        - "Back in-memory state with periodic persistence (write-behind)"
+        - "Set memory limits and implement eviction for unbounded collections"
+        - "Use copy-on-write or immutable snapshots for concurrent access safety"
+        - "Plan migration path to external store if scaling needs change"
+      common_errors:
+        - error: "Assuming in-memory state survives deployment"
+          impact: "State lost on every deploy; user sessions reset"
+          fix: "Persist critical state to disk or database; use in-memory only for cache"
+        - error: "Unbounded in-memory collections"
+          impact: "Memory leak leading to OOM crash"
+          fix: "Set maximum sizes and implement eviction (LRU, LFU)"
+    maturity:
+      level: standard
+    standards:
+      - name: "In-Process State Pattern"
+        type: pattern
+        role: "Simplest state management for single-instance apps"
+        status: recommended
+
+examples:
+  - id: stateless_api_example
+    title: "Stateless API with Redis Session Store"
+    context: "Web API with horizontal scaling using Redis for session state"
+    correct: |
+      # Stateless service — session in external Redis store
+      class UserSessionService:
+          def __init__(self, redis_client, session_ttl=3600):
+              self.redis = redis_client
+              self.ttl = session_ttl
+
+          def create_session(self, user_id, data):
+              session_id = generate_secure_token()
+              self.redis.setex(
+                  f"session:{session_id}",
+                  self.ttl,
+                  serialize({"user_id": user_id, **data})
+              )
+              return session_id
+
+          def get_session(self, session_id):
+              data = self.redis.get(f"session:{session_id}")
+              if data is None:
+                  raise SessionExpired()
+              self.redis.expire(f"session:{session_id}", self.ttl)  # Sliding expiry
+              return deserialize(data)
+
+          def invalidate_session(self, session_id):
+              self.redis.delete(f"session:{session_id}")
+
+      # Any instance can handle any request — truly stateless
+      class OrderController:
+          def create_order(self, request):
+              session = self.sessions.get_session(request.session_id)
+              # Process order using session data — no instance affinity needed
+    incorrect: |
+      # WRONG: Session stored in instance memory
+      sessions = {}  # In-memory dict — lost on restart, not shared across instances
+
+      class OrderController:
+          def create_order(self, request):
+              session = sessions.get(request.session_id)  # Only works on THIS instance
+              if not session:
+                  return Error("Session not found")  # Fails after load balancer routes elsewhere
+    explanation: >
+      The correct version stores session state in Redis, making the service truly
+      stateless. Any instance can handle any request. The incorrect version stores
+      sessions in instance memory, requiring sticky sessions and losing state on restart.
+
+  - id: event_sourcing_example
+    title: "Event-Sourced Account with Snapshots"
+    context: "Bank account using event sourcing for audit trail"
+    correct: |
+      # Events — immutable facts about what happened
+      class AccountOpened:
+          def __init__(self, account_id, owner, initial_balance): ...
+
+      class MoneyDeposited:
+          def __init__(self, account_id, amount, reference): ...
+
+      class MoneyWithdrawn:
+          def __init__(self, account_id, amount, reference): ...
+
+      # Aggregate — state reconstructed from events
+      class Account:
+          def __init__(self):
+              self.balance = 0
+              self.status = None
+              self.events = []
+
+          def apply(self, event):
+              if isinstance(event, AccountOpened):
+                  self.balance = event.initial_balance
+                  self.status = "open"
+              elif isinstance(event, MoneyDeposited):
+                  self.balance += event.amount
+              elif isinstance(event, MoneyWithdrawn):
+                  self.balance -= event.amount
+
+          def withdraw(self, amount, reference):
+              if self.balance < amount:
+                  raise InsufficientFunds()
+              event = MoneyWithdrawn(self.id, amount, reference)
+              self.apply(event)
+              self.events.append(event)
+
+      # Loading: replay events (with optional snapshot optimization)
+      def load_account(account_id, event_store):
+          snapshot = event_store.get_latest_snapshot(account_id)
+          account = Account()
+          if snapshot:
+              account.restore_from_snapshot(snapshot)
+              events = event_store.get_events_after(account_id, snapshot.version)
+          else:
+              events = event_store.get_all_events(account_id)
+          for event in events:
+              account.apply(event)
+          return account
+    incorrect: |
+      # WRONG: Mutable state with no history
+      class Account:
+          def withdraw(self, amount):
+              self.balance -= amount  # No event; history lost
+              self.save()  # Overwrites previous state; no audit trail
+              # Cannot answer: "What was the balance yesterday?"
+              # Cannot answer: "Why is the balance what it is?"
+    explanation: >
+      The correct version captures every state change as an immutable event.
+      Current state is reconstructed by replaying events. Snapshots optimize loading.
+      The incorrect version overwrites state, losing all history and audit capability.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All communication to external state stores encrypted with TLS"
+      - "Cache and session store connections authenticated"
+  data_protection:
+    requirements:
+      - "Sensitive state fields encrypted before storing in external cache"
+      - "Session tokens are cryptographically random and unpredictable"
+      - "PII in event stores protected with field-level encryption"
+  access_control:
+    requirements:
+      - "Session store access restricted to application service accounts only"
+      - "Redis/Memcached AUTH enabled; network-level isolation enforced"
+  input_output:
+    requirements:
+      - "Deserialized state validated before use — never trust cached data blindly"
+      - "State store keys namespaced to prevent cross-tenant access"
+  secrets:
+    requirements:
+      - "State store credentials managed via secret manager, not config files"
+      - "Session signing keys rotated regularly"
+  monitoring:
+    requirements:
+      - "Cache hit/miss ratios monitored — sudden changes indicate issues"
+      - "Session creation and invalidation rates tracked for anomaly detection"
+
+compliance:
+  standards:
+    - name: "OWASP Session Management"
+      relevance: "Session state must follow OWASP guidelines for secure session handling"
+      reference: "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html"
+    - name: "GDPR"
+      relevance: "User state and session data may contain PII requiring protection and deletion rights"
+
+  requirements_mapping:
+    - control: session_security
+      description: "Sessions use secure, httpOnly, sameSite cookies with cryptographic tokens"
+      maps_to:
+        - "OWASP Session Management"
+    - control: state_data_protection
+      description: "PII in state stores is encrypted and has defined retention and deletion processes"
+      maps_to:
+        - "GDPR — Article 17 (Right to Erasure)"
+
+prompt_recipes:
+  - id: state_greenfield
+    scenario: greenfield
+    description: "Design state management strategy for a new system"
+    prompt: |
+      Design the state management strategy for a {system_description}.
+
+      Consider:
+      - Application type: {application_type}
+      - Scaling model: {scaling_model}
+      - Consistency needs: {consistency}
+      - Audit requirements: {audit_needed}
+
+      Determine:
+      1. What state exists (session, cache, application, domain)
+      2. Where each type of state should live (in-memory, Redis, DB, event store)
+      3. Consistency guarantees per state type
+      4. Eviction and TTL policies
+      5. Failure recovery for each state store
+
+  - id: state_migration
+    scenario: migration
+    description: "Migrate from in-memory state to distributed state"
+    prompt: |
+      Migrate this {language} application from in-memory state to distributed state:
+
+      1. Inventory all in-memory state (globals, statics, instance fields used as cache)
+      2. Classify each as: session, cache, or application state
+      3. For each, determine target store (Redis, DB, distributed cache)
+      4. Implement serialization for state objects
+      5. Add TTL and eviction policies
+      6. Ensure graceful degradation when state store is unavailable
+
+  - id: state_audit
+    scenario: audit
+    description: "Audit state management for scalability issues"
+    prompt: |
+      Audit this {language} application for state management issues:
+
+      1. Find in-memory state that would be lost on restart
+      2. Identify sticky session dependencies
+      3. Check for unbounded in-memory collections (memory leak risk)
+      4. Verify cache TTL and invalidation strategies
+      5. Check if session tokens are cryptographically secure
+      6. Verify state store access is authenticated and encrypted
+
+  - id: state_event_sourcing
+    scenario: architecture
+    description: "Introduce event sourcing for a domain aggregate"
+    prompt: |
+      Implement event sourcing for the {aggregate_name} aggregate:
+
+      1. Define domain events for all state transitions
+      2. Implement event application methods on the aggregate
+      3. Set up event store (append-only) with event versioning
+      4. Add snapshot support for long-lived aggregates
+      5. Create projections for read-optimized query models
+      6. Implement idempotent event handlers
+
+anti_patterns:
+  - name: "Global Mutable State"
+    description: >
+      Shared mutable state accessible by any part of the application. Race
+      conditions, hidden coupling, and untestable code.
+    fix: "Encapsulate state behind service interfaces; use immutable data structures; externalize shared state"
+    severity: critical
+    related_pattern: stateless_with_external_store
+
+  - name: "Session State Bloat"
+    description: >
+      Storing large objects, entire shopping carts, or serialized domain entities
+      in session state. Causes slow session serialization and memory pressure.
+    fix: "Store only IDs and references in session; load full objects from database on demand"
+    severity: medium
+    related_pattern: stateless_with_external_store
+
+  - name: "Missing Cache Invalidation"
+    description: >
+      Cache entries never invalidated or expired. Stale data served indefinitely.
+      The classic 'two hard things in computer science' problem.
+    fix: "Set TTL on all cache entries; implement event-driven invalidation for write-heavy data"
+    severity: high
+    related_pattern: distributed_cache
+
+  - name: "Sticky Session Dependency"
+    description: >
+      Application requires every request from a user to hit the same server
+      instance. Prevents proper horizontal scaling and creates uneven load.
+    fix: "Externalize all session state to shared store; make services truly stateless"
+    severity: high
+    related_pattern: stateless_with_external_store
+
+checklist:
+  - id: SM-01
+    category: design
+    description: "State management strategy documented — what state, where stored, consistency model"
+    severity: high
+    verified_by: stateless_with_external_store
+
+  - id: SM-02
+    category: reliability
+    description: "Services are stateless — no in-memory state required for correct operation"
+    severity: high
+    verified_by: stateless_with_external_store
+
+  - id: SM-03
+    category: performance
+    description: "TTL configured on all cache and session entries"
+    severity: high
+    verified_by: distributed_cache
+
+  - id: SM-04
+    category: security
+    description: "Session tokens are cryptographically random and validated on every request"
+    severity: critical
+    verified_by: stateless_with_external_store
+
+  - id: SM-05
+    category: reliability
+    description: "Graceful degradation when state store is unavailable"
+    severity: high
+    verified_by: distributed_cache
+
+  - id: SM-06
+    category: performance
+    description: "Cache hit/miss ratio monitored with alerts on anomalies"
+    severity: medium
+    verified_by: distributed_cache
+
+  - id: SM-07
+    category: security
+    description: "Sensitive state encrypted before writing to external store"
+    severity: high
+    verified_by: stateless_with_external_store
+
+  - id: SM-08
+    category: correctness
+    description: "Event store is append-only — events never modified or deleted"
+    severity: critical
+    verified_by: event_sourced_state
+
+  - id: SM-09
+    category: performance
+    description: "Snapshot strategy implemented for event-sourced aggregates with long histories"
+    severity: medium
+    verified_by: event_sourced_state
+
+  - id: SM-10
+    category: maintainability
+    description: "Cache invalidation strategy documented and tested"
+    severity: high
+    verified_by: distributed_cache
+
+  - id: SM-11
+    category: compliance
+    description: "State stores comply with data residency and retention requirements"
+    severity: high
+    verified_by: stateless_with_external_store
+
+  - id: SM-12
+    category: observability
+    description: "State store health included in application readiness probes"
+    severity: medium
+    verified_by: distributed_cache

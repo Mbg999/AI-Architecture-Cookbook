@@ -1,0 +1,621 @@
+# =============================================================================
+# AI Architecture Cookbook — Database Migration
+# Schema: v3 | Domain: database-migration
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: database-migration
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Schema evolution, data migration strategies, and zero-downtime database
+    changes. Covers migration tooling, expand-contract pattern, backward-
+    compatible changes, and rollback strategies for production databases.
+
+  tags:
+    - database
+    - migration
+    - schema
+    - evolution
+    - zero-downtime
+    - flyway
+    - liquibase
+
+  categories:
+    - infrastructure
+
+  prerequisites:
+    - data-persistence
+
+  related_standards:
+    - id: data-persistence
+      relationship: complementary
+      context: "Database migrations manage the evolution of data persistence schemas"
+    - id: ci-cd
+      relationship: complementary
+      context: "Database migrations integrated into CI/CD deployment pipelines"
+
+context_inputs:
+  - name: downtime_tolerance
+    type: enum
+    description: "How much downtime is acceptable during schema changes"
+    required: true
+    default: zero_downtime
+    enum_values:
+      - zero_downtime
+      - maintenance_window
+      - brief_acceptable
+
+  - name: migration_tool
+    type: enum
+    description: "Database migration tool in use"
+    required: true
+    default: tool_agnostic
+    enum_values:
+      - flyway
+      - liquibase
+      - alembic
+      - prisma
+      - knex
+      - django_migrations
+      - ef_core
+      - tool_agnostic
+
+  - name: database_type
+    type: enum
+    description: "Type of database being migrated"
+    required: true
+    default: relational
+    enum_values:
+      - relational
+      - document
+      - graph
+      - key_value
+      - multi_model
+
+decision_tree:
+  - id: zero_downtime_required
+    priority: 1
+    if:
+      - downtime_tolerance == zero_downtime
+    then:
+      pattern: expand_contract
+      standards:
+        - "Evolutionary Database Design"
+      notes: >
+        Expand-contract (parallel change) pattern enables zero-downtime schema
+        changes by deploying additive changes first, migrating consumers, then
+        cleaning up.
+    else:
+      pattern: versioned_migrations
+      notes: "Standard versioned migrations work when brief downtime is acceptable"
+
+  - id: versioned_default
+    priority: 2
+    if:
+      - downtime_tolerance in [maintenance_window, brief_acceptable]
+    then:
+      pattern: versioned_migrations
+      standards:
+        - "Flyway Documentation"
+        - "Liquibase Documentation"
+      notes: >
+        Versioned, sequential migrations are the safe default. Each migration
+        is a numbered file applied in order.
+
+  - id: large_data_migration
+    priority: 3
+    if:
+      - database_type == relational
+      - downtime_tolerance == zero_downtime
+    then:
+      pattern: online_schema_change
+      standards:
+        - "pt-online-schema-change"
+        - "gh-ost"
+      notes: >
+        Online schema change tools modify large tables without locking.
+        Essential for tables with millions of rows.
+
+  - id: data_backfill
+    priority: 4
+    if:
+      - database_type in [relational, document]
+    then:
+      pattern: data_backfill
+      standards:
+        - "Data Migration Best Practices"
+      notes: >
+        Data backfill migrates existing data to match the new schema.
+        Must be idempotent and resumable.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: critical
+  fallback:
+    pattern: versioned_migrations
+    description: "Versioned sequential migrations are the safe universal starting point"
+
+patterns:
+  - id: versioned_migrations
+    name: "Versioned Sequential Migrations"
+    description: >
+      Each schema change is a numbered migration file applied in order.
+      Forward-only by default; rollback scripts optional but recommended.
+      The migration tool tracks which versions have been applied and runs
+      only pending migrations. The standard approach for all database evolution.
+    use_when:
+      - "Any database schema evolution"
+      - "Standard development workflow with CI/CD"
+      - "Team needs auditable schema change history"
+    avoid_when:
+      - "Schema changes on tables with billions of rows (need online schema change)"
+    tradeoffs:
+      pros:
+        - "Clear, auditable history of every schema change"
+        - "Deterministic — same migrations produce same schema"
+        - "Tooling support across all databases and languages"
+        - "Easy to review in pull requests"
+      cons:
+        - "Forward-only migration ordering can cause merge conflicts"
+        - "Rollback scripts not always tested"
+        - "Large data changes can lock tables"
+    implementation:
+      guidelines:
+        - "One migration per schema change — never combine unrelated changes"
+        - "Naming: V001__create_users_table.sql (version + description)"
+        - "Migrations are immutable — never edit applied migrations"
+        - "Include rollback (down) migration for every forward (up) migration"
+        - "Run migrations in CI to validate before production"
+        - "Test with production-size data to catch slow migrations"
+      common_errors:
+        - error: "Editing a migration that has already been applied"
+          impact: "Checksum mismatch; migration tool refuses to run"
+          fix: "Never modify applied migrations; create a new migration for fixes"
+        - error: "Not testing migration with production-size data"
+          impact: "ALTER TABLE locks table for hours in production"
+          fix: "Test migrations against production-size copies; measure execution time"
+    maturity:
+      level: standard
+    standards:
+      - name: "Flyway/Liquibase Conventions"
+        type: practice
+        role: "Industry-standard migration versioning"
+        status: recommended
+
+  - id: expand_contract
+    name: "Expand-Contract (Parallel Change) Pattern"
+    description: >
+      Three-phase approach for zero-downtime schema changes. Expand: add new
+      column/table alongside the old one. Migrate: update application to write
+      to both, read from new. Contract: remove old column/table after all
+      consumers migrated. Ensures backward compatibility throughout.
+    use_when:
+      - "Zero-downtime requirement — can't take database offline"
+      - "Column rename, type change, or table restructuring"
+      - "Multiple application versions running simultaneously (rolling deploy)"
+    avoid_when:
+      - "Simple additive changes (adding a nullable column)"
+      - "Maintenance window available and faster to apply directly"
+    tradeoffs:
+      pros:
+        - "Zero downtime — old and new application versions work throughout"
+        - "Rollback possible at any phase"
+        - "No table locks on production data"
+        - "Safe for rolling deployments"
+      cons:
+        - "3 separate deployments for one logical change"
+        - "Temporary dual-write complexity"
+        - "Must clean up old schema (contract phase often forgotten)"
+    implementation:
+      guidelines:
+        - "Phase 1 (Expand): Add new column/table; keep old one; default or trigger fills new"
+        - "Phase 2 (Migrate): Deploy app writing to both; backfill existing data"
+        - "Phase 3 (Contract): Deploy app reading only new; drop old column/table"
+        - "Each phase is a separate migration AND deployment"
+        - "Track expand-contract pairs — ensure contract phase completes"
+      common_errors:
+        - error: "Skipping the contract phase"
+          impact: "Dead columns accumulate; schema becomes confusing; storage wasted"
+          fix: "Track expand-contract pairs; schedule contract cleanup; add tech debt tickets"
+        - error: "Not backfilling existing data during expand phase"
+          impact: "Old rows have NULL in new column; application breaks reading old data"
+          fix: "Backfill data as part of expand migration; validate completeness"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Evolutionary Database Design (Martin Fowler)"
+        type: practice
+        role: "Foundational reference for incremental database evolution"
+        status: recommended
+
+  - id: online_schema_change
+    name: "Online Schema Change"
+    description: >
+      Tools that perform ALTER TABLE on large tables without locking. Creates
+      a shadow copy of the table, applies the change to the copy, syncs data
+      via triggers or binlog, then atomically swaps. Essential for tables
+      with millions+ rows where ALTER TABLE would lock for minutes/hours.
+    use_when:
+      - "ALTER TABLE on tables with >1M rows where lock time exceeds tolerance"
+      - "Adding indexes on large tables"
+      - "Column type changes on large tables"
+    avoid_when:
+      - "Small tables where ALTER TABLE completes in seconds"
+      - "Tables without primary keys (tools require them)"
+    tradeoffs:
+      pros:
+        - "No table lock during schema change"
+        - "Production traffic unaffected"
+        - "Works on very large tables (billions of rows)"
+      cons:
+        - "Temporary 2x storage requirement (shadow copy)"
+        - "Slower than direct ALTER TABLE"
+        - "Requires primary key on source table"
+        - "Some operations still require brief lock for swap"
+    implementation:
+      guidelines:
+        - "MySQL: Use gh-ost (GitHub) or pt-online-schema-change (Percona)"
+        - "PostgreSQL: Use pg_repack or native CREATE INDEX CONCURRENTLY"
+        - "Test on production-size replica before production"
+        - "Monitor replication lag during operation"
+        - "Schedule during low-traffic periods even though zero-downtime"
+      common_errors:
+        - error: "Running online schema change during peak traffic"
+          impact: "Additional load from data copy affects application performance"
+          fix: "Schedule during low-traffic; throttle copy rate"
+        - error: "Not checking for foreign key constraints"
+          impact: "Tool fails or creates inconsistent references"
+          fix: "Review table relationships; handle FK constraints in order"
+    maturity:
+      level: advanced
+    standards:
+      - name: "gh-ost / pt-online-schema-change"
+        type: tool
+        role: "Online schema change tooling for MySQL"
+        status: recommended
+
+  - id: data_backfill
+    name: "Data Backfill Strategy"
+    description: >
+      Migrating existing data to match new schema or business rules. Must be
+      idempotent (safe to run multiple times), resumable (can restart from
+      where it left off), and batched (doesn't overwhelm the database).
+    use_when:
+      - "New column needs to be populated from existing data"
+      - "Data format changing (e.g., splitting full_name into first + last)"
+      - "Migrating data between tables or databases"
+    avoid_when:
+      - "New column can be NULL for existing rows and populated lazily"
+    tradeoffs:
+      pros:
+        - "All existing data consistent with new schema"
+        - "Idempotent — safe to retry on failure"
+        - "Batched — doesn't overwhelm database"
+      cons:
+        - "Can take hours for large datasets"
+        - "Adds load to production database during execution"
+        - "Must handle concurrent reads/writes during backfill"
+    implementation:
+      guidelines:
+        - "Process in batches (1000-10000 rows per batch)"
+        - "Use cursor-based pagination (WHERE id > last_processed)"
+        - "Make backfill idempotent — safe to run again from any point"
+        - "Log progress — report rows processed, percentage complete"
+        - "Throttle rate to avoid overwhelming production database"
+        - "Validate completeness after backfill (count checks)"
+      common_errors:
+        - error: "Processing all rows in a single transaction"
+          impact: "Transaction log fills; long lock; potential database crash"
+          fix: "Batch into chunks of 1000-10000 rows; commit per batch"
+        - error: "Backfill not idempotent"
+          impact: "Restart from beginning on failure; duplicate data or errors"
+          fix: "Use upsert or conditional updates; track progress cursor"
+    maturity:
+      level: standard
+    standards:
+      - name: "Data Migration Best Practices"
+        type: practice
+        role: "Guidance for large-scale data migration"
+        status: recommended
+
+examples:
+  - id: expand_contract_example
+    title: "Expand-Contract — Renaming a Column"
+    context: "Renaming users.name to users.full_name without downtime"
+    correct: |
+      -- Phase 1: EXPAND — Add new column, keep old
+      -- Migration V010__expand_add_full_name.sql
+      ALTER TABLE users ADD COLUMN full_name VARCHAR(255);
+
+      -- Backfill existing data
+      UPDATE users SET full_name = name WHERE full_name IS NULL;
+
+      -- Add trigger to sync during transition (optional)
+      CREATE TRIGGER sync_name_to_full_name
+      BEFORE INSERT OR UPDATE ON users
+      FOR EACH ROW
+      EXECUTE FUNCTION sync_user_name();
+
+      -- Phase 2: MIGRATE — App writes both columns, reads new
+      -- Deploy application version that:
+      --   INSERT: writes both name AND full_name
+      --   SELECT: reads from full_name
+      --   UPDATE: updates both columns
+
+      -- Phase 3: CONTRACT — Remove old column
+      -- Migration V012__contract_remove_name.sql
+      -- Only after ALL app instances use full_name
+      DROP TRIGGER IF EXISTS sync_name_to_full_name ON users;
+      ALTER TABLE users DROP COLUMN name;
+    incorrect: |
+      -- WRONG: Direct rename causes downtime
+      -- Migration V010__rename_name_column.sql
+      ALTER TABLE users RENAME COLUMN name TO full_name;
+
+      -- Problems:
+      --   - All queries using "name" break instantly
+      --   - Rolling deployment: old version uses "name", new uses "full_name"
+      --   - Cannot rollback without another rename (more downtime)
+      --   - On large tables, may acquire lock
+    explanation: >
+      The correct version uses three phases: add new column (expand), update app
+      to use both (migrate), remove old column (contract). At every point, both
+      old and new application versions work. The incorrect version renames the
+      column in one step, breaking all existing application instances instantly.
+
+  - id: versioned_migration_example
+    title: "Versioned Migration — Proper Structure"
+    context: "Flyway-style migration files for a new feature"
+    correct: |
+      -- migrations/V001__create_orders_table.sql
+      CREATE TABLE orders (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          customer_id UUID NOT NULL REFERENCES customers(id),
+          status VARCHAR(20) NOT NULL DEFAULT 'pending',
+          total_cents BIGINT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
+      CREATE INDEX idx_orders_customer_id ON orders(customer_id);
+      CREATE INDEX idx_orders_status ON orders(status);
+
+      -- migrations/V002__add_orders_shipping_address.sql
+      ALTER TABLE orders ADD COLUMN shipping_address_id UUID REFERENCES addresses(id);
+
+      -- migrations/V003__add_orders_notes.sql
+      ALTER TABLE orders ADD COLUMN notes TEXT;
+
+      -- Each migration: one change, descriptive name, immutable after applied
+      -- Rollback scripts in separate directory:
+      -- rollback/U001__drop_orders_table.sql
+      -- DROP TABLE IF EXISTS orders;
+    incorrect: |
+      -- WRONG: Multiple unrelated changes in one migration
+      -- migrations/V001__initial.sql
+      CREATE TABLE orders (...);
+      CREATE TABLE products (...);
+      CREATE TABLE customers (...);
+      CREATE TABLE reviews (...);
+      ALTER TABLE orders ADD COLUMN shipping_address TEXT;
+      INSERT INTO products VALUES (...);  -- Seed data mixed with schema
+
+      -- Problems:
+      --   - Can't rollback orders without losing products
+      --   - Seed data mixed with schema changes
+      --   - "initial" is not descriptive
+      --   - Single point of failure for all tables
+    explanation: >
+      The correct version creates one migration per logical change with
+      descriptive names. Each is independently deployable and reversible.
+      The incorrect version combines unrelated changes, making partial
+      rollback impossible and history unclear.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Database connections use TLS for migration tool access"
+  data_protection:
+    requirements:
+      - "Migration scripts do not log sensitive data"
+      - "Backfill scripts handle PII according to data classification"
+  access_control:
+    requirements:
+      - "Migration tool runs with minimal database privileges required"
+      - "Production migrations run through CI/CD, not developer machines"
+  input_output:
+    requirements:
+      - "Migration scripts validated in CI before production execution"
+  secrets:
+    requirements:
+      - "Database credentials for migration tool from secret manager, not config files"
+  monitoring:
+    requirements:
+      - "Migration execution logged with version, duration, and result"
+      - "Failed migrations trigger alerts"
+
+compliance:
+  standards:
+    - name: "Evolutionary Database Design"
+      relevance: "Foundational practice for incremental, safe schema evolution"
+    - name: "Database Change Management"
+      relevance: "Audit trail for all schema changes required by SOC 2, PCI-DSS"
+
+  requirements_mapping:
+    - control: schema_audit
+      description: "All schema changes tracked with author, timestamp, and description"
+      maps_to:
+        - "SOC 2 CC8.1"
+    - control: rollback_capability
+      description: "Every migration has a tested rollback script"
+      maps_to:
+        - "Change Management Best Practices"
+
+prompt_recipes:
+  - id: migration_greenfield
+    scenario: greenfield
+    description: "Set up database migration framework for new project"
+    prompt: |
+      Set up database migration framework for a {language} {framework} project
+      using {database_type}:
+
+      1. Choose migration tool ({migration_tool} or recommend one)
+      2. Configure migration directory structure
+      3. Create initial migration with base schema
+      4. Integrate migration execution into CI/CD pipeline
+      5. Show development workflow (create, test, apply migrations)
+      6. Include rollback script template
+
+  - id: migration_zero_downtime
+    scenario: architecture
+    description: "Plan zero-downtime database migration"
+    prompt: |
+      Plan a zero-downtime migration for: {schema_change_description}
+
+      1. Analyze the change — can it be done as a single additive migration?
+      2. If not, plan expand-contract phases:
+         - Phase 1 (Expand): What to add, backfill script
+         - Phase 2 (Migrate): App changes for dual-write
+         - Phase 3 (Contract): What to remove, cleanup
+      3. For each phase: migration SQL + rollback SQL
+      4. Estimated data migration time based on table size
+      5. Monitoring plan during migration
+
+  - id: migration_audit
+    scenario: audit
+    description: "Audit database migration practices"
+    prompt: |
+      Audit database migration practices for this project:
+
+      1. **Tooling**: Migration tool configured? Running in CI?
+      2. **Structure**: One change per migration? Descriptive names?
+      3. **Rollback**: Down migrations exist? Tested?
+      4. **Safety**: Tested with production-size data? Lock analysis done?
+      5. **Zero-downtime**: Expand-contract used for breaking changes?
+      6. **Backfill**: Idempotent? Batched? Resumable?
+
+  - id: migration_debugging
+    scenario: debugging
+    description: "Debug failed database migration"
+    prompt: |
+      Debug this failed database migration: {error_message}
+
+      1. Identify the root cause (lock timeout, constraint violation, syntax error)
+      2. Check if migration was partially applied (transaction support?)
+      3. Determine rollback path:
+         - If transactional: automatic rollback, fix and retry
+         - If non-transactional: manual cleanup required
+      4. Fix the migration and test against production-size data
+      5. Plan re-execution with monitoring
+
+anti_patterns:
+  - name: "Destructive Migrations Without Expand-Contract"
+    description: >
+      Directly renaming columns, changing types, or dropping columns
+      in production without the expand-contract pattern. Causes instant
+      failures for running application instances.
+    fix: "Use expand-contract pattern: add new, migrate data, remove old"
+    severity: critical
+    related_pattern: expand_contract
+
+  - name: "Untested Large Table Migrations"
+    description: >
+      Running ALTER TABLE on million-row tables without testing execution
+      time on production-size data. The migration locks the table for
+      minutes or hours in production.
+    fix: "Test migrations on production-size copies; use online schema change tools for large tables"
+    severity: critical
+    related_pattern: online_schema_change
+
+  - name: "No Rollback Scripts"
+    description: >
+      Creating forward migrations without corresponding rollback scripts.
+      When a migration causes issues, the only option is to manually
+      write and apply a fix under pressure.
+    fix: "Write rollback (down) migration for every forward (up) migration; test both"
+    severity: high
+    related_pattern: versioned_migrations
+
+  - name: "Non-Idempotent Backfills"
+    description: >
+      Data backfill scripts that produce different results when run multiple
+      times. If the script fails partway through, restarting from the
+      beginning produces duplicates or errors.
+    fix: "Use upsert/conditional updates; track progress cursor; verify with count checks"
+    severity: high
+    related_pattern: data_backfill
+
+checklist:
+  - id: DBM-01
+    category: correctness
+    description: "Each migration contains one logical schema change"
+    severity: high
+    verified_by: versioned_migrations
+
+  - id: DBM-02
+    category: reliability
+    description: "Rollback scripts exist and are tested for every migration"
+    severity: high
+    verified_by: versioned_migrations
+
+  - id: DBM-03
+    category: reliability
+    description: "Migrations tested with production-size data"
+    severity: critical
+    verified_by: versioned_migrations
+
+  - id: DBM-04
+    category: design
+    description: "Destructive changes use expand-contract pattern"
+    severity: critical
+    verified_by: expand_contract
+
+  - id: DBM-05
+    category: reliability
+    description: "Data backfills are idempotent and resumable"
+    severity: high
+    verified_by: data_backfill
+
+  - id: DBM-06
+    category: reliability
+    description: "Data backfills process in batches (not single transaction)"
+    severity: high
+    verified_by: data_backfill
+
+  - id: DBM-07
+    category: compliance
+    description: "All migrations tracked in version control with audit trail"
+    severity: high
+    verified_by: versioned_migrations
+
+  - id: DBM-08
+    category: reliability
+    description: "Migrations run in CI/CD — not from developer machines"
+    severity: high
+    verified_by: versioned_migrations
+
+  - id: DBM-09
+    category: security
+    description: "Migration tool credentials from secret manager"
+    severity: high
+    verified_by: versioned_migrations
+
+  - id: DBM-10
+    category: reliability
+    description: "Large table changes use online schema change tools"
+    severity: high
+    verified_by: online_schema_change
+
+  - id: DBM-11
+    category: correctness
+    description: "Applied migrations never modified — new migration for fixes"
+    severity: critical
+    verified_by: versioned_migrations
+
+  - id: DBM-12
+    category: observability
+    description: "Migration execution logged with version, duration, and status"
+    severity: medium
+    verified_by: versioned_migrations

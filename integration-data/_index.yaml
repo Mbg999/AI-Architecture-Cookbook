@@ -1,0 +1,26 @@
+# Integration & Data category index
+category: integration-data
+description: >
+  Standards for third-party integration, event-driven communication,
+  file and object storage, search infrastructure, data transformation
+  pipelines, and API versioning strategies.
+
+entries:
+  third-party-integration:
+    path: third-party-integration/third-party-integration.yaml
+    description: "Third-party API integration patterns, circuit breakers, and vendor abstraction"
+  webhooks:
+    path: webhooks/webhooks.yaml
+    description: "Webhook design, delivery guarantees, and security verification"
+  file-storage:
+    path: file-storage/file-storage.yaml
+    description: "File and object storage patterns, upload handling, and CDN integration"
+  search:
+    path: search/search.yaml
+    description: "Search infrastructure, indexing strategies, and query optimization"
+  data-transformation:
+    path: data-transformation/data-transformation.yaml
+    description: "ETL/ELT pipelines, data mapping, and schema evolution"
+  versioning:
+    path: versioning/versioning.yaml
+    description: "API versioning strategies, backward compatibility, and deprecation policies"

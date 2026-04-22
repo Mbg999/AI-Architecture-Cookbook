@@ -1,0 +1,484 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-architecture-cookbook/schema/v3",
+  "title": "AI Architecture Cookbook Entry Schema v3",
+  "description": "Validates cookbook entries against the v3 canonical format",
+  "type": "object",
+  "required": ["meta", "context_inputs", "decision_tree", "decision_metadata", "patterns", "examples", "security_hardening", "compliance", "prompt_recipes", "anti_patterns", "checklist"],
+  "additionalProperties": false,
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["schema_version", "domain", "version", "last_updated", "description", "tags", "categories"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "const": 3,
+          "description": "Must be 3 for v3 schema"
+        },
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Kebab-case identifier"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Semantic version"
+        },
+        "last_updated": {
+          "type": "string",
+          "format": "date",
+          "description": "ISO 8601 date"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["foundational", "application-architecture", "infrastructure", "security-quality", "integration-data"]
+          },
+          "minItems": 1
+        },
+        "prerequisites": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "required": ["id", "reason"],
+                "additionalProperties": false,
+                "properties": {
+                  "id": { "type": "string" },
+                  "reason": { "type": "string" }
+                }
+              }
+            ]
+          }
+        },
+        "related_standards": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "relationship", "context"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "relationship": {
+                "type": "string",
+                "enum": ["alternative", "complementary", "superset", "subset"]
+              },
+              "context": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "context_inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "type", "description", "required"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["string", "boolean", "enum", "integer", "float"]
+          },
+          "description": { "type": "string" },
+          "required": { "type": "boolean" },
+          "default": {},
+          "enum_values": {
+            "type": "array",
+            "items": { "type": ["string", "number", "boolean"] },
+            "minItems": 2
+          }
+        },
+        "if": {
+          "properties": { "type": { "const": "enum" } }
+        },
+        "then": {
+          "required": ["enum_values"]
+        }
+      },
+      "minItems": 1
+    },
+    "decision_tree": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "priority", "if", "then"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "priority": { "type": "integer", "minimum": 1 },
+          "if": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1
+          },
+          "then": {
+            "type": "object",
+            "required": ["pattern", "notes"],
+            "additionalProperties": false,
+            "properties": {
+              "pattern": { "type": "string" },
+              "standards": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "notes": { "type": "string" }
+            }
+          },
+          "else": {
+            "type": "object",
+            "required": ["pattern", "notes"],
+            "additionalProperties": false,
+            "properties": {
+              "pattern": { "type": "string" },
+              "notes": { "type": "string" }
+            }
+          }
+        }
+      },
+      "minItems": 1
+    },
+    "decision_metadata": {
+      "type": "object",
+      "required": ["confidence", "risk_if_wrong", "fallback"],
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "risk_if_wrong": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"]
+        },
+        "fallback": {
+          "type": "object",
+          "required": ["pattern", "description"],
+          "additionalProperties": false,
+          "properties": {
+            "pattern": { "type": "string" },
+            "description": { "type": "string" }
+          }
+        }
+      }
+    },
+    "patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "description", "use_when", "avoid_when", "tradeoffs", "implementation", "maturity"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "name": { "type": "string" },
+          "description": { "type": "string", "minLength": 20 },
+          "use_when": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1
+          },
+          "avoid_when": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1
+          },
+          "tradeoffs": {
+            "type": "object",
+            "required": ["pros", "cons"],
+            "additionalProperties": false,
+            "properties": {
+              "pros": {
+                "type": "array",
+                "items": { "type": "string" },
+                "minItems": 1
+              },
+              "cons": {
+                "type": "array",
+                "items": { "type": "string" },
+                "minItems": 1
+              }
+            }
+          },
+          "implementation": {
+            "type": "object",
+            "required": ["guidelines", "common_errors"],
+            "additionalProperties": false,
+            "properties": {
+              "guidelines": {
+                "type": "array",
+                "items": { "type": "string" },
+                "minItems": 1
+              },
+              "common_errors": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["error", "impact", "fix"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "error": { "type": "string" },
+                    "impact": { "type": "string" },
+                    "fix": { "type": "string" }
+                  }
+                },
+                "minItems": 1
+              }
+            }
+          },
+          "maturity": {
+            "type": "object",
+            "required": ["level"],
+            "additionalProperties": false,
+            "properties": {
+              "level": {
+                "type": "string",
+                "enum": ["standard", "advanced", "enterprise"]
+              }
+            }
+          },
+          "standards": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "type", "role", "status"],
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string" },
+                "type": {
+                  "type": "string",
+                  "enum": ["protocol", "format", "spec", "rfc", "pattern", "practice", "tool", "framework", "standard", "reference"]
+                },
+                "role": { "type": "string" },
+                "status": {
+                  "type": "string",
+                  "enum": ["recommended", "deprecated", "emerging"]
+                },
+                "reference": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "minItems": 3
+    },
+    "examples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "context", "correct", "incorrect", "explanation"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "context": { "type": "string" },
+          "correct": { "type": "string" },
+          "incorrect": { "type": "string" },
+          "explanation": { "type": "string" }
+        }
+      },
+      "minItems": 1
+    },
+    "security_hardening": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "transport": {
+          "type": "object",
+          "required": ["requirements"],
+          "additionalProperties": false,
+          "properties": {
+            "requirements": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            }
+          }
+        },
+        "data_protection": {
+          "type": "object",
+          "required": ["requirements"],
+          "additionalProperties": false,
+          "properties": {
+            "requirements": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            }
+          }
+        },
+        "access_control": {
+          "type": "object",
+          "required": ["requirements"],
+          "additionalProperties": false,
+          "properties": {
+            "requirements": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            }
+          }
+        },
+        "input_output": {
+          "type": "object",
+          "required": ["requirements"],
+          "additionalProperties": false,
+          "properties": {
+            "requirements": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            }
+          }
+        },
+        "secrets": {
+          "type": "object",
+          "required": ["requirements"],
+          "additionalProperties": false,
+          "properties": {
+            "requirements": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            }
+          }
+        },
+        "monitoring": {
+          "type": "object",
+          "required": ["requirements"],
+          "additionalProperties": false,
+          "properties": {
+            "requirements": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1
+            }
+          }
+        }
+      }
+    },
+    "compliance": {
+      "type": "object",
+      "required": ["standards", "requirements_mapping"],
+      "additionalProperties": false,
+      "properties": {
+        "standards": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "relevance"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "relevance": { "type": "string" },
+              "reference": { "type": "string" }
+            }
+          },
+          "minItems": 1
+        },
+        "requirements_mapping": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["control", "description", "maps_to"],
+            "additionalProperties": false,
+            "properties": {
+              "control": { "type": "string" },
+              "description": { "type": "string" },
+              "maps_to": {
+                "type": "array",
+                "items": { "type": "string" },
+                "minItems": 1
+              }
+            }
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "prompt_recipes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "scenario", "description", "prompt"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "scenario": {
+            "type": "string",
+            "enum": ["greenfield", "migration", "audit", "edge-case", "high-security", "performance", "optimization", "debugging", "architecture", "remediation", "security", "operations", "maintenance"]
+          },
+          "description": { "type": "string" },
+          "prompt": { "type": "string", "minLength": 20 }
+        }
+      },
+      "minItems": 4
+    },
+    "anti_patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "description", "fix", "severity"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "fix": { "type": "string" },
+          "severity": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "critical"]
+          },
+          "related_pattern": { "type": "string" }
+        }
+      },
+      "minItems": 3
+    },
+    "checklist": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "category", "description", "severity", "verified_by"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Z]+-\\d+$"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["security", "performance", "reliability", "maintainability", "compliance", "correctness", "design", "observability"]
+          },
+          "description": { "type": "string" },
+          "severity": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "critical"]
+          },
+          "verified_by": { "type": "string" }
+        }
+      },
+      "minItems": 1
+    }
+  }
+}

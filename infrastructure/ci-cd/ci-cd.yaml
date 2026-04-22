@@ -1,0 +1,668 @@
+# =============================================================================
+# AI Architecture Cookbook — CI/CD
+# Schema: v3 | Domain: ci-cd
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: ci-cd
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Continuous integration and delivery pipelines, artifact management, and
+    release strategies. Covers pipeline design, build caching, deployment
+    patterns (blue-green, canary, rolling), and release governance.
+
+  tags:
+    - ci-cd
+    - pipelines
+    - automation
+    - deployment
+    - release
+    - github-actions
+    - gitlab-ci
+
+  categories:
+    - infrastructure
+
+  prerequisites: []
+
+  related_standards:
+    - id: containerization
+      relationship: complementary
+      context: "CI/CD pipelines build and push container images"
+    - id: orchestration
+      relationship: complementary
+      context: "CI/CD deploys to orchestration platforms"
+    - id: infrastructure-as-code
+      relationship: complementary
+      context: "IaC changes applied through CI/CD pipelines"
+
+context_inputs:
+  - name: deployment_strategy
+    type: enum
+    description: "How releases are deployed to production"
+    required: true
+    default: rolling_update
+    enum_values:
+      - rolling_update
+      - blue_green
+      - canary
+      - recreate
+      - feature_flags
+
+  - name: pipeline_platform
+    type: enum
+    description: "CI/CD platform in use"
+    required: true
+    default: github_actions
+    enum_values:
+      - github_actions
+      - gitlab_ci
+      - azure_devops
+      - jenkins
+      - circleci
+      - platform_agnostic
+
+  - name: release_cadence
+    type: enum
+    description: "How frequently releases are deployed"
+    required: true
+    default: continuous
+    enum_values:
+      - continuous
+      - daily
+      - weekly
+      - release_train
+
+decision_tree:
+  - id: zero_downtime
+    priority: 1
+    if:
+      - deployment_strategy in [blue_green, canary]
+    then:
+      pattern: progressive_delivery
+      standards:
+        - "Argo Rollouts"
+        - "Flagger"
+      notes: >
+        Progressive delivery gradually shifts traffic to new versions with
+        automated analysis and rollback.
+    else:
+      pattern: trunk_based_ci
+      notes: "Trunk-based CI with rolling updates is the safe default"
+
+  - id: continuous_deployment
+    priority: 2
+    if:
+      - release_cadence == continuous
+    then:
+      pattern: trunk_based_ci
+      standards:
+        - "Continuous Delivery (Humble & Farley)"
+      notes: >
+        Trunk-based development with automated testing enables continuous
+        deployment — every merge to main is a release candidate.
+
+  - id: artifact_management
+    priority: 3
+    if:
+      - release_cadence in [weekly, release_train]
+    then:
+      pattern: artifact_promotion
+      standards:
+        - "The Twelve-Factor App"
+      notes: >
+        Build once, promote the same artifact through environments. Tag
+        artifacts for release trains.
+
+  - id: gitops_deployment
+    priority: 4
+    if:
+      - pipeline_platform == platform_agnostic
+    then:
+      pattern: gitops_deployment
+      standards:
+        - "GitOps Principles (OpenGitOps)"
+      notes: >
+        GitOps uses Git as the single source of truth for infrastructure
+        and application state.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: trunk_based_ci
+    description: "Trunk-based CI with automated testing is the universal safe starting point"
+
+patterns:
+  - id: trunk_based_ci
+    name: "Trunk-Based CI with Automated Quality Gates"
+    description: >
+      Developers commit to main/trunk frequently (at least daily). Every commit
+      triggers automated build, lint, test, and security scan. The pipeline
+      enforces quality gates — broken builds block merges. This is the
+      foundation of continuous delivery.
+    use_when:
+      - "Any project aiming for continuous delivery"
+      - "Teams practicing small, frequent commits"
+      - "Need fast feedback on code changes"
+    avoid_when:
+      - "Extremely long-running test suites that can't be parallelized"
+    tradeoffs:
+      pros:
+        - "Fast feedback — broken code caught in minutes"
+        - "Small changes are easier to review and debug"
+        - "Always-releasable main branch"
+        - "Merge conflicts minimized"
+      cons:
+        - "Requires investment in test automation"
+        - "Feature flags needed for incomplete features on main"
+        - "Flaky tests can block the entire team"
+    implementation:
+      guidelines:
+        - "Pipeline stages: lint → build → unit test → integration test → security scan → deploy"
+        - "Run tests in parallel; fail fast on first failure"
+        - "Build artifacts once, promote through environments"
+        - "Cache dependencies between builds (node_modules, .m2, pip cache)"
+        - "Branch protection: require passing CI before merge"
+      common_errors:
+        - error: "Running all tests sequentially"
+          impact: "30-minute pipeline; developers context-switch and lose focus"
+          fix: "Parallelize test suites; split by module or feature"
+        - error: "No branch protection rules"
+          impact: "Broken code merged to main; team blocked"
+          fix: "Require CI pass + code review before merge to main"
+    maturity:
+      level: standard
+    standards:
+      - name: "Continuous Integration (Martin Fowler)"
+        type: practice
+        role: "Foundational CI practice"
+        status: recommended
+
+  - id: progressive_delivery
+    name: "Progressive Delivery (Canary / Blue-Green)"
+    description: >
+      Gradually shifts traffic from the old version to the new version with
+      automated analysis at each step. Canary starts with a small percentage;
+      blue-green switches all traffic at once. Both support instant rollback.
+    use_when:
+      - "Production services requiring zero-downtime deployments"
+      - "High-traffic services where bad deploys are costly"
+      - "Need automated rollback based on error rate or latency"
+    avoid_when:
+      - "Internal tools where brief downtime is acceptable"
+      - "Simple services without traffic metrics"
+    tradeoffs:
+      pros:
+        - "Blast radius limited to canary percentage"
+        - "Automated rollback on metric degradation"
+        - "Zero-downtime for users"
+        - "Confidence in production releases"
+      cons:
+        - "Requires robust monitoring and metrics"
+        - "Database schema changes must be backward-compatible"
+        - "More complex infrastructure (two versions running simultaneously)"
+    implementation:
+      guidelines:
+        - "Canary: 5% → 25% → 50% → 100% with metric gates at each step"
+        - "Blue-green: deploy to inactive environment, run smoke tests, switch traffic"
+        - "Define success metrics: error rate, latency p99, business KPIs"
+        - "Automate rollback when metrics breach thresholds"
+        - "Database migrations must be backward-compatible (expand-contract pattern)"
+      common_errors:
+        - error: "No rollback criteria defined"
+          impact: "Bad release progresses to 100% before anyone notices"
+          fix: "Define automated analysis rules: error rate >1% → rollback, p99 latency >500ms → rollback"
+        - error: "Breaking database schema change with canary"
+          impact: "Old version can't read data written by new version"
+          fix: "Use expand-contract migrations; ensure both versions work with the same schema"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Argo Rollouts"
+        type: tool
+        role: "Kubernetes-native progressive delivery controller"
+        status: recommended
+
+  - id: artifact_promotion
+    name: "Artifact Promotion Pipeline"
+    description: >
+      Build the artifact once, then promote the identical artifact through
+      environments (dev → staging → production). Environment-specific
+      configuration applied at deploy time, not build time. Ensures what
+      you tested is exactly what you deploy.
+    use_when:
+      - "Multiple environments (dev, staging, production)"
+      - "Compliance requires proving artifact identity across environments"
+      - "Want to eliminate 'works in staging but not production' issues"
+    avoid_when:
+      - "Single environment deployments"
+    tradeoffs:
+      pros:
+        - "Exact same artifact in all environments"
+        - "Audit trail — artifact promoted through gates"
+        - "Configuration externalized from build"
+        - "Faster deploys — no rebuild per environment"
+      cons:
+        - "Configuration management complexity"
+        - "Need robust secret management per environment"
+    implementation:
+      guidelines:
+        - "Build image once with commit SHA tag"
+        - "Push to artifact registry (container registry, Maven, npm)"
+        - "Deploy to dev → run smoke tests → promote to staging → run integration tests → promote to production"
+        - "Environment config via ConfigMaps, env vars, or Helm values"
+        - "Sign artifacts for supply chain security (cosign, Sigstore)"
+      common_errors:
+        - error: "Rebuilding for each environment"
+          impact: "Different artifacts in each environment; 'works in staging' not guaranteed in prod"
+          fix: "Build once, promote the same artifact; inject config at deploy time"
+        - error: "No artifact signing or verification"
+          impact: "Supply chain attack — tampered artifact deployed to production"
+          fix: "Sign artifacts in CI; verify signatures before deployment"
+    maturity:
+      level: standard
+    standards:
+      - name: "SLSA Framework"
+        type: standard
+        role: "Supply chain security for build artifacts"
+        status: recommended
+
+  - id: gitops_deployment
+    name: "GitOps Deployment"
+    description: >
+      Git is the single source of truth for both application and infrastructure
+      state. Changes are made via pull requests to a GitOps repo; a controller
+      (ArgoCD, Flux) reconciles the cluster state to match the repo.
+    use_when:
+      - "Kubernetes-based deployments"
+      - "Want declarative, auditable infrastructure changes"
+      - "Multiple clusters or environments to keep in sync"
+    avoid_when:
+      - "Non-Kubernetes deployments"
+      - "Team unfamiliar with Git-based workflows"
+    tradeoffs:
+      pros:
+        - "Full audit trail — every change is a Git commit"
+        - "Declarative — desired state in Git, controller reconciles"
+        - "Drift detection — controller alerts on manual changes"
+        - "Rollback is git revert"
+      cons:
+        - "Secret management requires additional tooling (Sealed Secrets, SOPS)"
+        - "Learning curve for GitOps controllers"
+        - "Reconciliation latency (seconds to minutes)"
+    implementation:
+      guidelines:
+        - "Separate app repo from GitOps config repo"
+        - "CI pipeline builds and pushes image; updates GitOps repo with new tag"
+        - "ArgoCD/Flux watches GitOps repo and syncs cluster"
+        - "Use Kustomize or Helm for environment overlays"
+        - "Sealed Secrets or External Secrets Operator for encrypted secrets in Git"
+      common_errors:
+        - error: "Committing plain-text secrets to GitOps repo"
+          impact: "Secrets in version control history — security breach"
+          fix: "Use Sealed Secrets, SOPS, or External Secrets Operator"
+        - error: "Single repo for app code and GitOps config"
+          impact: "App changes trigger reconciliation; config changes trigger CI — circular"
+          fix: "Separate repos: app repo for code + CI, config repo for GitOps state"
+    maturity:
+      level: advanced
+    standards:
+      - name: "OpenGitOps Principles"
+        type: standard
+        role: "Community standard for GitOps practices"
+        status: recommended
+
+examples:
+  - id: github_actions_pipeline
+    title: "GitHub Actions CI/CD Pipeline"
+    context: "Complete CI/CD pipeline for a containerized Node.js service"
+    correct: |
+      # .github/workflows/ci-cd.yml
+      name: CI/CD Pipeline
+      on:
+        push:
+          branches: [main]
+        pull_request:
+          branches: [main]
+
+      env:
+        REGISTRY: ghcr.io
+        IMAGE_NAME: ${{ github.repository }}
+
+      jobs:
+        lint-and-test:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                node-version: 20
+                cache: npm
+            - run: npm ci
+            - run: npm run lint
+            - run: npm run test:unit -- --coverage
+            - run: npm run test:integration
+
+        security-scan:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - uses: aquasecurity/trivy-action@master
+              with:
+                scan-type: fs
+                severity: CRITICAL,HIGH
+
+        build-and-push:
+          needs: [lint-and-test, security-scan]
+          if: github.ref == 'refs/heads/main'
+          runs-on: ubuntu-latest
+          permissions:
+            packages: write
+          steps:
+            - uses: actions/checkout@v4
+            - uses: docker/login-action@v3
+              with:
+                registry: ${{ env.REGISTRY }}
+                username: ${{ github.actor }}
+                password: ${{ secrets.GITHUB_TOKEN }}
+            - uses: docker/build-push-action@v5
+              with:
+                push: true
+                tags: |
+                  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+                  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+                cache-from: type=gha
+                cache-to: type=gha,mode=max
+
+        deploy-staging:
+          needs: build-and-push
+          runs-on: ubuntu-latest
+          environment: staging
+          steps:
+            - run: echo "Deploy ${{ github.sha }} to staging"
+            # helm upgrade --install or kubectl set image
+
+        deploy-production:
+          needs: deploy-staging
+          runs-on: ubuntu-latest
+          environment:
+            name: production
+            url: https://api.example.com
+          steps:
+            - run: echo "Deploy ${{ github.sha }} to production"
+    incorrect: |
+      # WRONG: No caching, no security scan, deploys on every branch
+      name: Deploy
+      on: push
+      jobs:
+        deploy:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - run: npm install
+            - run: npm test
+            - run: docker build -t app:latest .
+            - run: docker push app:latest
+            # Deploys on every push to any branch
+            # No security scanning
+            # No environment gates
+            # Uses :latest tag
+            # No dependency caching
+    explanation: >
+      The correct version separates lint/test, security scan, build, and deploy
+      into distinct jobs with proper dependencies. Only main branch deploys.
+      Uses GitHub environment protection rules, build caching, and commit SHA
+      tags. The incorrect version runs everything in one job with no gates.
+
+  - id: artifact_promotion_example
+    title: "Artifact Promotion Through Environments"
+    context: "Promoting a container image from dev to staging to production"
+    correct: |
+      # Build once (in CI)
+      IMAGE=registry.example.com/api:${COMMIT_SHA}
+      docker build -t $IMAGE .
+      docker push $IMAGE
+      cosign sign $IMAGE  # Sign for supply chain security
+
+      # Promote to staging (after dev tests pass)
+      # No rebuild — same image, different config
+      helm upgrade api-service ./chart \
+        -f values.yaml \
+        -f values-staging.yaml \
+        --set image.tag=${COMMIT_SHA} \
+        --namespace staging
+
+      # Promote to production (after staging validation)
+      cosign verify $IMAGE  # Verify signature before deploy
+      helm upgrade api-service ./chart \
+        -f values.yaml \
+        -f values-production.yaml \
+        --set image.tag=${COMMIT_SHA} \
+        --namespace production
+    incorrect: |
+      # WRONG: Rebuild for each environment
+      # Dev build
+      docker build -t api:dev .
+      docker push api:dev
+
+      # Staging build (different artifact!)
+      docker build -t api:staging .
+      docker push api:staging
+
+      # Production build (yet another artifact!)
+      docker build -t api:production .
+      docker push api:production
+      # Each environment gets a DIFFERENT binary
+      # No guarantee staging artifact == production artifact
+    explanation: >
+      The correct version builds once, signs the artifact, and promotes the
+      identical image through environments with environment-specific Helm values.
+      The incorrect version rebuilds for each environment — three different
+      binaries with no guarantee of consistency.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All CI/CD platform connections over TLS"
+      - "Webhook secrets for pipeline triggers"
+  data_protection:
+    requirements:
+      - "Build logs do not contain secrets or credentials"
+      - "Artifacts signed for supply chain integrity"
+  access_control:
+    requirements:
+      - "Branch protection rules enforce CI pass before merge"
+      - "Environment protection rules require approvals for production"
+      - "CI/CD service accounts follow least-privilege"
+  input_output:
+    requirements:
+      - "Pipeline inputs (PR labels, commit messages) do not control security-critical decisions"
+  secrets:
+    requirements:
+      - "Secrets stored in CI/CD platform secret store, never in code"
+      - "Secrets masked in build logs"
+      - "Rotate CI/CD service account credentials regularly"
+  monitoring:
+    requirements:
+      - "Pipeline execution logged and auditable"
+      - "Deployment events tracked with who/what/when/where"
+
+compliance:
+  standards:
+    - name: "SLSA Framework"
+      relevance: "Supply chain security levels for software artifacts"
+    - name: "DORA Metrics"
+      relevance: "Deployment frequency, lead time, failure rate, MTTR"
+
+  requirements_mapping:
+    - control: build_integrity
+      description: "Artifacts built in isolated, reproducible environments"
+      maps_to:
+        - "SLSA Level 2"
+    - control: deployment_audit
+      description: "All deployments traceable to source commit and approver"
+      maps_to:
+        - "SLSA Level 3"
+
+prompt_recipes:
+  - id: cicd_greenfield
+    scenario: greenfield
+    description: "Create CI/CD pipeline for a new project"
+    prompt: |
+      Create a CI/CD pipeline for a {language} {framework} project using {platform}:
+
+      1. **CI stage**: Lint, build, unit tests, integration tests (parallel where possible)
+      2. **Security stage**: Dependency scanning, container image scanning
+      3. **Build stage**: Build artifact/container, cache dependencies
+      4. **Deploy stage**: Staging with smoke tests → Production with approval gate
+      5. Include caching strategy for build dependencies
+      6. Include branch protection rules recommendation
+
+  - id: cicd_migration
+    scenario: migration
+    description: "Migrate CI/CD pipeline to a new platform"
+    prompt: |
+      Migrate this CI/CD pipeline from {source_platform} to {target_platform}:
+
+      1. Map each stage to the target platform equivalent
+      2. Migrate secrets and environment variables
+      3. Convert caching mechanisms
+      4. Preserve deployment gates and environment protections
+      5. Show before/after pipeline definitions
+
+  - id: cicd_optimization
+    scenario: optimization
+    description: "Optimize slow CI/CD pipeline"
+    prompt: |
+      Optimize this CI/CD pipeline — current run time is {current_time}:
+
+      1. Identify parallelizable stages
+      2. Add dependency caching (package managers, Docker layers)
+      3. Split test suites for parallel execution
+      4. Use incremental builds where possible
+      5. Cache container image layers across builds
+      6. Show before/after pipeline with expected time savings
+
+  - id: cicd_security
+    scenario: security
+    description: "Harden CI/CD pipeline security"
+    prompt: |
+      Harden this CI/CD pipeline for security:
+
+      1. Pin action/image versions with SHA digests
+      2. Add SAST, DAST, and dependency scanning stages
+      3. Implement artifact signing (cosign/Sigstore)
+      4. Restrict permissions to minimum required
+      5. Add environment protection rules
+      6. Ensure secrets are masked in logs
+
+anti_patterns:
+  - name: "Snowflake Deployments"
+    description: >
+      Manual deployments that differ each time. No runbook, no automation,
+      different steps for different environments. Each deployment is a
+      unique snowflake.
+    fix: "Automate all deployments through CI/CD pipeline; same process for every environment"
+    severity: critical
+    related_pattern: trunk_based_ci
+
+  - name: "Long-Running Feature Branches"
+    description: >
+      Feature branches that live for weeks or months, diverging from main.
+      Massive merge conflicts, integration pain, and delayed feedback.
+    fix: "Trunk-based development with feature flags; merge to main at least daily"
+    severity: high
+    related_pattern: trunk_based_ci
+
+  - name: "No Rollback Strategy"
+    description: >
+      Deploying without a plan for reverting bad releases. When production
+      breaks, team scrambles to hotfix forward under pressure.
+    fix: "Automated rollback in progressive delivery; or one-click redeploy of previous version"
+    severity: critical
+    related_pattern: progressive_delivery
+
+  - name: "Build-Per-Environment"
+    description: >
+      Rebuilding the application for each environment. Dev, staging, and
+      production run different binaries, eliminating the guarantee that
+      testing in staging validated the production artifact.
+    fix: "Build once, promote the same artifact; inject environment config at deploy time"
+    severity: high
+    related_pattern: artifact_promotion
+
+checklist:
+  - id: CICD-01
+    category: reliability
+    description: "Pipeline runs on every commit to main and every PR"
+    severity: high
+    verified_by: trunk_based_ci
+
+  - id: CICD-02
+    category: security
+    description: "Branch protection requires CI pass before merge"
+    severity: high
+    verified_by: trunk_based_ci
+
+  - id: CICD-03
+    category: security
+    description: "Security scanning (SAST, dependency, container) in pipeline"
+    severity: high
+    verified_by: trunk_based_ci
+
+  - id: CICD-04
+    category: reliability
+    description: "Artifacts built once, promoted through environments"
+    severity: high
+    verified_by: artifact_promotion
+
+  - id: CICD-05
+    category: security
+    description: "Secrets stored in platform secret store, masked in logs"
+    severity: critical
+    verified_by: trunk_based_ci
+
+  - id: CICD-06
+    category: reliability
+    description: "Rollback strategy defined and tested"
+    severity: high
+    verified_by: progressive_delivery
+
+  - id: CICD-07
+    category: performance
+    description: "Pipeline uses dependency and build caching"
+    severity: medium
+    verified_by: trunk_based_ci
+
+  - id: CICD-08
+    category: reliability
+    description: "Production deployment requires approval gate"
+    severity: high
+    verified_by: progressive_delivery
+
+  - id: CICD-09
+    category: compliance
+    description: "Deployment events auditable (who/what/when)"
+    severity: high
+    verified_by: artifact_promotion
+
+  - id: CICD-10
+    category: reliability
+    description: "Staging environment validates artifact before production"
+    severity: high
+    verified_by: artifact_promotion
+
+  - id: CICD-11
+    category: security
+    description: "Artifacts signed for supply chain integrity"
+    severity: medium
+    verified_by: artifact_promotion
+
+  - id: CICD-12
+    category: performance
+    description: "Tests parallelized for fast pipeline execution"
+    severity: medium
+    verified_by: trunk_based_ci

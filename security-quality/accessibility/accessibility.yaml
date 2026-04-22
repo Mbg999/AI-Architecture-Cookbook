@@ -1,0 +1,678 @@
+# =============================================================================
+# AI Architecture Cookbook — Accessibility
+# Schema: v3 | Domain: accessibility
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: accessibility
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Accessibility standards, inclusive design, and assistive technology
+    compatibility. Covers WCAG compliance, ARIA patterns, keyboard navigation,
+    and automated accessibility testing.
+
+  tags:
+    - accessibility
+    - a11y
+    - wcag
+    - aria
+    - inclusive-design
+    - screen-reader
+
+  categories:
+    - security-quality
+
+  prerequisites: []
+
+  related_standards:
+    - id: api-design
+      relationship: complementary
+      context: "APIs powering accessible UIs must provide structured data for screen readers"
+    - id: testing-strategies
+      relationship: complementary
+      context: "Accessibility testing is a critical part of the quality strategy"
+    - id: performance-optimization
+      relationship: complementary
+      context: "Performance directly impacts accessibility — slow pages are inaccessible"
+
+context_inputs:
+  - name: application_type
+    type: enum
+    description: "Type of user-facing application"
+    required: true
+    default: web_app
+    enum_values:
+      - web_app
+      - mobile_app
+      - desktop_app
+      - embedded_ui
+
+  - name: compliance_level
+    type: enum
+    description: "Target WCAG conformance level"
+    required: true
+    default: aa
+    enum_values:
+      - a
+      - aa
+      - aaa
+
+  - name: user_base
+    type: enum
+    description: "Primary user base characteristics"
+    required: false
+    default: general_public
+    enum_values:
+      - general_public
+      - enterprise
+      - government
+      - education
+      - healthcare
+
+  - name: framework
+    type: enum
+    description: "UI framework being used"
+    required: false
+    default: react
+    enum_values:
+      - react
+      - angular
+      - vue
+      - svelte
+      - native_mobile
+      - vanilla
+
+decision_tree:
+  - id: government_aaa
+    priority: 1
+    if:
+      - user_base in [government]
+    then:
+      pattern: semantic_html
+      standards:
+        - "WCAG 2.2 Level AA"
+        - "Section 508"
+      notes: >
+        Government applications must meet Section 508 requirements, which
+        align with WCAG 2.0 Level AA. Many jurisdictions require AA minimum.
+    else:
+      pattern: semantic_html
+      notes: "Semantic HTML is the foundation of accessibility for all web applications"
+
+  - id: web_app_foundation
+    priority: 2
+    if:
+      - application_type == web_app
+      - compliance_level in [aa, aaa]
+    then:
+      pattern: semantic_html
+      standards:
+        - "WCAG 2.2"
+        - "WAI-ARIA 1.2"
+      notes: >
+        Web applications must use semantic HTML as the foundation, with
+        ARIA attributes only to enhance what HTML cannot express natively.
+
+  - id: complex_widgets
+    priority: 3
+    if:
+      - application_type == web_app
+    then:
+      pattern: aria_patterns
+      standards:
+        - "WAI-ARIA Authoring Practices"
+      notes: >
+        Complex interactive widgets (modals, comboboxes, tab panels) need
+        ARIA patterns and keyboard interaction following WAI-ARIA practices.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: semantic_html
+    description: "Semantic HTML is the safest foundation — most issues come from not using it"
+
+patterns:
+  - id: semantic_html
+    name: "Semantic HTML & Document Structure"
+    description: >
+      Use native HTML elements for their intended purpose. Semantic elements
+      provide built-in accessibility: buttons are focusable and activatable,
+      headings create navigation landmarks, lists convey structure. Most
+      accessibility issues come from using div/span where semantic elements
+      should be used.
+    use_when:
+      - "Any web application or website"
+      - "Building UI components from scratch"
+      - "Refactoring existing UI for accessibility"
+    avoid_when:
+      - "Never — semantic HTML is always the correct foundation"
+    tradeoffs:
+      pros:
+        - "Built-in keyboard support (button, a, input are focusable)"
+        - "Screen readers announce element roles automatically"
+        - "No additional ARIA needed for standard elements"
+        - "Smaller code — no role/tabindex/event handler boilerplate"
+      cons:
+        - "Default styling may need CSS overrides"
+        - "Some complex UI patterns have no native HTML equivalent"
+    implementation:
+      guidelines:
+        - "Use button for clickable actions, not div or span with onClick"
+        - "Use a (anchor) for navigation, not div with onClick"
+        - "Use heading hierarchy (h1-h6) — one h1 per page, logical nesting"
+        - "Use nav, main, header, footer, aside for page landmarks"
+        - "Use ul/ol for lists, table for tabular data"
+        - "Use label associated with every form input (for=id or wrapping)"
+        - "Use fieldset/legend for related form field groups"
+        - "Provide alt text for all informational images; empty alt for decorative"
+      common_errors:
+        - error: "Using div with onClick instead of button"
+          impact: "Not focusable by keyboard, not announced as interactive, no Enter/Space activation"
+          fix: "Use <button> element; if styling is the concern, reset button CSS"
+        - error: "Images without alt text"
+          impact: "Screen readers announce file name or skip entirely; information lost"
+          fix: "Add descriptive alt text for informational images; alt='' for decorative"
+        - error: "Form inputs without labels"
+          impact: "Screen readers cannot announce what the input is for; users cannot identify fields"
+          fix: "Associate label with input using for=id attribute or wrap input in label"
+    maturity:
+      level: standard
+    standards:
+      - name: "WCAG 2.2"
+        type: standard
+        role: "Web Content Accessibility Guidelines"
+        status: recommended
+        reference: "https://www.w3.org/TR/WCAG22/"
+      - name: "HTML Living Standard"
+        type: spec
+        role: "Semantic HTML element definitions"
+        status: recommended
+
+  - id: aria_patterns
+    name: "ARIA Patterns for Complex Widgets"
+    description: >
+      WAI-ARIA attributes and interaction patterns for complex widgets that
+      have no native HTML equivalent: modals, comboboxes, tab panels, tree views,
+      and drag-and-drop. ARIA supplements semantic HTML but never replaces it.
+    use_when:
+      - "Building custom interactive widgets (modal, combobox, tabs)"
+      - "Dynamic content changes need to be announced"
+      - "Native HTML elements cannot express the intended behavior"
+    avoid_when:
+      - "A native HTML element exists for the pattern (use semantic HTML first)"
+      - "Adding ARIA to fix what semantic HTML would solve"
+    tradeoffs:
+      pros:
+        - "Enables complex widget patterns to be accessible"
+        - "Live regions announce dynamic content changes"
+        - "Standardized interaction patterns users can learn once"
+      cons:
+        - "ARIA is complex and easy to misuse"
+        - "No ARIA is better than bad ARIA (wrong roles break accessibility)"
+        - "Must implement all keyboard interactions manually"
+    implementation:
+      guidelines:
+        - "First rule of ARIA: don't use ARIA if native HTML works"
+        - "Use role only when no semantic HTML element exists for the purpose"
+        - "All interactive ARIA elements must be keyboard operable"
+        - "Use aria-live regions for dynamic content announcements"
+        - "Follow WAI-ARIA Authoring Practices for widget patterns (modal, tabs, etc.)"
+        - "Test with actual screen readers (NVDA, VoiceOver, JAWS)"
+        - "Use aria-label / aria-labelledby for custom controls"
+      common_errors:
+        - error: "role='button' on div instead of using button element"
+          impact: "Must manually add tabindex, keydown handler, focus styles — or it breaks"
+          fix: "Use <button> element; it has all behaviors built in"
+        - error: "aria-hidden='true' on visible interactive content"
+          impact: "Screen reader users cannot interact with visible content"
+          fix: "Use aria-hidden only on truly decorative or redundant content"
+        - error: "Modal dialog doesn't trap focus"
+          impact: "Keyboard users can tab behind the modal to invisible content"
+          fix: "Implement focus trap: Tab cycles within modal, close on Escape"
+    maturity:
+      level: advanced
+    standards:
+      - name: "WAI-ARIA 1.2"
+        type: spec
+        role: "Accessible Rich Internet Applications specification"
+        status: recommended
+        reference: "https://www.w3.org/TR/wai-aria-1.2/"
+      - name: "ARIA Authoring Practices Guide"
+        type: reference
+        role: "Widget interaction patterns and keyboard conventions"
+        status: recommended
+        reference: "https://www.w3.org/WAI/ARIA/apg/"
+
+  - id: keyboard_navigation
+    name: "Keyboard Navigation & Focus Management"
+    description: >
+      Ensure all interactive content is operable via keyboard alone. Manage
+      focus order, visible focus indicators, and keyboard shortcuts. Critical
+      for users who cannot use a mouse: motor disabilities, screen reader
+      users, and power users.
+    use_when:
+      - "Any web application with interactive elements"
+      - "Single-page applications with dynamic content"
+      - "Custom widgets and controls"
+    avoid_when:
+      - "Static content pages (still need basic tab navigation)"
+    tradeoffs:
+      pros:
+        - "Enables use by motor-disabled users"
+        - "Required by WCAG 2.1 Level A (criterion 2.1.1)"
+        - "Benefits power users who prefer keyboard"
+        - "Essential for screen reader operation"
+      cons:
+        - "Focus management in SPAs requires careful engineering"
+        - "Custom keyboard shortcuts may conflict with assistive tech"
+        - "Testing keyboard navigation adds QA effort"
+    implementation:
+      guidelines:
+        - "All interactive elements must be reachable via Tab key"
+        - "Focus order follows visual/logical order (no tabindex > 0)"
+        - "Visible focus indicator on all focusable elements (never outline: none without replacement)"
+        - "Skip-to-content link as first focusable element"
+        - "Manage focus on route changes in SPAs (focus heading or main content)"
+        - "Trap focus in modals; return focus to trigger on close"
+        - "Support Escape to close overlays, menus, and dialogs"
+        - "Arrow keys for navigation within composite widgets (tabs, menus, lists)"
+      common_errors:
+        - error: "CSS outline: none without visible alternative"
+          impact: "Keyboard users cannot see which element is focused"
+          fix: "Replace with visible focus style: outline, box-shadow, or border"
+        - error: "No focus management on SPA route changes"
+          impact: "Screen reader users don't know the page changed; focus stays on old content"
+          fix: "On route change, move focus to page heading or main content area"
+        - error: "tabindex > 0 to force tab order"
+          impact: "Creates unpredictable focus order that conflicts with natural flow"
+          fix: "Use only tabindex='0' (natural order) or tabindex='-1' (programmatic focus only)"
+    maturity:
+      level: standard
+    standards:
+      - name: "WCAG 2.1 Criterion 2.1.1 Keyboard"
+        type: standard
+        role: "All functionality available from keyboard"
+        status: recommended
+        reference: "https://www.w3.org/TR/WCAG21/#keyboard"
+
+examples:
+  - id: semantic_vs_div
+    title: "Semantic HTML vs Div Soup"
+    context: "Building a navigation menu with interactive elements"
+    correct: |
+      <!-- Semantic HTML — accessible by default -->
+      <nav aria-label="Main navigation">
+        <ul>
+          <li><a href="/home">Home</a></li>
+          <li><a href="/products">Products</a></li>
+          <li>
+            <button aria-expanded="false" aria-controls="about-menu">
+              About
+            </button>
+            <ul id="about-menu" hidden>
+              <li><a href="/about/team">Team</a></li>
+              <li><a href="/about/careers">Careers</a></li>
+            </ul>
+          </li>
+        </ul>
+      </nav>
+
+      <main>
+        <h1>Welcome to Our Store</h1>
+        <section aria-labelledby="featured-heading">
+          <h2 id="featured-heading">Featured Products</h2>
+          <!-- Products list -->
+        </section>
+      </main>
+
+      <!-- Benefits:
+        - nav announced as navigation landmark
+        - Links focusable and activatable by default
+        - Button toggles submenu with keyboard (Enter/Space)
+        - Heading hierarchy enables screen reader navigation
+        - main landmark enables skip navigation
+      -->
+    incorrect: |
+      <!-- WRONG: Div soup — inaccessible -->
+      <div class="nav">
+        <div class="nav-item" onclick="go('/home')">Home</div>
+        <div class="nav-item" onclick="go('/products')">Products</div>
+        <div class="nav-item" onclick="toggleMenu()">
+          About
+          <div class="submenu" style="display:none">
+            <div class="submenu-item" onclick="go('/about/team')">Team</div>
+            <div class="submenu-item" onclick="go('/about/careers')">Careers</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="title">Welcome to Our Store</div>
+        <div class="section-title">Featured Products</div>
+      </div>
+
+      <!-- Problems:
+        - No nav landmark — screen reader can't find navigation
+        - Divs not focusable — keyboard users can't reach items
+        - No heading structure — screen reader can't navigate by heading
+        - No button role — screen reader doesn't announce as interactive
+        - No ARIA states — screen reader doesn't know menu is expandable
+      -->
+    explanation: >
+      Semantic HTML provides built-in accessibility: nav creates a landmark,
+      a and button are focusable and keyboard-operable, headings create
+      navigable structure. The div version requires extensive ARIA and
+      JavaScript to achieve what HTML gives for free.
+
+  - id: form_accessibility
+    title: "Accessible Form — Labels and Error Handling"
+    context: "Building an accessible signup form with validation errors"
+    correct: |
+      <form aria-labelledby="signup-heading" novalidate>
+        <h2 id="signup-heading">Create Account</h2>
+
+        <!-- Error summary at top — announced on submit -->
+        <div role="alert" aria-live="polite" id="error-summary" hidden>
+          <h3>Please fix the following errors:</h3>
+          <ul>
+            <!-- Populated dynamically with links to error fields -->
+          </ul>
+        </div>
+
+        <div>
+          <label for="email">Email address (required)</label>
+          <input
+            id="email"
+            type="email"
+            required
+            autocomplete="email"
+            aria-describedby="email-error"
+            aria-invalid="false"
+          />
+          <span id="email-error" role="alert" hidden>
+            Please enter a valid email address.
+          </span>
+        </div>
+
+        <div>
+          <label for="password">Password (required)</label>
+          <input
+            id="password"
+            type="password"
+            required
+            minlength="8"
+            autocomplete="new-password"
+            aria-describedby="password-hint password-error"
+          />
+          <span id="password-hint">Must be at least 8 characters</span>
+          <span id="password-error" role="alert" hidden></span>
+        </div>
+
+        <button type="submit">Create Account</button>
+      </form>
+    incorrect: |
+      <!-- WRONG: Inaccessible form -->
+      <div class="form">
+        <div class="title">Create Account</div>
+
+        <div class="field">
+          <span class="label">Email</span>
+          <!-- No for/id association — label doesn't work -->
+          <input type="text" placeholder="Enter email" />
+          <!-- Placeholder is NOT a label — disappears on input -->
+          <span class="error" style="color: red;">Invalid!</span>
+          <!-- Error not associated with input; color-only indicator -->
+        </div>
+
+        <div class="field">
+          <span>Password</span>
+          <input type="password" />
+        </div>
+
+        <div class="button" onclick="submit()">Create Account</div>
+      </div>
+    explanation: >
+      The accessible form uses proper label-input association, aria-describedby
+      for error messages, role=alert for dynamic announcements, and error
+      summaries. The inaccessible form uses placeholders as labels, has no
+      input-label association, and relies on color alone for errors.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Accessibility features do not expose additional attack surface"
+  data_protection:
+    requirements:
+      - "ARIA labels do not expose sensitive data not visible in the UI"
+  access_control:
+    requirements:
+      - "Accessible alternatives provide the same level of authentication security"
+  input_output:
+    requirements:
+      - "Form validation errors are accessible but do not reveal system internals"
+  secrets:
+    requirements:
+      - "Password fields use autocomplete='new-password' or 'current-password'"
+  monitoring:
+    requirements:
+      - "Automated accessibility testing integrated into CI pipeline"
+
+compliance:
+  standards:
+    - name: "WCAG 2.2"
+      relevance: "Web Content Accessibility Guidelines — definitive standard"
+      reference: "https://www.w3.org/TR/WCAG22/"
+    - name: "Section 508"
+      relevance: "US federal accessibility requirement"
+      reference: "https://www.section508.gov/"
+    - name: "EN 301 549"
+      relevance: "European accessibility standard for ICT products"
+    - name: "ADA Title III"
+      relevance: "US Americans with Disabilities Act — web accessibility"
+
+  requirements_mapping:
+    - control: perceivable
+      description: "All content perceivable by all users (text alternatives, captions, contrast)"
+      maps_to:
+        - "WCAG 2.2 Principle 1"
+    - control: operable
+      description: "All functionality operable via keyboard and assistive technology"
+      maps_to:
+        - "WCAG 2.2 Principle 2"
+    - control: understandable
+      description: "Content and operation are understandable (readable, predictable, input assistance)"
+      maps_to:
+        - "WCAG 2.2 Principle 3"
+
+prompt_recipes:
+  - id: a11y_greenfield
+    scenario: greenfield
+    description: "Design accessible UI from the start"
+    prompt: |
+      Design an accessible UI for a new application.
+
+      Context:
+      - Application type: [web_app/mobile_app/desktop_app]
+      - Target conformance: [WCAG A/AA/AAA]
+      - UI framework: [React/Angular/Vue/vanilla]
+
+      Requirements:
+      - Semantic HTML foundation (landmarks, headings, lists)
+      - Keyboard navigation for all interactive elements
+      - ARIA patterns for custom widgets (modals, comboboxes, tabs)
+      - Form labels, error handling, and validation announcements
+      - Color contrast ≥4.5:1 for text (AA), ≥3:1 for large text
+      - Skip navigation link
+      - Automated a11y testing in CI (axe-core, Lighthouse)
+
+  - id: a11y_audit
+    scenario: audit
+    description: "Audit application accessibility"
+    prompt: |
+      Audit the application for accessibility compliance.
+
+      WCAG Checklist:
+      1. All images have alt text (informational) or alt="" (decorative)?
+      2. Color contrast meets 4.5:1 minimum (text)?
+      3. All interactive elements keyboard-accessible?
+      4. Visible focus indicator on all focusable elements?
+      5. Heading hierarchy is logical (h1-h6, no skipping)?
+      6. Page landmarks present (nav, main, header, footer)?
+      7. Form inputs have associated labels?
+      8. Error messages are announced to screen readers?
+      9. ARIA attributes used correctly (roles, states, properties)?
+      10. Skip-to-content link present?
+      11. Dynamic content changes announced (aria-live)?
+      12. Works without CSS and JavaScript (progressive enhancement)?
+
+      Test with: axe-core, Lighthouse, NVDA/VoiceOver, keyboard-only navigation.
+
+  - id: a11y_remediation
+    scenario: remediation
+    description: "Fix accessibility issues in existing application"
+    prompt: |
+      Fix accessibility issues in the application.
+
+      Priority order (impact × frequency):
+      1. Critical: No keyboard access to interactive elements
+      2. Critical: Images without alt text
+      3. Critical: Form inputs without labels
+      4. High: Insufficient color contrast
+      5. High: No visible focus indicator
+      6. High: Modal doesn't trap focus
+      7. Medium: Missing page landmarks
+      8. Medium: Heading hierarchy broken
+      9. Medium: Dynamic content not announced
+      10. Low: Missing skip-to-content link
+
+      For each issue: identify, fix, test with screen reader, add automated test.
+
+  - id: a11y_component
+    scenario: architecture
+    description: "Build an accessible component"
+    prompt: |
+      Build an accessible {component_type} component.
+
+      Requirements:
+      - Semantic HTML foundation
+      - ARIA roles, states, and properties (follow APG pattern)
+      - Full keyboard interaction (Tab, Enter, Space, Arrow, Escape)
+      - Focus management (initial focus, focus trap if needed, return focus)
+      - Screen reader announcements for state changes
+      - Visible focus indicator
+      - Works without JavaScript (progressive enhancement where possible)
+
+      Test: keyboard-only, screen reader (NVDA/VoiceOver), axe-core.
+
+anti_patterns:
+  - name: "Div Soup"
+    description: >
+      Using div and span for everything instead of semantic HTML elements.
+      Custom div-based buttons, links, and lists have no built-in accessibility.
+      Requires extensive ARIA and JavaScript to compensate — and usually fails.
+    fix: "Use semantic HTML: button, a, nav, main, h1-h6, ul/ol, table, label"
+    severity: critical
+    related_pattern: semantic_html
+
+  - name: "Placeholder as Label"
+    description: >
+      Using the placeholder attribute as the only label for form inputs.
+      Placeholder text disappears when the user starts typing, is typically
+      low-contrast, and is not reliably read by all screen readers.
+    fix: "Use visible label element associated with the input; placeholder is supplementary only"
+    severity: high
+    related_pattern: semantic_html
+
+  - name: "Color-Only Information"
+    description: >
+      Conveying information through color alone (red for errors, green for
+      success). Users with color blindness (8% of males) cannot distinguish
+      these states. Violates WCAG 1.4.1 Use of Color.
+    fix: "Use color + icon + text to convey status (e.g., red text + ✗ icon + 'Error: ...')"
+    severity: high
+    related_pattern: semantic_html
+
+  - name: "Removing Focus Outline Without Replacement"
+    description: >
+      CSS outline: none on all elements to remove the 'ugly' focus ring.
+      Keyboard users can no longer see which element is focused, making
+      the application unusable without a mouse.
+    fix: "Replace with visible focus style: custom outline, box-shadow, or border"
+    severity: critical
+    related_pattern: keyboard_navigation
+
+checklist:
+  - id: ACC-01
+    category: compliance
+    description: "Semantic HTML used (button, a, nav, main, headings, lists, label)"
+    severity: critical
+    verified_by: semantic_html
+
+  - id: ACC-02
+    category: compliance
+    description: "All images have appropriate alt text"
+    severity: critical
+    verified_by: semantic_html
+
+  - id: ACC-03
+    category: compliance
+    description: "Color contrast ≥4.5:1 for normal text, ≥3:1 for large text"
+    severity: high
+    verified_by: semantic_html
+
+  - id: ACC-04
+    category: compliance
+    description: "All interactive elements keyboard-accessible"
+    severity: critical
+    verified_by: keyboard_navigation
+
+  - id: ACC-05
+    category: compliance
+    description: "Visible focus indicator on all focusable elements"
+    severity: critical
+    verified_by: keyboard_navigation
+
+  - id: ACC-06
+    category: compliance
+    description: "Form inputs have associated labels (not just placeholders)"
+    severity: critical
+    verified_by: semantic_html
+
+  - id: ACC-07
+    category: compliance
+    description: "Page landmarks present (nav, main, header, footer)"
+    severity: high
+    verified_by: semantic_html
+
+  - id: ACC-08
+    category: compliance
+    description: "Heading hierarchy logical (h1-h6, no skipping levels)"
+    severity: high
+    verified_by: semantic_html
+
+  - id: ACC-09
+    category: compliance
+    description: "ARIA used correctly (roles, states, properties per APG)"
+    severity: high
+    verified_by: aria_patterns
+
+  - id: ACC-10
+    category: compliance
+    description: "Skip-to-content link present"
+    severity: medium
+    verified_by: keyboard_navigation
+
+  - id: ACC-11
+    category: correctness
+    description: "Automated accessibility testing in CI (axe-core)"
+    severity: high
+    verified_by: semantic_html
+
+  - id: ACC-12
+    category: correctness
+    description: "Manual screen reader testing performed (NVDA or VoiceOver)"
+    severity: high
+    verified_by: aria_patterns

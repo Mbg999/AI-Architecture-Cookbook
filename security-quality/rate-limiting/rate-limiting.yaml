@@ -1,0 +1,672 @@
+# =============================================================================
+# AI Architecture Cookbook — Rate Limiting & Throttling
+# Schema: v3 | Domain: rate-limiting
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: rate-limiting
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Rate limiting, throttling, and abuse prevention for APIs and services.
+    Covers token bucket, sliding window, distributed rate limiting, and
+    quota management strategies.
+
+  tags:
+    - rate-limiting
+    - throttling
+    - api-protection
+    - dos-prevention
+    - quotas
+    - resilience
+
+  categories:
+    - security-quality
+
+  prerequisites:
+    - api-design
+
+  related_standards:
+    - id: api-design
+      relationship: complementary
+      context: "APIs must communicate rate limits via standard headers"
+    - id: authentication
+      relationship: complementary
+      context: "Rate limits are typically applied per authenticated identity"
+    - id: logging-observability
+      relationship: complementary
+      context: "Rate limit events must be logged and monitored"
+
+context_inputs:
+  - name: rate_limit_scope
+    type: enum
+    description: "At what level are rate limits applied?"
+    required: true
+    default: per_api_key
+    enum_values:
+      - per_ip
+      - per_api_key
+      - per_user
+      - per_tenant
+      - global
+
+  - name: architecture_type
+    type: enum
+    description: "Deployment architecture affecting rate limit strategy"
+    required: true
+    default: distributed
+    enum_values:
+      - single_instance
+      - distributed
+      - edge_gateway
+
+  - name: traffic_pattern
+    type: enum
+    description: "Expected traffic pattern"
+    required: true
+    default: steady
+    enum_values:
+      - steady
+      - bursty
+      - scheduled_spikes
+      - unpredictable
+
+  - name: rate_limit_strictness
+    type: enum
+    description: "How strict must enforcement be?"
+    required: false
+    default: standard
+    enum_values:
+      - relaxed
+      - standard
+      - strict
+
+decision_tree:
+  - id: edge_gateway_limiting
+    priority: 1
+    if:
+      - architecture_type == edge_gateway
+    then:
+      pattern: gateway_rate_limiting
+      standards:
+        - "IETF Rate Limit Headers"
+      notes: >
+        Edge/API gateway rate limiting provides first line of defense,
+        offloading rate limit logic from application services.
+    else:
+      pattern: token_bucket
+      notes: "Token bucket is the most flexible default algorithm"
+
+  - id: bursty_traffic
+    priority: 2
+    if:
+      - traffic_pattern in [bursty, scheduled_spikes]
+    then:
+      pattern: token_bucket
+      standards:
+        - "Token Bucket Algorithm"
+      notes: >
+        Token bucket allows controlled bursts while maintaining average rate.
+        Tokens accumulate during quiet periods and are spent during bursts.
+
+  - id: distributed_rate_limit
+    priority: 3
+    if:
+      - architecture_type == distributed
+      - rate_limit_scope in [per_api_key, per_user, per_tenant]
+    then:
+      pattern: distributed_rate_limiting
+      standards:
+        - "Redis Rate Limiting"
+      notes: >
+        Distributed services need centralized rate limit state to prevent
+        per-instance limits that multiply the actual allowed rate.
+
+  - id: strict_sliding_window
+    priority: 4
+    if:
+      - rate_limit_strictness == strict
+    then:
+      pattern: sliding_window
+      standards:
+        - "Sliding Window Algorithm"
+      notes: >
+        Sliding window provides more precise rate limiting than fixed window,
+        eliminating the boundary burst problem.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: token_bucket
+    description: "Token bucket with standard limits is safe default for most APIs"
+
+patterns:
+  - id: token_bucket
+    name: "Token Bucket Rate Limiting"
+    description: >
+      Tokens are added to a bucket at a fixed rate. Each request consumes one
+      token. When the bucket is empty, requests are rejected. The bucket has a
+      maximum capacity allowing controlled bursts up to that limit.
+    use_when:
+      - "APIs with bursty but bounded traffic patterns"
+      - "Need to allow short bursts while enforcing average rate"
+      - "Simple per-client rate limiting"
+    avoid_when:
+      - "Need strict per-second enforcement with no bursts"
+      - "Requests have varying costs (use weighted token bucket)"
+    tradeoffs:
+      pros:
+        - "Allows controlled bursts — good user experience"
+        - "Simple to implement and reason about"
+        - "Memory efficient — only stores token count and timestamp"
+        - "Naturally smooths traffic over time"
+      cons:
+        - "Burst allowance may be exploited for short-duration attacks"
+        - "Not precise at sub-second granularity"
+        - "Bucket size tuning requires traffic analysis"
+    implementation:
+      guidelines:
+        - "Set bucket capacity = maximum burst size"
+        - "Set refill rate = desired average requests per second"
+        - "Use atomic operations (CAS, Lua script) for thread safety"
+        - "Return rate limit headers: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset"
+        - "Return 429 Too Many Requests with Retry-After header"
+        - "Log rate limit events with client identity for monitoring"
+      common_errors:
+        - error: "Using in-memory token bucket in distributed systems"
+          impact: "Each instance has its own bucket; actual rate = N * limit (N = instance count)"
+          fix: "Use centralized state (Redis) or use distributed rate limiting pattern"
+        - error: "Not returning rate limit headers"
+          impact: "Clients cannot self-regulate; poor developer experience"
+          fix: "Always include X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset headers"
+    maturity:
+      level: standard
+    standards:
+      - name: "IETF RateLimit Header Fields (RFC 9110)"
+        type: rfc
+        role: "Standard HTTP headers for communicating rate limits"
+        status: recommended
+      - name: "Token Bucket Algorithm"
+        type: pattern
+        role: "Classic rate limiting algorithm"
+        status: recommended
+
+  - id: sliding_window
+    name: "Sliding Window Rate Limiting"
+    description: >
+      Maintains a sliding time window that moves continuously. Counts requests
+      within the window and rejects when the count exceeds the limit. Eliminates
+      the boundary-burst problem of fixed windows where clients can send 2x the
+      limit across a window boundary.
+    use_when:
+      - "Need precise rate enforcement without boundary exploits"
+      - "Strict compliance with rate limit contracts"
+      - "Financial or security-sensitive APIs"
+    avoid_when:
+      - "Traffic is legitimately bursty and bursts should be allowed"
+      - "Memory-constrained environments (sliding window uses more memory)"
+    tradeoffs:
+      pros:
+        - "No boundary-burst exploit (fixed window allows 2x at boundary)"
+        - "Precise rate enforcement"
+        - "Predictable behavior for clients"
+      cons:
+        - "More memory than token bucket (stores request timestamps)"
+        - "No burst allowance — may feel restrictive to clients"
+        - "Slightly more complex implementation"
+    implementation:
+      guidelines:
+        - "Use sliding window log (store timestamps) or sliding window counter (approximation)"
+        - "Sliding window counter: weighted average of current and previous fixed window"
+        - "Clean up expired entries to prevent memory growth"
+        - "For Redis: use sorted sets (ZRANGEBYSCORE) with timestamp as score"
+        - "Return accurate rate limit headers reflecting sliding window"
+        - "Consider sliding window counter for memory efficiency (slight approximation)"
+      common_errors:
+        - error: "Not cleaning up expired entries"
+          impact: "Memory grows unbounded as requests accumulate"
+          fix: "Remove entries older than window size on each request or via periodic cleanup"
+        - error: "Using fixed window and calling it sliding"
+          impact: "Clients discover boundary-burst exploit; actual rate is 2x advertised"
+          fix: "Use true sliding window (sorted set) or sliding window counter approximation"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Sliding Window Counter Algorithm"
+        type: pattern
+        role: "Memory-efficient approximation of sliding window"
+        status: recommended
+
+  - id: distributed_rate_limiting
+    name: "Distributed Rate Limiting"
+    description: >
+      Centralized rate limit state shared across all service instances using
+      an external data store (typically Redis). Ensures the aggregate rate
+      across all instances does not exceed the limit.
+    use_when:
+      - "Multiple instances of the same service behind a load balancer"
+      - "Rate limits must be enforced globally, not per-instance"
+      - "Per-tenant or per-API-key limits in a microservices architecture"
+    avoid_when:
+      - "Single-instance deployment"
+      - "Network latency to external store is unacceptable"
+    tradeoffs:
+      pros:
+        - "Accurate global rate enforcement across all instances"
+        - "Centralized configuration and monitoring"
+        - "Works with any number of instances (horizontal scaling)"
+      cons:
+        - "External dependency (Redis/Memcached) — single point of failure"
+        - "Network latency for every rate check"
+        - "Must handle store unavailability gracefully"
+    implementation:
+      guidelines:
+        - "Use Redis with Lua scripts for atomic rate limit checks"
+        - "Implement fail-open or fail-closed policy for store unavailability"
+        - "Use connection pooling and pipelining for Redis performance"
+        - "Set TTL on rate limit keys equal to the window size"
+        - "Consider local cache + periodic sync for reduced latency (approximate)"
+        - "Monitor Redis latency and connection count"
+      common_errors:
+        - error: "No fallback when Redis is unavailable"
+          impact: "Service either rejects all requests (fail-closed) or allows unlimited (fail-open)"
+          fix: "Implement local fallback rate limiter with conservative limits; alert on Redis failures"
+        - error: "Non-atomic read-then-write operations"
+          impact: "Race condition allows more requests than the limit during high concurrency"
+          fix: "Use Redis Lua scripts or MULTI/EXEC transactions for atomic check-and-increment"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Redis Rate Limiting Patterns"
+        type: reference
+        role: "Implementation patterns for Redis-backed rate limiting"
+        status: recommended
+
+  - id: gateway_rate_limiting
+    name: "API Gateway / Edge Rate Limiting"
+    description: >
+      Rate limiting enforced at the API gateway or edge layer before requests
+      reach backend services. Provides first line of defense against abuse
+      and DDoS, offloading rate limit logic from application code.
+    use_when:
+      - "API gateway already in architecture (Kong, AWS API Gateway, Azure APIM)"
+      - "Need DDoS protection at the edge"
+      - "Want rate limiting without modifying application code"
+      - "Multi-service architecture with consistent rate limit policy"
+    avoid_when:
+      - "Need business-logic-aware rate limiting (e.g., per-operation quotas)"
+      - "No API gateway in architecture"
+    tradeoffs:
+      pros:
+        - "No application code changes"
+        - "Centralized policy for all services"
+        - "DDoS traffic rejected before reaching backend"
+        - "Built-in monitoring and analytics"
+      cons:
+        - "Limited to gateway-visible attributes (IP, API key, path)"
+        - "Cannot rate limit by business-level attributes (user plan, operation cost)"
+        - "Vendor lock-in to specific gateway product"
+    implementation:
+      guidelines:
+        - "Configure rate limits per route, per API key, and globally"
+        - "Use gateway-native rate limiting (not custom plugins when possible)"
+        - "Layer: edge rate limiting + application rate limiting for defense in depth"
+        - "Implement quota management for tiered API plans"
+        - "Return standard rate limit headers from the gateway"
+        - "Configure burst allowance appropriately for the traffic pattern"
+      common_errors:
+        - error: "Relying only on gateway rate limiting without application-level limits"
+          impact: "Bypassed if traffic enters through a non-gateway path (internal, message queue)"
+          fix: "Layer gateway + application rate limiting; gateway is first defense, not only defense"
+        - error: "Same rate limit for all API plans"
+          impact: "Free-tier users consume the same quota as paying customers"
+          fix: "Configure per-plan rate limits tied to API key or OAuth scope"
+    maturity:
+      level: standard
+    standards:
+      - name: "IETF RateLimit Header Fields"
+        type: rfc
+        role: "Standard response headers for rate limit communication"
+        status: recommended
+
+examples:
+  - id: token_bucket_redis
+    title: "Token Bucket — Redis Implementation"
+    context: "Distributed token bucket rate limiting with Redis"
+    correct: |
+      # Lua script for atomic token bucket (runs in Redis)
+      local key = KEYS[1]
+      local capacity = tonumber(ARGV[1])     -- max burst size
+      local refill_rate = tonumber(ARGV[2])  -- tokens per second
+      local now = tonumber(ARGV[3])          -- current timestamp (ms)
+      local requested = tonumber(ARGV[4])    -- tokens to consume
+
+      local bucket = redis.call("HMGET", key, "tokens", "last_refill")
+      local tokens = tonumber(bucket[1]) or capacity
+      local last_refill = tonumber(bucket[2]) or now
+
+      -- Refill tokens based on elapsed time
+      local elapsed = (now - last_refill) / 1000
+      tokens = math.min(capacity, tokens + (elapsed * refill_rate))
+
+      if tokens >= requested then
+        tokens = tokens - requested
+        redis.call("HMSET", key, "tokens", tokens, "last_refill", now)
+        redis.call("EXPIRE", key, math.ceil(capacity / refill_rate) * 2)
+        return {1, tokens, capacity}  -- allowed, remaining, limit
+      else
+        redis.call("HMSET", key, "tokens", tokens, "last_refill", now)
+        redis.call("EXPIRE", key, math.ceil(capacity / refill_rate) * 2)
+        return {0, tokens, capacity}  -- denied, remaining, limit
+      end
+
+      # Application code
+      function check_rate_limit(client_id, limit, burst):
+        result = redis.eval(lua_script, [f"rate:{client_id}"], [burst, limit, now_ms(), 1])
+        if result[0] == 0:
+          response.headers["Retry-After"] = calculate_retry_after(result)
+          response.headers["X-RateLimit-Limit"] = result[2]
+          response.headers["X-RateLimit-Remaining"] = max(0, result[1])
+          return 429  # Too Many Requests
+        set_rate_limit_headers(response, result)
+        return proceed()
+    incorrect: |
+      # WRONG: In-memory rate limiting in distributed system
+      rate_limits = {}  # Local dictionary — not shared across instances!
+
+      function check_rate_limit(client_id, limit):
+        if client_id not in rate_limits:
+          rate_limits[client_id] = {"count": 0, "window_start": now()}
+        bucket = rate_limits[client_id]
+        if now() - bucket["window_start"] > 60:
+          bucket = {"count": 0, "window_start": now()}
+        bucket["count"] += 1
+        if bucket["count"] > limit:
+          return 429  # No rate limit headers, no Retry-After
+        return proceed()  # No headers at all!
+
+      # Problems:
+      #   - Each instance has separate counter (4 instances = 4x the limit)
+      #   - Fixed window with boundary burst problem
+      #   - No rate limit headers for clients
+      #   - No Retry-After header
+      #   - Memory leak (entries never cleaned up)
+    explanation: >
+      The correct version uses an atomic Redis Lua script for distributed rate
+      limiting with token bucket algorithm. It returns proper rate limit headers
+      and Retry-After. The incorrect version uses per-instance memory (useless
+      in distributed systems), has no headers, and uses a naive fixed window.
+
+  - id: gateway_rate_limit_config
+    title: "API Gateway Rate Limiting — Tiered Plans"
+    context: "Configuring rate limits on an API gateway for different plan tiers"
+    correct: |
+      # API Gateway configuration (conceptual — applies to Kong, APIM, etc.)
+      rate_limit_policies:
+        free_tier:
+          rate: 100
+          per: minute
+          burst: 20
+          scope: per_api_key
+          response_headers: true
+
+        professional_tier:
+          rate: 1000
+          per: minute
+          burst: 200
+          scope: per_api_key
+          response_headers: true
+
+        enterprise_tier:
+          rate: 10000
+          per: minute
+          burst: 2000
+          scope: per_api_key
+          response_headers: true
+
+      # Route configuration
+      routes:
+        /api/v1/search:
+          rate_limit: by_plan_tier
+          additional_limit:
+            rate: 10
+            per: second
+            scope: per_ip  # IP-level DDoS protection
+
+      # Response headers (always included)
+      # X-RateLimit-Limit: 1000
+      # X-RateLimit-Remaining: 847
+      # X-RateLimit-Reset: 1619452800
+      # Retry-After: 30  (only on 429)
+    incorrect: |
+      # WRONG: Single rate limit for all plans, no per-route config
+      rate_limit_policies:
+        default:
+          rate: 1000
+          per: minute
+          # No burst config — hard cutoff
+          # No per-plan differentiation
+          # No response headers
+          # No per-route limits
+    explanation: >
+      Tiered rate limits allow different quotas per API plan, with per-route
+      overrides for expensive endpoints. Including rate limit headers lets
+      clients self-regulate. The incorrect version treats all clients equally
+      and provides no visibility into remaining quota.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Rate limit checks happen before request processing (early rejection)"
+  data_protection:
+    requirements:
+      - "Rate limit state does not leak client identity information in error responses"
+  access_control:
+    requirements:
+      - "Unauthenticated endpoints have IP-based rate limits"
+      - "Authenticated endpoints have identity-based rate limits"
+      - "Admin/internal endpoints have separate higher limits"
+  input_output:
+    requirements:
+      - "429 responses include Retry-After header"
+      - "Rate limit headers included in all responses (not just 429)"
+  secrets:
+    requirements:
+      - "API keys used for rate limiting are not logged in plaintext"
+  monitoring:
+    requirements:
+      - "Alert on rate limit trigger spikes (potential DDoS or abuse)"
+      - "Dashboard for rate limit utilization per client/tenant"
+      - "Log all 429 responses with client identity"
+
+compliance:
+  standards:
+    - name: "IETF RateLimit Header Fields"
+      relevance: "Standardized HTTP headers for rate limit communication"
+    - name: "OWASP API Security Top 10 — API4:2023 Unrestricted Resource Consumption"
+      relevance: "Rate limiting is the primary mitigation for resource consumption attacks"
+      reference: "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/"
+
+  requirements_mapping:
+    - control: abuse_prevention
+      description: "All public-facing APIs have rate limiting to prevent abuse"
+      maps_to:
+        - "OWASP API4:2023"
+    - control: rate_limit_headers
+      description: "All APIs return standard rate limit headers"
+      maps_to:
+        - "IETF RateLimit Header Fields"
+
+prompt_recipes:
+  - id: rate_limit_greenfield
+    scenario: greenfield
+    description: "Design rate limiting for a new API"
+    prompt: |
+      Design rate limiting for a new API service.
+
+      Context:
+      - Rate limit scope: [per_ip/per_api_key/per_user/per_tenant/global]
+      - Architecture: [single_instance/distributed/edge_gateway]
+      - Traffic pattern: [steady/bursty/scheduled_spikes/unpredictable]
+
+      Requirements:
+      - Choose algorithm (token bucket / sliding window)
+      - Define limits per endpoint and per plan tier
+      - Return standard rate limit headers (X-RateLimit-*)
+      - Return 429 with Retry-After on limit exceeded
+      - Handle distributed state (Redis for multi-instance)
+      - Monitor rate limit events and alert on spikes
+
+  - id: rate_limit_audit
+    scenario: audit
+    description: "Audit existing rate limiting implementation"
+    prompt: |
+      Audit the rate limiting implementation:
+
+      1. Are all public endpoints rate limited?
+      2. Is rate limiting applied per identity (not just globally)?
+      3. Are standard rate limit headers returned (X-RateLimit-*)?
+      4. Is 429 returned with Retry-After header?
+      5. In distributed systems, is state centralized (Redis)?
+      6. Are rate limits different per API plan tier?
+      7. Is there IP-based rate limiting for unauthenticated endpoints?
+      8. Are login/auth endpoints rate limited (brute-force prevention)?
+      9. Are rate limit events logged and monitored?
+      10. Is there a DDoS mitigation layer (WAF, CDN)?
+
+  - id: rate_limit_optimization
+    scenario: optimization
+    description: "Optimize rate limiting for performance"
+    prompt: |
+      Optimize the rate limiting implementation for performance:
+
+      1. Reduce Redis round-trips (Lua scripts, pipelining)
+      2. Add local cache with periodic sync for hot paths
+      3. Tune bucket size and refill rate based on traffic analysis
+      4. Implement request costing (expensive operations consume more tokens)
+      5. Profile rate limit middleware latency impact
+
+  - id: rate_limit_incident
+    scenario: security
+    description: "Respond to a rate limiting bypass or DDoS"
+    prompt: |
+      Respond to a rate limit bypass or DDoS attack:
+
+      1. Identify attack vector (distributed IPs, API key abuse, etc.)
+      2. Implement emergency rate limit reduction
+      3. Add IP blocklist for identified attack sources
+      4. Enable WAF/CDN DDoS protection if available
+      5. Review and fix the bypass vulnerability
+      6. Post-incident: adjust rate limits and monitoring thresholds
+
+anti_patterns:
+  - name: "No Rate Limiting"
+    description: >
+      Public-facing APIs with no rate limiting whatsoever. A single client can
+      monopolize server resources, whether intentionally (DDoS) or accidentally
+      (buggy client with infinite retry loop).
+    fix: "Implement rate limiting on all public endpoints; start with conservative limits"
+    severity: critical
+    related_pattern: token_bucket
+
+  - name: "Per-Instance Rate Limiting in Distributed Systems"
+    description: >
+      Using in-memory rate limiting in a load-balanced system. Each instance
+      maintains its own counter, so the actual rate is N times the intended
+      limit (N = number of instances).
+    fix: "Use centralized state (Redis) for distributed rate limiting"
+    severity: high
+    related_pattern: distributed_rate_limiting
+
+  - name: "Fixed Window Boundary Burst"
+    description: >
+      Using fixed time windows for rate limiting. Clients can send the full
+      limit at the end of one window and the full limit at the start of the
+      next, effectively doubling the rate for a short period.
+    fix: "Use sliding window or token bucket algorithm to eliminate boundary exploit"
+    severity: medium
+    related_pattern: sliding_window
+
+  - name: "Missing Rate Limit Headers"
+    description: >
+      Returning 429 without rate limit headers or Retry-After. Clients cannot
+      self-regulate, leading to retry storms and worse overload. Poor developer
+      experience for API consumers.
+    fix: "Include X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, and Retry-After headers"
+    severity: medium
+    related_pattern: token_bucket
+
+checklist:
+  - id: RL-01
+    category: security
+    description: "All public-facing endpoints have rate limiting"
+    severity: critical
+    verified_by: token_bucket
+
+  - id: RL-02
+    category: security
+    description: "Login and authentication endpoints have stricter rate limits"
+    severity: critical
+    verified_by: token_bucket
+
+  - id: RL-03
+    category: correctness
+    description: "Rate limiting uses centralized state in distributed systems"
+    severity: high
+    verified_by: distributed_rate_limiting
+
+  - id: RL-04
+    category: correctness
+    description: "Standard rate limit headers returned in all responses"
+    severity: high
+    verified_by: token_bucket
+
+  - id: RL-05
+    category: correctness
+    description: "429 responses include Retry-After header"
+    severity: high
+    verified_by: token_bucket
+
+  - id: RL-06
+    category: design
+    description: "Rate limits differentiated per API plan tier"
+    severity: medium
+    verified_by: gateway_rate_limiting
+
+  - id: RL-07
+    category: security
+    description: "IP-based rate limiting for unauthenticated endpoints"
+    severity: high
+    verified_by: gateway_rate_limiting
+
+  - id: RL-08
+    category: reliability
+    description: "Graceful fallback when rate limit store is unavailable"
+    severity: high
+    verified_by: distributed_rate_limiting
+
+  - id: RL-09
+    category: observability
+    description: "Rate limit events logged with client identity"
+    severity: medium
+    verified_by: token_bucket
+
+  - id: RL-10
+    category: observability
+    description: "Alerting configured for rate limit spike detection"
+    severity: medium
+    verified_by: distributed_rate_limiting
+
+  - id: RL-11
+    category: performance
+    description: "Rate limit check latency under 5ms (p99)"
+    severity: medium
+    verified_by: distributed_rate_limiting
+
+  - id: RL-12
+    category: security
+    description: "DDoS mitigation layer present (WAF, CDN, or edge rate limiting)"
+    severity: high
+    verified_by: gateway_rate_limiting

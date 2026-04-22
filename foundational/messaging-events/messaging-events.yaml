@@ -1,0 +1,716 @@
+# =============================================================================
+# AI Architecture Cookbook — Messaging & Events
+# Schema: v3 | Domain: messaging-events
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: messaging-events
+  version: "1.0.0"
+  last_updated: 2026-04-22
+  description: >
+    Asynchronous messaging and event-driven communication patterns including
+    message queues, pub/sub, event streaming, and choreography. Covers
+    delivery guarantees, ordering, and failure handling.
+
+  tags:
+    - messaging
+    - events
+    - async
+    - queue
+    - pub-sub
+    - streaming
+    - event-driven
+
+  categories:
+    - foundational
+
+  prerequisites: []
+
+  related_standards:
+    - id: error-handling
+      relationship: complementary
+      context: "Dead-letter queues and retry strategies must follow error-handling patterns"
+    - id: logging-observability
+      relationship: complementary
+      context: "Messages must carry trace context for distributed tracing"
+    - id: api-design
+      relationship: complementary
+      context: "Event schemas require versioning like API contracts"
+    - id: data-persistence
+      relationship: complementary
+      context: "Transactional outbox pattern bridges persistence and messaging"
+
+context_inputs:
+  - name: communication_pattern
+    type: enum
+    description: "Primary async communication need"
+    required: true
+    default: point_to_point
+    enum_values:
+      - point_to_point
+      - fan_out
+      - streaming
+      - request_reply_async
+
+  - name: delivery_guarantee
+    type: enum
+    description: "Required message delivery guarantee"
+    required: true
+    default: at_least_once
+    enum_values:
+      - at_most_once
+      - at_least_once
+      - exactly_once
+
+  - name: ordering_requirement
+    type: enum
+    description: "Message ordering requirements"
+    required: true
+    default: partial
+    enum_values:
+      - none
+      - partial
+      - total
+
+  - name: throughput_requirement
+    type: enum
+    description: "Expected message throughput"
+    required: true
+    default: moderate
+    enum_values:
+      - low
+      - moderate
+      - high
+      - massive
+
+  - name: consumer_count
+    type: enum
+    description: "Number of independent consumers per message"
+    required: true
+    default: single
+    enum_values:
+      - single
+      - multiple
+      - dynamic
+
+decision_tree:
+  - id: fan_out_needs_pubsub
+    priority: 1
+    if:
+      - consumer_count in [multiple, dynamic]
+    then:
+      pattern: pub_sub
+      standards:
+        - CloudEvents
+      notes: "Multiple consumers receiving the same event requires pub/sub or topic-based messaging"
+
+  - id: high_throughput_needs_streaming
+    priority: 2
+    if:
+      - throughput_requirement in [high, massive]
+      - ordering_requirement in [partial, total]
+    then:
+      pattern: event_streaming
+      standards:
+        - CloudEvents
+      notes: "High-throughput ordered messaging fits event streaming platforms"
+
+  - id: point_to_point_needs_queue
+    priority: 3
+    if:
+      - communication_pattern == point_to_point
+      - consumer_count == single
+    then:
+      pattern: message_queue
+      standards:
+        - AMQP
+      notes: "Point-to-point with single consumer fits a message queue"
+
+  - id: exactly_once_needs_idempotency
+    priority: 4
+    if:
+      - delivery_guarantee == exactly_once
+    then:
+      pattern: message_queue
+      standards:
+        - Idempotent Consumer
+      notes: "Exactly-once delivery is achieved via at-least-once + idempotent consumer"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: message_queue
+    description: "Point-to-point message queue with at-least-once delivery and idempotent consumers"
+
+patterns:
+  - id: message_queue
+    name: Message Queue (Point-to-Point)
+    description: >
+      Dedicated queue where each message is consumed by exactly one consumer.
+      Provides decoupling between producer and consumer, load leveling, and
+      reliable delivery with acknowledgment.
+
+    use_when:
+      - "One producer, one consumer (or competing consumers for load balancing)"
+      - "Work distribution — tasks that need exactly one worker"
+      - "Load leveling — buffer traffic spikes for steady processing"
+      - "Guaranteed delivery with retry on failure"
+
+    avoid_when:
+      - "Multiple independent consumers need the same message (use pub/sub)"
+      - "Real-time streaming analytics needed"
+      - "Message ordering must span across all consumers"
+
+    tradeoffs:
+      pros:
+        - "Decouples producer from consumer (temporal and spatial)"
+        - "Load leveling — absorbs traffic spikes"
+        - "At-least-once delivery with acknowledgment"
+        - "Dead-letter queue for poison messages"
+      cons:
+        - "Adds latency compared to synchronous calls"
+        - "Message ordering only guaranteed per partition/group"
+        - "Exactly-once semantics require idempotent consumer design"
+
+    implementation:
+      guidelines:
+        - "Use at-least-once delivery with idempotent consumers (safe default)"
+        - "Set message TTL to prevent unbounded queue growth"
+        - "Configure dead-letter queue for messages that fail processing after N retries"
+        - "Include correlation_id and trace_id in message metadata"
+        - "Acknowledge messages only after successful processing (not on receive)"
+        - "Use competing consumers for horizontal scaling of processing"
+
+      common_errors:
+        - error: "Acknowledging message before processing"
+          impact: "Message lost if processing fails — data loss"
+          fix: "Acknowledge only after successful processing (post-processing ack)"
+        - error: "No dead-letter queue"
+          impact: "Poison messages block the queue forever"
+          fix: "Configure DLQ with max delivery attempts (e.g., 5); alert on DLQ depth"
+        - error: "No idempotency in consumer"
+          impact: "Duplicate processing on retry — double charges, duplicate records"
+          fix: "Use idempotency key (message ID) and check before processing"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: AMQP
+        type: protocol
+        role: "Advanced Message Queuing Protocol"
+        status: recommended
+        reference: "https://www.amqp.org/"
+
+  - id: pub_sub
+    name: Publish/Subscribe
+    description: >
+      Topic-based messaging where publishers send events to a topic and all
+      subscribed consumers receive a copy. Enables event-driven architectures
+      with loose coupling between producers and consumers.
+
+    use_when:
+      - "Multiple independent systems need to react to the same event"
+      - "Event-driven architecture with domain events"
+      - "Fan-out pattern — one event triggers multiple workflows"
+      - "New consumers can be added without changing the producer"
+
+    avoid_when:
+      - "Only one consumer per message (use queue — simpler)"
+      - "Strict ordering across all consumers needed (use streaming)"
+      - "Request-reply semantics needed"
+
+    tradeoffs:
+      pros:
+        - "Complete decoupling — producer doesn't know about consumers"
+        - "New consumers added without producer changes"
+        - "Fan-out — one event, many reactions"
+        - "Natural fit for domain events and event-driven architecture"
+      cons:
+        - "Message ordering not guaranteed across consumers"
+        - "Debugging is harder (who consumed what?)"
+        - "No built-in reply mechanism"
+
+    implementation:
+      guidelines:
+        - "Use topic-based routing (event type as topic)"
+        - "Define event schemas with versioning (CloudEvents format)"
+        - "Each consumer has its own subscription with independent progress"
+        - "Include event metadata: event_id, event_type, timestamp, source, trace_id"
+        - "Use durable subscriptions for at-least-once delivery"
+        - "Implement subscription filtering to avoid processing irrelevant events"
+
+      common_errors:
+        - error: "No event schema versioning"
+          impact: "Schema change breaks all consumers simultaneously"
+          fix: "Version events (e.g., user.created.v1); support backward-compatible evolution"
+        - error: "Fat events with entire entity state"
+          impact: "Tight coupling — consumers depend on producer's internal model"
+          fix: "Use thin events (entity ID + event type); consumers query for details if needed"
+        - error: "No subscription filtering"
+          impact: "Every consumer processes every event, discarding most — wasted compute"
+          fix: "Use topic filtering or subscription filters to receive only relevant events"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: CloudEvents
+        type: spec
+        role: "Standard event format for interoperability"
+        status: recommended
+        reference: "https://cloudevents.io/"
+
+  - id: event_streaming
+    name: Event Streaming
+    description: >
+      Ordered, durable log of events that consumers can replay from any
+      position. Events are retained for a configurable period, allowing
+      new consumers to process historical events.
+
+    use_when:
+      - "High-throughput event processing (millions of events/day)"
+      - "Event replay needed (new consumers must process historical events)"
+      - "Ordered processing within partitions is required"
+      - "Stream processing / real-time analytics"
+
+    avoid_when:
+      - "Low throughput with simple queue semantics (overkill)"
+      - "Global ordering across all events is required"
+      - "Message-level routing or filtering is the primary need"
+
+    tradeoffs:
+      pros:
+        - "Durable log — replay events from any offset"
+        - "High throughput via partitioning"
+        - "Ordered within partition"
+        - "Multiple consumer groups with independent progress"
+      cons:
+        - "Operational complexity (partition management, consumer groups)"
+        - "No per-message routing (partition key only)"
+        - "Consumer must handle out-of-order across partitions"
+
+    implementation:
+      guidelines:
+        - "Choose partition key carefully — determines ordering and parallelism"
+        - "Use consumer groups for horizontal scaling (one partition per consumer)"
+        - "Commit offsets only after successful processing"
+        - "Handle partition rebalancing gracefully"
+        - "Set retention period based on replay needs and storage budget"
+        - "Use schema registry for event schema evolution"
+
+      common_errors:
+        - error: "Wrong partition key choice"
+          impact: "Hot partitions — all traffic goes to one partition, no parallelism"
+          fix: "Choose key with high cardinality and even distribution (entity ID, not country)"
+        - error: "Committing offsets before processing"
+          impact: "Data loss on consumer crash — offset advanced but processing not completed"
+          fix: "Commit offset only after successful processing (at-least-once semantics)"
+        - error: "No schema registry"
+          impact: "Producer schema changes break consumers; no compatibility checks"
+          fix: "Use schema registry with backward-compatible evolution rules"
+
+    maturity:
+      level: advanced
+
+    standards:
+      - name: Apache Kafka Protocol
+        type: protocol
+        role: "Event streaming platform protocol"
+        status: recommended
+      - name: CloudEvents
+        type: spec
+        role: "Event format standard"
+        status: recommended
+
+  - id: transactional_outbox
+    name: Transactional Outbox
+    description: >
+      Writes events to an outbox table in the same database transaction as
+      the business operation. A separate process reads the outbox and
+      publishes events to the message broker. Guarantees exactly-once
+      publishing without distributed transactions.
+
+    use_when:
+      - "Need to publish events reliably when database state changes"
+      - "Cannot tolerate lost events (financial, ordering, inventory)"
+      - "Database and message broker are separate systems (no shared transaction)"
+
+    avoid_when:
+      - "Event loss is acceptable (best-effort publishing)"
+      - "Database supports native change data capture"
+
+    tradeoffs:
+      pros:
+        - "Atomic: event published if and only if transaction commits"
+        - "No distributed transactions needed"
+        - "Works with any database and any message broker"
+      cons:
+        - "Additional outbox table and polling/CDC process"
+        - "Slight delay between commit and publish"
+        - "Outbox table must be cleaned up after publishing"
+
+    implementation:
+      guidelines:
+        - "Write business data and outbox event in the same database transaction"
+        - "Outbox table: id, event_type, payload, created_at, published_at"
+        - "Use polling or CDC (Change Data Capture) to read outbox and publish"
+        - "Mark events as published after successful broker acknowledgment"
+        - "Clean up published events periodically"
+        - "Consumers must still be idempotent (outbox ensures at-least-once)"
+
+      common_errors:
+        - error: "Publishing event outside the transaction"
+          impact: "Transaction rolls back but event was already published — inconsistency"
+          fix: "Write event to outbox table inside the same transaction"
+        - error: "Not cleaning up outbox table"
+          impact: "Outbox grows unbounded, degrading database performance"
+          fix: "Delete or archive published events on a schedule"
+
+    maturity:
+      level: advanced
+
+    standards:
+      - name: Transactional Outbox Pattern
+        type: pattern
+        role: "Reliable event publishing from database transactions"
+        status: recommended
+        reference: "https://microservices.io/patterns/data/transactional-outbox.html"
+
+examples:
+  - id: idempotent_consumer
+    title: "Idempotent Message Consumer"
+    context: "Processing a payment message that may be delivered more than once"
+    correct: |
+      function process_payment(message):
+        idempotency_key = message.metadata.message_id
+
+        # Check if already processed
+        if database.exists("processed_messages", idempotency_key):
+          log.info("Duplicate message, skipping", message_id=idempotency_key)
+          message.acknowledge()
+          return
+
+        # Process in a transaction
+        transaction = database.begin()
+        try:
+          payment_service.charge(message.body.amount, message.body.customer_id)
+          transaction.insert("processed_messages", {
+            "message_id": idempotency_key,
+            "processed_at": now()
+          })
+          transaction.commit()
+          message.acknowledge()  # Acknowledge AFTER processing
+        except:
+          transaction.rollback()
+          # Do NOT acknowledge — message will be redelivered
+          raise
+    incorrect: |
+      # WRONG: No idempotency, ack before processing
+      function process_payment(message):
+        message.acknowledge()  # ACK first — if crash below, message is lost!
+        payment_service.charge(message.body.amount, message.body.customer_id)
+        # No duplicate check — retried message charges customer twice
+    explanation: >
+      Idempotent consumers use a unique message ID to detect duplicates,
+      preventing double-processing on retry. Acknowledgment only after
+      successful processing ensures messages are not lost on failure.
+
+  - id: transactional_outbox_example
+    title: "Transactional Outbox for Reliable Event Publishing"
+    context: "Publishing an order-created event when creating an order"
+    correct: |
+      function create_order(order_data):
+        transaction = database.begin()
+        try:
+          # Business operation
+          order = transaction.insert("orders", order_data)
+
+          # Write event to outbox in SAME transaction
+          transaction.insert("outbox", {
+            "id": generate_uuid(),
+            "event_type": "order.created.v1",
+            "payload": { "order_id": order.id, "total": order.total },
+            "created_at": now(),
+            "published_at": null
+          })
+
+          transaction.commit()
+          return order
+        except:
+          transaction.rollback()
+          raise
+
+      # Separate process: outbox publisher (polling or CDC)
+      function publish_outbox_events():
+        events = database.query("SELECT * FROM outbox WHERE published_at IS NULL ORDER BY created_at LIMIT 100")
+        for event in events:
+          broker.publish(event.event_type, event.payload)
+          database.update("outbox", event.id, { "published_at": now() })
+    incorrect: |
+      # WRONG: Publishing outside transaction
+      function create_order(order_data):
+        order = database.insert("orders", order_data)
+        # If this fails, order exists but event was never published
+        # If DB fails after this, event published but no order exists
+        broker.publish("order.created", { "order_id": order.id })
+        return order
+    explanation: >
+      The transactional outbox writes the event in the same database transaction
+      as the business operation. A separate publisher process reads the outbox
+      and publishes to the broker, ensuring events are published if and only
+      if the transaction committed.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Message broker connections use TLS"
+      - "Inter-service messaging encrypted in transit"
+
+  data_protection:
+    requirements:
+      - "Sensitive data in message payloads encrypted (field-level or envelope)"
+      - "PII in messages minimized — use references (IDs) over full data"
+      - "Message payloads do not contain credentials or secrets"
+
+  access_control:
+    requirements:
+      - "Producers and consumers authenticated to the message broker"
+      - "Topic/queue access controlled per service (least privilege)"
+      - "Admin operations (create topic, purge queue) restricted"
+
+  input_output:
+    requirements:
+      - "Message schemas validated on both produce and consume"
+      - "Message size limits enforced to prevent resource exhaustion"
+
+  secrets:
+    requirements:
+      - "Broker credentials stored in secrets manager"
+      - "Connection strings not hardcoded in application code"
+
+  monitoring:
+    requirements:
+      - "Monitor queue depth and consumer lag"
+      - "Alert on dead-letter queue depth (messages failing processing)"
+      - "Track message processing latency and error rates"
+
+compliance:
+  standards:
+    - name: CloudEvents
+      relevance: "Standard event format for interoperability"
+      reference: "https://cloudevents.io/"
+
+    - name: AMQP
+      relevance: "Standard messaging protocol"
+      reference: "https://www.amqp.org/"
+
+  requirements_mapping:
+    - control: reliable_delivery
+      description: "Messages delivered at-least-once with idempotent consumers"
+      maps_to:
+        - "CloudEvents delivery guarantee"
+
+    - control: dead_letter_handling
+      description: "Failed messages routed to DLQ with alerting"
+      maps_to:
+        - "Operational reliability requirements"
+
+prompt_recipes:
+  - id: greenfield_messaging
+    scenario: greenfield
+    description: "Design messaging for a new system"
+    prompt: |
+      Design the messaging architecture for a new system.
+
+      Context:
+      - Communication pattern: [point_to_point/fan_out/streaming/request_reply_async]
+      - Delivery guarantee: [at_most_once/at_least_once/exactly_once]
+      - Ordering requirement: [none/partial/total]
+      - Throughput: [low/moderate/high/massive]
+
+      Requirements:
+      - Choose appropriate pattern (queue, pub/sub, or streaming)
+      - Design for at-least-once delivery + idempotent consumers
+      - Configure dead-letter queues with alerting
+      - Include trace context in all messages (correlation_id, trace_id)
+      - Version event schemas (CloudEvents format)
+      - Plan for consumer scaling (competing consumers or partitions)
+
+  - id: audit_messaging
+    scenario: audit
+    description: "Audit existing messaging implementation"
+    prompt: |
+      Audit the messaging implementation:
+
+      1. Is delivery guarantee at-least-once (not at-most-once)?
+      2. Are consumers idempotent (safe for duplicate delivery)?
+      3. Is message acknowledgment done after processing (not before)?
+      4. Is a dead-letter queue configured with alerting?
+      5. Are event schemas versioned?
+      6. Is trace context (trace_id) included in messages?
+      7. Are broker connections authenticated and encrypted (TLS)?
+      8. Is consumer lag monitored with alerting?
+      9. Are message payloads free of credentials and excessive PII?
+      10. Is the transactional outbox used for reliable publishing from DB?
+
+      For each item: report compliant/non-compliant/not-applicable with evidence.
+
+  - id: migrate_sync_to_async
+    scenario: migration
+    description: "Migrate synchronous calls to async messaging"
+    prompt: |
+      Evaluate migrating synchronous service calls to asynchronous messaging.
+
+      For each candidate:
+      - Does the caller need the result immediately? (If yes, keep sync)
+      - Can the operation tolerate delay? (If yes, async candidate)
+      - Does failure of the downstream affect the caller? (If should be isolated, use async)
+      - Do multiple services need to react? (If yes, pub/sub)
+
+      Migration steps:
+      1. Identify synchronous calls that can be async
+      2. Introduce message broker (queue or topic)
+      3. Implement transactional outbox if needed
+      4. Add idempotent consumer with DLQ
+      5. Add monitoring (queue depth, consumer lag)
+      6. Run parallel: sync + async, compare results
+      7. Cut over to async only
+
+  - id: debug_message_loss
+    scenario: debugging
+    description: "Debug message loss or duplication issues"
+    prompt: |
+      Debug messaging issues in a distributed system.
+
+      For message loss:
+      1. Check if consumer acknowledges before processing (fix: ack after)
+      2. Check if queue has TTL shorter than processing time
+      3. Check if messages are being routed to wrong queue/topic
+      4. Check dead-letter queue for rejected messages
+
+      For message duplication:
+      1. Check if consumer is idempotent (use message_id as key)
+      2. Check if producer retries without deduplication
+      3. Check consumer group rebalancing causing re-processing
+
+anti_patterns:
+  - name: "Acknowledge before processing"
+    description: >
+      Acknowledging a message as soon as it is received, before processing is
+      complete. If the consumer crashes during processing, the message is lost
+      because the broker considers it delivered.
+    fix: "Acknowledge only after successful processing; let broker redeliver on crash"
+    severity: critical
+    related_pattern: message_queue
+
+  - name: "No idempotency in consumers"
+    description: >
+      Consumers that process every message as if it's the first time. When
+      at-least-once delivery retries a message, the operation is duplicated
+      (double-charge, duplicate record).
+    fix: "Track processed message IDs; check before processing; make operations idempotent"
+    severity: critical
+    related_pattern: message_queue
+
+  - name: "No dead-letter queue"
+    description: >
+      Messages that fail processing are retried indefinitely, blocking the
+      queue for other messages. Poison messages (messages that can never be
+      processed successfully) cause permanent blockage.
+    fix: "Configure DLQ with max retry count; alert on DLQ depth; investigate and replay"
+    severity: high
+    related_pattern: message_queue
+
+  - name: "Publishing event outside database transaction"
+    description: >
+      Publishing an event to the broker separately from the database write.
+      If either fails, the system is inconsistent: event without data, or
+      data without event.
+    fix: "Use transactional outbox — write event in same DB transaction, publish via outbox"
+    severity: high
+    related_pattern: transactional_outbox
+
+  - name: "Unversioned event schemas"
+    description: >
+      Changing event payload structure without versioning. All consumers
+      break simultaneously when the producer changes the schema. No path
+      for gradual migration.
+    fix: "Version events (v1, v2); maintain backward compatibility; deprecate old versions"
+    severity: high
+    related_pattern: pub_sub
+
+checklist:
+  - id: MSG-01
+    category: reliability
+    description: "Message delivery is at-least-once (not at-most-once)"
+    severity: critical
+    verified_by: message_queue
+
+  - id: MSG-02
+    category: reliability
+    description: "All consumers are idempotent (safe for duplicate delivery)"
+    severity: critical
+    verified_by: message_queue
+
+  - id: MSG-03
+    category: reliability
+    description: "Messages acknowledged only after successful processing"
+    severity: critical
+    verified_by: message_queue
+
+  - id: MSG-04
+    category: reliability
+    description: "Dead-letter queue configured with max retries and alerting"
+    severity: high
+    verified_by: message_queue
+
+  - id: MSG-05
+    category: design
+    description: "Event schemas versioned (CloudEvents format)"
+    severity: high
+    verified_by: pub_sub
+
+  - id: MSG-06
+    category: observability
+    description: "Trace context (trace_id, correlation_id) included in messages"
+    severity: high
+    verified_by: message_queue
+
+  - id: MSG-07
+    category: security
+    description: "Broker connections use TLS; producers/consumers authenticated"
+    severity: critical
+    verified_by: message_queue
+
+  - id: MSG-08
+    category: observability
+    description: "Consumer lag and queue depth monitored with alerting"
+    severity: high
+    verified_by: message_queue
+
+  - id: MSG-09
+    category: reliability
+    description: "Transactional outbox used for reliable event publishing from DB"
+    severity: high
+    verified_by: transactional_outbox
+
+  - id: MSG-10
+    category: security
+    description: "Message payloads free of credentials and unnecessary PII"
+    severity: high
+    verified_by: message_queue
+
+  - id: MSG-11
+    category: design
+    description: "Message size limits enforced"
+    severity: medium
+    verified_by: message_queue
+
+  - id: MSG-12
+    category: performance
+    description: "Partition key chosen for even distribution (streaming)"
+    severity: high
+    verified_by: event_streaming

@@ -1,0 +1,687 @@
+# =============================================================================
+# AI Architecture Cookbook — Search
+# Schema: v3 | Domain: search
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: search
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Search infrastructure patterns including full-text search engines,
+    indexing strategies, query optimization, faceted search, and search
+    relevance tuning. Covers both dedicated search engines and database
+    full-text search capabilities.
+
+  tags:
+    - search
+    - full-text-search
+    - elasticsearch
+    - indexing
+    - relevance
+    - faceted-search
+
+  categories:
+    - integration-data
+
+  prerequisites:
+    - id: data-persistence
+      reason: "Search indexes are derived from primary data stores"
+    - id: performance-optimization
+      reason: "Search latency is a critical user experience metric"
+
+  related_standards:
+    - id: api-design
+      relationship: complementary
+      context: "Search APIs follow RESTful query patterns"
+    - id: logging-observability
+      relationship: complementary
+      context: "Search query analytics drive relevance tuning"
+    - id: data-transformation
+      relationship: complementary
+      context: "Data must be transformed and enriched before indexing"
+
+context_inputs:
+  - name: search_engine
+    type: enum
+    description: "Search engine technology"
+    required: true
+    default: dedicated_engine
+    enum_values:
+      - dedicated_engine
+      - database_fulltext
+      - hybrid
+
+  - name: data_volume
+    type: enum
+    description: "Volume of searchable data"
+    required: true
+    default: medium
+    enum_values:
+      - small
+      - medium
+      - large
+      - very_large
+
+  - name: query_complexity
+    type: enum
+    description: "Complexity of search queries"
+    required: false
+    default: moderate
+    enum_values:
+      - simple
+      - moderate
+      - complex
+      - ai_powered
+
+  - name: freshness_requirement
+    type: enum
+    description: "How quickly new data must be searchable"
+    required: false
+    default: near_realtime
+    enum_values:
+      - realtime
+      - near_realtime
+      - periodic
+      - batch
+
+decision_tree:
+  - id: large_scale_search
+    priority: 1
+    if:
+      - data_volume in [large, very_large]
+    then:
+      pattern: dedicated_search_engine
+      standards:
+        - "Elasticsearch"
+        - "OpenSearch"
+      notes: >
+        Large data volumes require dedicated search infrastructure.
+        Database full-text search doesn't scale for complex queries
+        across millions of documents.
+    else:
+      pattern: database_search
+      notes: "Small datasets may be served adequately by database full-text capabilities"
+
+  - id: complex_queries
+    priority: 2
+    if:
+      - query_complexity in [complex, ai_powered]
+    then:
+      pattern: dedicated_search_engine
+      notes: >
+        Complex queries (faceted search, fuzzy matching, boosting, synonyms,
+        vector search) require a dedicated search engine.
+
+  - id: realtime_search
+    priority: 3
+    if:
+      - freshness_requirement == realtime
+    then:
+      pattern: event_driven_indexing
+      notes: >
+        Real-time search freshness requires event-driven indexing that
+        updates the search index as data changes occur.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: dedicated_search_engine
+    description: "A dedicated search engine handles most use cases and scales well"
+
+patterns:
+  - id: dedicated_search_engine
+    name: "Dedicated Search Engine (Elasticsearch/OpenSearch)"
+    description: >
+      Use a dedicated search engine as a read-optimized view of your data.
+      The primary database remains the source of truth; the search engine
+      is an eventually-consistent index optimized for query performance.
+      Supports full-text search, facets, aggregations, fuzzy matching,
+      and relevance scoring.
+    use_when:
+      - "Full-text search across large document collections"
+      - "Faceted search and filtering (e-commerce, catalogs)"
+      - "Complex queries: fuzzy matching, synonyms, boosting"
+      - "Aggregations and analytics on search data"
+    avoid_when:
+      - "Simple keyword lookup on small datasets (< 100K records)"
+      - "Only need exact-match filtering (use database queries)"
+    tradeoffs:
+      pros:
+        - "Sub-second full-text search across millions of documents"
+        - "Rich query DSL: fuzzy, proximity, boosting, synonyms"
+        - "Faceted search and aggregations built-in"
+        - "Horizontal scaling with sharding"
+      cons:
+        - "Additional infrastructure to manage"
+        - "Eventually consistent with primary data store"
+        - "Index mapping design affects query capabilities"
+        - "Operational complexity (sharding, replication, upgrades)"
+    implementation:
+      guidelines:
+        - "Index is a READ VIEW — primary database is source of truth"
+        - "Design index mapping for your query patterns, not your data model"
+        - "Use keyword fields for exact match/filter, text fields for full-text"
+        - "Configure analyzers per language and field type"
+        - "Implement query-time boosting for relevance tuning"
+        - "Set up index aliases for zero-downtime reindexing"
+        - "Monitor search latency, indexing lag, and cluster health"
+      common_errors:
+        - error: "Using search engine as primary database"
+          impact: "Data loss risk — search engines optimize for read, not durability"
+          fix: "Search engine is a derived read view; primary DB is source of truth"
+        - error: "Indexing entire domain model as-is"
+          impact: "Inefficient queries, bloated index, poor relevance"
+          fix: "Design index mapping for query patterns — denormalize for search"
+        - error: "No index aliases"
+          impact: "Reindexing requires downtime or complex migration"
+          fix: "Always query via alias; swap alias to new index for zero-downtime reindex"
+    maturity:
+      level: standard
+    standards:
+      - name: "Elasticsearch"
+        type: tool
+        role: "Distributed search and analytics engine"
+        status: recommended
+      - name: "OpenSearch"
+        type: tool
+        role: "Open-source fork of Elasticsearch"
+        status: recommended
+
+  - id: event_driven_indexing
+    name: "Event-Driven Search Indexing"
+    description: >
+      Keep search indexes fresh by reacting to data change events.
+      When the primary database changes, publish an event that triggers
+      index updates. Supports near-real-time search freshness without
+      tightly coupling the write path to the search engine.
+    use_when:
+      - "Search results must reflect recent data changes (< 1s delay)"
+      - "Multiple data sources feed into one search index"
+      - "Indexing logic is complex (enrichment, denormalization)"
+    avoid_when:
+      - "Periodic batch reindexing is sufficient (e.g., nightly catalog refresh)"
+      - "Data changes very infrequently"
+    tradeoffs:
+      pros:
+        - "Near-real-time search freshness"
+        - "Decoupled from write path — doesn't slow down writes"
+        - "Can enrich/transform data during indexing"
+        - "Replay events to rebuild index from scratch"
+      cons:
+        - "Eventually consistent — brief lag between write and searchable"
+        - "Event infrastructure required (Kafka, SQS, etc.)"
+        - "Must handle out-of-order and duplicate events"
+    implementation:
+      guidelines:
+        - "Publish domain events on data changes (CDC or application events)"
+        - "Index consumer processes events and updates search engine"
+        - "Make index updates idempotent — events may be delivered multiple times"
+        - "Include version/timestamp to handle out-of-order events"
+        - "Build full reindex capability by replaying all events"
+        - "Monitor indexing lag (time between event and searchable)"
+        - "Dead-letter queue for events that fail indexing"
+      common_errors:
+        - error: "Tight coupling: updating search index in the write transaction"
+          impact: "Write performance degrades; search engine failures break writes"
+          fix: "Publish event after commit; separate consumer updates search async"
+        - error: "No full reindex capability"
+          impact: "Index corruption or mapping changes require manual recovery"
+          fix: "Build replay pipeline that can rebuild index from source of truth"
+        - error: "Ignoring event ordering"
+          impact: "Stale data overwrites fresh data in index"
+          fix: "Use version numbers; only apply updates with higher version"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Change Data Capture"
+        type: pattern
+        role: "Capture database changes as events for downstream processing"
+        status: recommended
+
+  - id: database_search
+    name: "Database Full-Text Search"
+    description: >
+      Leverage built-in full-text search capabilities of relational databases
+      (PostgreSQL tsvector, MySQL FULLTEXT). Sufficient for moderate data
+      volumes with simple search requirements. Avoids the operational overhead
+      of a dedicated search engine.
+    use_when:
+      - "Small to medium data volume (< 1M searchable records)"
+      - "Simple search requirements (keyword, phrase matching)"
+      - "Don't want to manage additional infrastructure"
+      - "Search data already in the primary database"
+    avoid_when:
+      - "Complex queries: facets, fuzzy matching, synonyms, boosting"
+      - "Large data volume requiring horizontal scaling"
+      - "Sub-100ms search latency requirements at scale"
+    tradeoffs:
+      pros:
+        - "No additional infrastructure — uses existing database"
+        - "Consistent with primary data (no sync lag)"
+        - "Simpler operations — one system to manage"
+        - "Good enough for many use cases"
+      cons:
+        - "Limited query capabilities compared to dedicated engines"
+        - "Doesn't scale horizontally for search workloads"
+        - "Less control over relevance scoring and analyzers"
+    implementation:
+      guidelines:
+        - "Create GIN index on tsvector column (PostgreSQL)"
+        - "Use language-specific text search configurations"
+        - "Materialize tsvector column (don't compute at query time)"
+        - "Combine full-text with standard WHERE clauses for filtering"
+        - "Use ts_rank for basic relevance scoring"
+        - "Monitor query performance — know when to graduate to dedicated engine"
+      common_errors:
+        - error: "LIKE '%search%' instead of full-text search"
+          impact: "No index usage — full table scan on every query"
+          fix: "Use proper full-text search: to_tsvector/to_tsquery in PostgreSQL"
+        - error: "Computing tsvector at query time"
+          impact: "Slow queries — text parsing on every search request"
+          fix: "Store tsvector in a dedicated column; update via trigger"
+        - error: "No plan for outgrowing database search"
+          impact: "Expensive migration to dedicated engine under time pressure"
+          fix: "Abstract search behind an interface; swap implementation when needed"
+    maturity:
+      level: standard
+    standards:
+      - name: "PostgreSQL Full-Text Search"
+        type: reference
+        role: "Built-in text search with tsvector and tsquery"
+        status: recommended
+
+examples:
+  - id: search_architecture
+    title: "Search Architecture with Dedicated Engine"
+    context: "E-commerce product search with facets and relevance"
+    correct: |
+      # Architecture: Database (source of truth) → Events → Search Engine (read view)
+
+      # 1. Index mapping — designed for QUERIES, not data model
+      product_mapping = {
+          "mappings": {
+              "properties": {
+                  "name": {
+                      "type": "text",
+                      "analyzer": "standard",
+                      "fields": {"keyword": {"type": "keyword"}},  # For exact match/sort
+                  },
+                  "description": {"type": "text", "analyzer": "english"},
+                  "category": {"type": "keyword"},  # For faceted filtering
+                  "brand": {"type": "keyword"},
+                  "price": {"type": "float"},
+                  "rating": {"type": "float"},
+                  "in_stock": {"type": "boolean"},
+                  "tags": {"type": "keyword"},  # Multi-value facet
+                  "created_at": {"type": "date"},
+              }
+          }
+      }
+
+      # 2. Event-driven indexing
+      class ProductIndexer:
+          def handle_product_updated(self, event: ProductUpdatedEvent):
+              """Index product on change event — idempotent."""
+              doc = {
+                  "name": event.product.name,
+                  "description": event.product.description,
+                  "category": event.product.category.name,
+                  "brand": event.product.brand,
+                  "price": float(event.product.price),
+                  "rating": float(event.product.avg_rating),
+                  "in_stock": event.product.stock > 0,
+                  "tags": [t.name for t in event.product.tags],
+              }
+              # Versioned upsert — handles out-of-order events
+              self.es.index(
+                  index="products",
+                  id=str(event.product.id),
+                  body=doc,
+                  version=event.version,
+                  version_type="external",
+              )
+
+      # 3. Search query with facets and boosting
+      def search_products(query: str, filters: dict, page: int = 1):
+          body = {
+              "query": {
+                  "bool": {
+                      "must": [
+                          {"multi_match": {
+                              "query": query,
+                              "fields": ["name^3", "description", "tags^2"],
+                              "fuzziness": "AUTO",
+                          }}
+                      ],
+                      "filter": [
+                          {"term": {"in_stock": True}},
+                          *[{"term": {k: v}} for k, v in filters.items()],
+                      ],
+                  }
+              },
+              "aggs": {
+                  "categories": {"terms": {"field": "category"}},
+                  "brands": {"terms": {"field": "brand"}},
+                  "price_ranges": {"range": {"field": "price", "ranges": [
+                      {"to": 25}, {"from": 25, "to": 100}, {"from": 100},
+                  ]}},
+              },
+              "from": (page - 1) * 20,
+              "size": 20,
+          }
+          return self.es.search(index="products", body=body)
+    incorrect: |
+      # WRONG: SQL LIKE search on large product catalog
+      def search_products(query, page=1):
+          # Full table scan on every search — O(n) performance
+          results = db.execute(
+              "SELECT * FROM products WHERE name LIKE :q OR description LIKE :q",
+              {"q": f"%{query}%"},
+          ).fetchall()
+
+          # No relevance scoring — results in database order
+          # No faceted search — would require N additional queries
+          # No fuzzy matching — "runnign shoes" finds nothing
+          # No boosting — title matches ranked same as description
+
+          return results[(page-1)*20 : page*20]
+
+      # Problems:
+      # 1. LIKE '%query%' = full table scan (no index usage)
+      # 2. No relevance scoring — irrelevant results ranked equally
+      # 3. No facets — can't show category/brand/price filters
+      # 4. No fuzzy matching — typos return no results
+      # 5. Application-level pagination — fetches ALL then slices
+    explanation: >
+      The correct example uses a dedicated search engine with optimized
+      index mapping, event-driven indexing for freshness, fuzzy matching,
+      field boosting for relevance, and faceted search. The incorrect
+      example uses SQL LIKE which doesn't scale and lacks search features.
+
+  - id: db_fulltext_example
+    title: "PostgreSQL Full-Text Search for Small Datasets"
+    context: "Internal knowledge base search (< 100K articles)"
+    correct: |
+      -- PostgreSQL: Proper full-text search with GIN index
+
+      -- 1. Add tsvector column (materialized, not computed at query time)
+      ALTER TABLE articles ADD COLUMN search_vector tsvector;
+
+      -- 2. Populate and keep in sync via trigger
+      CREATE OR REPLACE FUNCTION articles_search_trigger() RETURNS trigger AS $$
+      BEGIN
+        NEW.search_vector :=
+          setweight(to_tsvector('english', COALESCE(NEW.title, '')), 'A') ||
+          setweight(to_tsvector('english', COALESCE(NEW.body, '')), 'B');
+        RETURN NEW;
+      END
+      $$ LANGUAGE plpgsql;
+
+      CREATE TRIGGER articles_search_update
+        BEFORE INSERT OR UPDATE ON articles
+        FOR EACH ROW EXECUTE FUNCTION articles_search_trigger();
+
+      -- 3. GIN index for fast search
+      CREATE INDEX idx_articles_search ON articles USING GIN (search_vector);
+
+      -- 4. Search query with ranking
+      SELECT id, title,
+             ts_rank(search_vector, query) AS rank
+      FROM articles,
+           to_tsquery('english', 'kubernetes & deployment') AS query
+      WHERE search_vector @@ query
+      ORDER BY rank DESC
+      LIMIT 20;
+    incorrect: |
+      -- WRONG: LIKE search without full-text capabilities
+      SELECT * FROM articles
+      WHERE title LIKE '%kubernetes%' OR body LIKE '%kubernetes%';
+      -- Full table scan, no ranking, no stemming, no index
+    explanation: >
+      PostgreSQL full-text search with tsvector, GIN index, and weighted
+      ranking provides proper search capabilities without a dedicated engine.
+      LIKE queries don't use indexes, don't rank results, and don't handle
+      stemming or language-specific analysis.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Search engine cluster communication uses TLS"
+      - "Search API endpoints protected by authentication"
+  data_protection:
+    requirements:
+      - "Sensitive fields excluded from search index or field-level encrypted"
+      - "Search queries do not expose data beyond user's access scope"
+  access_control:
+    requirements:
+      - "Search results filtered by user's authorization scope"
+      - "Admin-only access to index management operations"
+  input_output:
+    requirements:
+      - "Search queries sanitized — prevent injection into query DSL"
+      - "Result highlighting escaped to prevent XSS in rendered results"
+  secrets:
+    requirements:
+      - "Search engine credentials stored in secrets manager"
+      - "API keys for search service rotated regularly"
+  monitoring:
+    requirements:
+      - "Search query patterns logged for analytics and abuse detection"
+      - "Index health, cluster status, and query latency monitored"
+
+compliance:
+  standards:
+    - name: "GDPR"
+      relevance: "Search indexes must respect data deletion and access controls"
+    - name: "SOC 2"
+      relevance: "Search data access controls and audit logging"
+
+  requirements_mapping:
+    - control: data_scope
+      description: "Search results scoped to user's authorized data"
+      maps_to:
+        - "Role-based access control"
+    - control: data_deletion
+      description: "Deleted data removed from search indexes promptly"
+      maps_to:
+        - "GDPR right to erasure"
+    - control: query_sanitization
+      description: "Search input sanitized to prevent query injection"
+      maps_to:
+        - "OWASP injection prevention"
+
+prompt_recipes:
+  - id: search_greenfield
+    scenario: greenfield
+    description: "Design search infrastructure from scratch"
+    prompt: |
+      Design search for {application_type}.
+
+      Context:
+      - Data volume: [small/medium/large/very_large]
+      - Query complexity: [simple/moderate/complex/ai_powered]
+      - Freshness requirement: [realtime/near_realtime/periodic/batch]
+
+      Decide: dedicated engine vs database full-text.
+
+      If dedicated engine:
+      1. Define index mapping (text vs keyword fields, analyzers)
+      2. Event-driven indexing pipeline (CDC or application events)
+      3. Query builder with boosting and fuzzy matching
+      4. Faceted search for filtering UI
+      5. Index aliases for zero-downtime reindexing
+      6. Monitoring: latency, indexing lag, cluster health
+
+      If database full-text:
+      1. tsvector column with weighted fields
+      2. GIN index for performance
+      3. Trigger to keep search vector in sync
+      4. ts_rank for relevance scoring
+      5. Plan for graduating to dedicated engine
+
+  - id: search_optimization
+    scenario: optimization
+    description: "Optimize search relevance and performance"
+    prompt: |
+      Optimize search for {application}.
+
+      Relevance tuning:
+      1. Analyze top queries with no results — add synonyms/suggestions
+      2. Review field boosting — title vs description vs tags
+      3. Add fuzzy matching for typo tolerance
+      4. Implement "did you mean" suggestions
+      5. A/B test relevance changes with click-through rate
+
+      Performance tuning:
+      1. Profile slow queries — check analyzer and mapping efficiency
+      2. Right-size shards (target 10-50GB per shard)
+      3. Use filter context for non-scoring clauses
+      4. Cache frequent queries
+      5. Monitor p50/p95/p99 search latency
+
+  - id: search_audit
+    scenario: audit
+    description: "Audit search infrastructure"
+    prompt: |
+      Audit search infrastructure for {application}.
+
+      Checklist:
+      1. Search engine is a read view — not source of truth?
+      2. Full reindex capability exists and tested?
+      3. Indexing lag monitored and within SLA?
+      4. Query sanitization prevents injection?
+      5. Results scoped to user's authorization?
+      6. Sensitive data excluded from search index?
+      7. Cluster health monitored and alerts configured?
+      8. Index aliases used for zero-downtime operations?
+      9. Search analytics collected for relevance tuning?
+      10. Disaster recovery plan for search index rebuild?
+
+  - id: search_migration
+    scenario: migration
+    description: "Migrate from database search to dedicated engine"
+    prompt: |
+      Migrate search from database to dedicated search engine.
+
+      Steps:
+      1. Audit current search queries and usage patterns
+      2. Design index mapping based on query needs (not data model)
+      3. Build indexing pipeline (initial bulk + event-driven incremental)
+      4. Implement search service abstraction (swap implementation)
+      5. Run both in parallel — compare results for parity
+      6. Gradually shift traffic to new search engine
+      7. Tune relevance based on user behavior analytics
+      8. Decommission database search queries
+
+anti_patterns:
+  - name: "LIKE '%query%' as Search"
+    description: >
+      Using SQL LIKE with leading wildcard for search. Cannot use database
+      indexes (full table scan on every query), no relevance ranking, no
+      stemming, no fuzzy matching. Doesn't scale beyond trivial datasets.
+    fix: "Use PostgreSQL full-text search (tsvector/tsquery) or dedicated search engine"
+    severity: high
+    related_pattern: database_search
+
+  - name: "Search Engine as Source of Truth"
+    description: >
+      Treating the search engine as the primary database. Search engines
+      optimize for query performance, not data durability. Data loss during
+      cluster issues, reindexing, or upgrades.
+    fix: "Search engine is a derived read view; primary database is source of truth"
+    severity: critical
+    related_pattern: dedicated_search_engine
+
+  - name: "Indexing in the Write Path"
+    description: >
+      Updating the search index synchronously in the database write
+      transaction. Search engine latency slows every write; search engine
+      failures block database writes.
+    fix: "Publish events after commit; update search index asynchronously"
+    severity: high
+    related_pattern: event_driven_indexing
+
+  - name: "No Relevance Tuning"
+    description: >
+      Using default relevance scoring without tuning for the specific use
+      case. Users get poor results, don't find what they need, and stop
+      using search. No feedback loop for improvement.
+    fix: "Implement field boosting, analyze search analytics, A/B test relevance changes"
+    severity: medium
+    related_pattern: dedicated_search_engine
+
+checklist:
+  - id: SCH-01
+    category: design
+    description: "Search engine is a read view — primary DB is source of truth"
+    severity: critical
+    verified_by: dedicated_search_engine
+
+  - id: SCH-02
+    category: design
+    description: "Index mapping designed for query patterns, not data model"
+    severity: high
+    verified_by: dedicated_search_engine
+
+  - id: SCH-03
+    category: reliability
+    description: "Full reindex capability exists and tested regularly"
+    severity: high
+    verified_by: event_driven_indexing
+
+  - id: SCH-04
+    category: performance
+    description: "Search latency p95 within SLA (typically < 200ms)"
+    severity: high
+    verified_by: dedicated_search_engine
+
+  - id: SCH-05
+    category: correctness
+    description: "Indexing lag monitored and within freshness SLA"
+    severity: high
+    verified_by: event_driven_indexing
+
+  - id: SCH-06
+    category: security
+    description: "Search results filtered by user authorization scope"
+    severity: critical
+    verified_by: dedicated_search_engine
+
+  - id: SCH-07
+    category: security
+    description: "Query input sanitized to prevent injection"
+    severity: high
+    verified_by: dedicated_search_engine
+
+  - id: SCH-08
+    category: observability
+    description: "Search analytics collected (queries, no-results, click-through)"
+    severity: medium
+    verified_by: dedicated_search_engine
+
+  - id: SCH-09
+    category: performance
+    description: "Index aliases used for zero-downtime reindexing"
+    severity: high
+    verified_by: dedicated_search_engine
+
+  - id: SCH-10
+    category: compliance
+    description: "Deleted data removed from search index promptly"
+    severity: high
+    verified_by: event_driven_indexing
+
+  - id: SCH-11
+    category: observability
+    description: "Cluster health and shard status monitored with alerts"
+    severity: high
+    verified_by: dedicated_search_engine
+
+  - id: SCH-12
+    category: reliability
+    description: "Dead-letter handling for failed indexing events"
+    severity: high
+    verified_by: event_driven_indexing

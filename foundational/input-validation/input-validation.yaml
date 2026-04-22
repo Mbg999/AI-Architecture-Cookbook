@@ -1,0 +1,611 @@
+# =============================================================================
+# AI Architecture Cookbook — Input Validation & Sanitization
+# Schema: v3 | Domain: input-validation
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: input-validation
+  version: "1.0.0"
+  last_updated: 2026-04-22
+  description: >
+    Input validation and sanitization decision framework for preventing injection
+    attacks, ensuring data integrity, and maintaining system security at all
+    system boundaries.
+
+  tags:
+    - security
+    - validation
+    - sanitization
+    - injection
+    - xss
+    - input
+
+  categories:
+    - foundational
+    - security-quality
+
+  prerequisites: []
+
+  related_standards:
+    - id: api-design
+      relationship: complementary
+      context: "All API inputs must be validated per this standard"
+    - id: data-persistence
+      relationship: complementary
+      context: "Data written to storage must be validated and sanitized"
+    - id: authentication
+      relationship: complementary
+      context: "Authentication inputs (credentials, tokens) require strict validation"
+    - id: error-handling
+      relationship: complementary
+      context: "Validation failures must return structured error responses"
+
+context_inputs:
+  - name: input_sources
+    type: enum
+    description: "Where does untrusted input originate?"
+    required: true
+    default: external_api
+    enum_values:
+      - user_forms
+      - external_api
+      - file_uploads
+      - webhooks
+      - internal_api
+      - mixed
+
+  - name: data_sensitivity
+    type: enum
+    description: "Sensitivity of data being processed"
+    required: true
+    default: medium
+    enum_values:
+      - low
+      - medium
+      - high
+      - critical
+
+  - name: output_contexts
+    type: enum
+    description: "Where will the validated data be rendered or used?"
+    required: true
+    default: api_response
+    enum_values:
+      - html_page
+      - api_response
+      - database_query
+      - shell_command
+      - file_system
+      - mixed
+
+  - name: validation_strictness
+    type: enum
+    description: "How strict should validation be?"
+    required: false
+    default: strict
+    enum_values:
+      - permissive
+      - moderate
+      - strict
+
+decision_tree:
+  - id: html_output_needs_encoding
+    priority: 1
+    if:
+      - output_contexts in [html_page, mixed]
+    then:
+      pattern: output_encoding
+      standards:
+        - OWASP XSS Prevention
+      notes: "Any data rendered in HTML must be context-encoded to prevent XSS"
+
+  - id: all_input_needs_validation
+    priority: 2
+    if:
+      - input_sources in [user_forms, external_api, file_uploads, webhooks, mixed]
+    then:
+      pattern: schema_validation
+      standards:
+        - JSON Schema
+        - OWASP Input Validation
+      notes: "All external input must be validated against a schema before processing"
+
+  - id: high_sensitivity_needs_allowlist
+    priority: 3
+    if:
+      - data_sensitivity in [high, critical]
+    then:
+      pattern: allowlist_validation
+      standards:
+        - OWASP Input Validation
+      notes: "High-sensitivity contexts require allowlist validation (accept known good, reject everything else)"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: critical
+  fallback:
+    pattern: schema_validation
+    description: "Validate all input against a strict schema; reject anything that doesn't conform"
+
+patterns:
+  - id: schema_validation
+    name: Schema-Based Validation
+    description: >
+      Validates input against a predefined schema that specifies expected types,
+      formats, ranges, and constraints. Rejects any input that does not conform.
+      The primary defense against malformed and malicious input.
+
+    use_when:
+      - "API endpoints receiving structured input (JSON, XML, form data)"
+      - "File format validation before processing"
+      - "Configuration input that must conform to a specification"
+
+    avoid_when:
+      - "Free-text input where schema cannot fully describe valid content (use sanitization)"
+
+    tradeoffs:
+      pros:
+        - "Declarative — schema is documentation and validation in one"
+        - "Catches malformed input early (fail fast)"
+        - "Auto-generated from OpenAPI, GraphQL schema, or protobuf"
+        - "Consistent validation across all endpoints"
+      cons:
+        - "Cannot catch all semantic validation (business rules)"
+        - "Schema maintenance overhead"
+        - "May reject valid edge cases if schema is too strict"
+
+    implementation:
+      guidelines:
+        - "Validate at the system boundary (before any processing)"
+        - "Use JSON Schema, OpenAPI, GraphQL schema, or protobuf for structural validation"
+        - "Enforce type, format, min/max length, pattern (regex), and required fields"
+        - "Reject unknown fields (additionalProperties: false in JSON Schema)"
+        - "Validate nested objects recursively"
+        - "Return structured validation errors listing all failures (not just the first)"
+
+      common_errors:
+        - error: "Validating only on the client side"
+          impact: "Attackers bypass client-side validation completely"
+          fix: "Always validate on the server; client validation is for UX only"
+        - error: "Allowing unknown fields"
+          impact: "Unexpected fields may cause mass-assignment vulnerabilities"
+          fix: "Set additionalProperties: false; whitelist accepted fields explicitly"
+        - error: "Stopping at first validation error"
+          impact: "User must fix one error at a time, submitting repeatedly"
+          fix: "Collect and return all validation errors in one response"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: JSON Schema
+        type: spec
+        role: "Structural validation for JSON data"
+        status: recommended
+        reference: "https://json-schema.org/"
+      - name: OWASP Input Validation Cheat Sheet
+        type: spec
+        role: "Security-focused input validation guidance"
+        status: recommended
+        reference: "https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html"
+
+  - id: allowlist_validation
+    name: Allowlist Validation
+    description: >
+      Accepts only explicitly known-good input values and rejects everything
+      else. The most secure validation approach — defines what IS allowed
+      rather than trying to enumerate what is NOT allowed.
+
+    use_when:
+      - "High-security contexts (financial, healthcare, authentication)"
+      - "Input has a finite set of valid values (enums, codes, identifiers)"
+      - "File type validation (accept only specific MIME types)"
+      - "URL validation (accept only known domains)"
+
+    avoid_when:
+      - "Free-text input where valid values cannot be enumerated"
+      - "Fields requiring high variability (names, addresses)"
+
+    tradeoffs:
+      pros:
+        - "Strongest security — unknown input is rejected by default"
+        - "Simple to reason about and audit"
+        - "Immune to bypass via encoding tricks or novel attack vectors"
+      cons:
+        - "Cannot handle free-text or highly variable input"
+        - "Requires maintenance when valid values change"
+        - "May reject legitimate edge cases"
+
+    implementation:
+      guidelines:
+        - "Define explicit lists of allowed values, patterns, or character sets"
+        - "For identifiers: use regex patterns (e.g., ^[a-zA-Z0-9_-]{1,64}$)"
+        - "For file uploads: validate MIME type AND file magic bytes (not just extension)"
+        - "For URLs: validate against known allowlist of domains"
+        - "For enums: validate against the exact set of allowed values"
+        - "Reject first, then validate — default deny"
+
+      common_errors:
+        - error: "Validating file type by extension only"
+          impact: "Attacker renames malicious.exe to safe.jpg"
+          fix: "Validate MIME type, file magic bytes, and extension together"
+        - error: "Using denylist instead of allowlist"
+          impact: "Attacker finds encoding or bypass not on the denylist"
+          fix: "Use allowlist — define what is accepted, reject everything else"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: OWASP Input Validation
+        type: spec
+        role: "Allowlist validation best practices"
+        status: recommended
+        reference: "https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html"
+
+  - id: output_encoding
+    name: Context-Aware Output Encoding
+    description: >
+      Encodes output data based on the context where it will be rendered
+      (HTML body, HTML attribute, JavaScript, CSS, URL). Prevents injection
+      attacks by ensuring data cannot be interpreted as code.
+
+    use_when:
+      - "Any user-supplied data rendered in HTML, JavaScript, CSS, or URLs"
+      - "Data from any untrusted source displayed to users"
+      - "Email templates containing dynamic content"
+
+    avoid_when:
+      - "Pure API-to-API communication with no rendering context"
+
+    tradeoffs:
+      pros:
+        - "Prevents XSS regardless of input validation failures"
+        - "Context-specific — correct encoding for each output context"
+        - "Defense in depth — works even if validation is bypassed"
+      cons:
+        - "Must know the output context to encode correctly"
+        - "Double-encoding bugs if applied multiple times"
+        - "Doesn't prevent stored XSS if data is not encoded on output"
+
+    implementation:
+      guidelines:
+        - "Encode on output, not on input (data may be used in multiple contexts)"
+        - "Use context-specific encoding: HTML entity encoding for HTML body, attribute encoding for attributes, JavaScript encoding for JS context, URL encoding for URLs"
+        - "Use a trusted encoding library (never hand-roll encoding)"
+        - "Use Content Security Policy (CSP) header as additional XSS mitigation"
+        - "Never use innerHTML or equivalent with untrusted data — use textContent"
+        - "Sanitize rich text with allowlist-based HTML sanitizer"
+
+      common_errors:
+        - error: "Encoding on input instead of output"
+          impact: "Data stored encoded, then double-encoded on output, or wrong encoding for different contexts"
+          fix: "Store raw data; encode at the point of output based on rendering context"
+        - error: "Using innerHTML with user data"
+          impact: "Direct XSS — user-controlled HTML is parsed and executed"
+          fix: "Use textContent for plain text; use allowlist-based sanitizer for rich text"
+        - error: "Missing Content Security Policy"
+          impact: "Inline scripts and external script injection possible even with encoding"
+          fix: "Implement strict CSP: script-src 'self'; report-uri for monitoring"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: OWASP XSS Prevention Cheat Sheet
+        type: spec
+        role: "XSS prevention best practices"
+        status: recommended
+        reference: "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Scripting_Prevention_Cheat_Sheet.html"
+      - name: Content Security Policy
+        type: spec
+        role: "Browser-enforced script execution policy"
+        status: recommended
+        reference: "https://www.w3.org/TR/CSP3/"
+
+examples:
+  - id: schema_validation_api
+    title: "API Input Schema Validation"
+    context: "Validating a user creation API request"
+    correct: |
+      # JSON Schema for user creation
+      schema = {
+        "type": "object",
+        "required": ["email", "name"],
+        "additionalProperties": false,
+        "properties": {
+          "email": { "type": "string", "format": "email", "maxLength": 254 },
+          "name": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[\\p{L}\\s'-]+$" },
+          "age": { "type": "integer", "minimum": 0, "maximum": 150 }
+        }
+      }
+
+      function create_user(request):
+        errors = validate(request.body, schema)
+        if errors:
+          return response(422, {
+            "type": "validation_error",
+            "errors": errors  # All errors, not just first
+          })
+        # Process validated input
+        user = user_service.create(request.body)
+        return response(201, user)
+    incorrect: |
+      # WRONG: No validation, trusting input directly
+      function create_user(request):
+        # No validation — trusting whatever the client sends
+        user = database.insert("users", request.body)
+        # Mass assignment: client can set { "role": "admin", "verified": true }
+        return response(201, user)
+    explanation: >
+      Schema validation catches malformed input, prevents mass assignment by
+      rejecting unknown fields, enforces type constraints, and returns all
+      validation errors at once. Without it, attackers can inject arbitrary
+      fields and values.
+
+  - id: xss_output_encoding
+    title: "Context-Aware Output Encoding"
+    context: "Displaying user-generated content in HTML"
+    correct: |
+      # Stored in database: user_comment = '<script>alert("xss")</script>'
+
+      # HTML body context — entity encoding
+      html_output = html_encode(user_comment)
+      # Output: &lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;
+      # Rendered as text, not executed
+
+      # HTML attribute context — attribute encoding
+      <div title="{{attr_encode(user_comment)}}">...</div>
+
+      # JavaScript context — JS encoding
+      <script>var name = "{{js_encode(user_comment)}}";</script>
+
+      # URL context — URL encoding
+      <a href="/search?q={{url_encode(user_comment)}}">Search</a>
+
+      # CSP header for defense in depth
+      Content-Security-Policy: script-src 'self'; object-src 'none'
+    incorrect: |
+      # WRONG: Direct insertion without encoding
+      <div>{{user_comment}}</div>
+      # Renders: <script>alert("xss")</script>
+      # Browser executes the script — XSS!
+
+      <div title="{{user_comment}}">...</div>
+      # Attribute injection possible
+
+      <script>var name = "{{user_comment}}";</script>
+      # JavaScript injection possible
+    explanation: >
+      Each output context (HTML body, attribute, JS, URL) requires different
+      encoding. Using the wrong encoding or no encoding enables XSS attacks.
+      CSP provides an additional layer of defense against script injection.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All input validation happens server-side (client validation is UX only)"
+
+  data_protection:
+    requirements:
+      - "Sanitize data before storage to prevent stored injection"
+      - "Encode data on output to prevent reflected injection"
+      - "Log validation failures for security monitoring"
+
+  access_control:
+    requirements:
+      - "Reject requests that fail validation (do not process partially valid input)"
+
+  input_output:
+    requirements:
+      - "Validate at every system boundary (API, message consumer, file processor)"
+      - "Use allowlist validation for security-sensitive fields"
+      - "Implement Content Security Policy for web applications"
+      - "Validate file uploads: MIME type, magic bytes, size limits, content scanning"
+      - "Reject unknown/unexpected fields (additionalProperties: false)"
+
+  secrets:
+    requirements:
+      - "Never reflect credentials or tokens in validation error messages"
+
+  monitoring:
+    requirements:
+      - "Log all validation failures with input source and violation type"
+      - "Alert on validation failure spikes (potential attack probing)"
+      - "Monitor CSP violation reports"
+
+compliance:
+  standards:
+    - name: OWASP Top 10 A03 Injection
+      relevance: "Primary standard for injection prevention"
+      reference: "https://owasp.org/Top10/A03_2021-Injection/"
+
+    - name: OWASP Top 10 A07 XSS
+      relevance: "Cross-site scripting prevention"
+      reference: "https://owasp.org/Top10/A07_2017-Cross-Site_Scripting_(XSS)/"
+
+    - name: CWE-20
+      relevance: "Improper Input Validation"
+      reference: "https://cwe.mitre.org/data/definitions/20.html"
+
+  requirements_mapping:
+    - control: injection_prevention
+      description: "All input validated and parameterized before use in queries, commands, or markup"
+      maps_to:
+        - "OWASP A03:2021 Injection"
+        - "CWE-89 (SQL), CWE-79 (XSS), CWE-78 (OS Command)"
+
+    - control: xss_prevention
+      description: "All output encoded based on rendering context"
+      maps_to:
+        - "OWASP A07:2017 XSS"
+        - "CWE-79: Cross-Site Scripting"
+
+prompt_recipes:
+  - id: greenfield_validation
+    scenario: greenfield
+    description: "Design input validation for a new application"
+    prompt: |
+      Design input validation for a new application.
+
+      Context:
+      - Input sources: [user_forms/external_api/file_uploads/webhooks/mixed]
+      - Data sensitivity: [low/medium/high/critical]
+      - Output contexts: [html_page/api_response/database_query/mixed]
+
+      Requirements:
+      - Schema validation on all external input (JSON Schema / OpenAPI)
+      - Allowlist validation for security-sensitive fields
+      - Output encoding for all rendered content
+      - Content Security Policy for web applications
+      - File upload validation: MIME type, magic bytes, size limits
+      - Server-side validation mandatory (client-side optional for UX)
+
+  - id: audit_validation
+    scenario: audit
+    description: "Audit existing input validation"
+    prompt: |
+      Audit the input validation implementation:
+
+      1. Is all input validated server-side (not just client-side)?
+      2. Is schema validation used (JSON Schema, OpenAPI, etc.)?
+      3. Are unknown fields rejected (additionalProperties: false)?
+      4. Are all validation errors returned in one response?
+      5. Is output encoding context-aware (HTML, JS, URL, attribute)?
+      6. Is Content Security Policy implemented?
+      7. Are file uploads validated (MIME type + magic bytes + size)?
+      8. Are SQL queries parameterized?
+      9. Are validation failures logged for security monitoring?
+      10. Are allowlists used for security-sensitive fields?
+
+      For each item: report compliant/non-compliant/not-applicable with evidence.
+
+  - id: fix_xss_vulnerability
+    scenario: remediation
+    description: "Fix an XSS vulnerability"
+    prompt: |
+      Fix an XSS vulnerability found in the application.
+
+      Steps:
+      1. Identify the injection point (where user data enters)
+      2. Trace data flow to output point (where it's rendered)
+      3. Apply context-appropriate output encoding at the render point
+      4. Add Content Security Policy header as defense in depth
+      5. Verify fix: test with common XSS payloads
+      6. Add automated test to prevent regression
+
+      Remember: Encode on OUTPUT, not on input. Data may be used in multiple contexts.
+
+  - id: file_upload_security
+    scenario: security
+    description: "Secure file upload handling"
+    prompt: |
+      Implement secure file upload handling.
+
+      Validation layers:
+      1. File size limit (reject before reading full body)
+      2. File extension allowlist (.pdf, .jpg, .png — not .exe, .sh)
+      3. MIME type validation (Content-Type header)
+      4. Magic bytes validation (read file header, verify matches claimed type)
+      5. Filename sanitization (strip path traversal, special characters)
+      6. Content scanning (virus scan for high-security environments)
+      7. Storage: never store in web-accessible directory with execute permissions
+
+anti_patterns:
+  - name: "Client-side only validation"
+    description: >
+      Relying on JavaScript form validation or HTML5 validation attributes as
+      the only defense. Attackers bypass client-side validation entirely using
+      direct API calls, browser dev tools, or proxy tools.
+    fix: "Always validate on the server; client validation is for UX only"
+    severity: critical
+    related_pattern: schema_validation
+
+  - name: "Denylist-based validation"
+    description: >
+      Trying to block known-bad input patterns (e.g., blocking '<script>').
+      Attackers consistently find encoding tricks, alternative syntax, and
+      novel vectors that bypass denylists.
+    fix: "Use allowlist validation — define what IS allowed, reject everything else"
+    severity: high
+    related_pattern: allowlist_validation
+
+  - name: "No output encoding"
+    description: >
+      Inserting user-controlled data directly into HTML, JavaScript, or SQL
+      without encoding. Enables XSS, injection, and other attacks even if
+      input was validated (defense in depth failure).
+    fix: "Encode all output based on rendering context; use trusted encoding library"
+    severity: critical
+    related_pattern: output_encoding
+
+  - name: "Trusting Content-Type header for file validation"
+    description: >
+      Validating file uploads only by checking the Content-Type header sent
+      by the client. Attackers can set any Content-Type on any file. A
+      malicious executable can claim to be image/jpeg.
+    fix: "Validate file magic bytes (first N bytes) in addition to MIME type and extension"
+    severity: high
+    related_pattern: allowlist_validation
+
+checklist:
+  - id: VAL-01
+    category: security
+    description: "All input validated server-side at every system boundary"
+    severity: critical
+    verified_by: schema_validation
+
+  - id: VAL-02
+    category: security
+    description: "Schema validation used for all structured input (JSON Schema, OpenAPI)"
+    severity: high
+    verified_by: schema_validation
+
+  - id: VAL-03
+    category: security
+    description: "Unknown fields rejected (additionalProperties: false)"
+    severity: high
+    verified_by: schema_validation
+
+  - id: VAL-04
+    category: security
+    description: "Allowlist validation used for security-sensitive fields"
+    severity: high
+    verified_by: allowlist_validation
+
+  - id: VAL-05
+    category: security
+    description: "Output encoding applied context-aware (HTML, JS, URL, attribute)"
+    severity: critical
+    verified_by: output_encoding
+
+  - id: VAL-06
+    category: security
+    description: "Content Security Policy header implemented for web apps"
+    severity: high
+    verified_by: output_encoding
+
+  - id: VAL-07
+    category: security
+    description: "File uploads validated: MIME type + magic bytes + size + extension"
+    severity: critical
+    verified_by: allowlist_validation
+
+  - id: VAL-08
+    category: security
+    description: "SQL queries parameterized (no string concatenation)"
+    severity: critical
+    verified_by: schema_validation
+
+  - id: VAL-09
+    category: observability
+    description: "Validation failures logged with input source and violation type"
+    severity: high
+    verified_by: schema_validation
+
+  - id: VAL-10
+    category: design
+    description: "All validation errors returned in single response (not one at a time)"
+    severity: medium
+    verified_by: schema_validation

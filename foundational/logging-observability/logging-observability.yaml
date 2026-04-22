@@ -1,0 +1,693 @@
+# =============================================================================
+# AI Architecture Cookbook — Logging, Observability & Monitoring
+# Schema: v3 | Domain: logging-observability
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: logging-observability
+  version: "1.0.0"
+  last_updated: 2026-04-22
+  description: >
+    Structured logging, distributed tracing, metrics collection, and alerting
+    framework for production observability. Covers the three pillars of
+    observability and their integration.
+
+  tags:
+    - logging
+    - observability
+    - tracing
+    - metrics
+    - monitoring
+    - alerting
+    - structured-logging
+
+  categories:
+    - foundational
+
+  prerequisites: []
+
+  related_standards:
+    - id: error-handling
+      relationship: complementary
+      context: "All errors must be logged with correlation IDs per error-handling standard"
+    - id: api-design
+      relationship: complementary
+      context: "API requests must emit structured logs, traces, and metrics"
+    - id: configuration-management
+      relationship: complementary
+      context: "Log levels and sampling rates should be configurable without redeployment"
+
+context_inputs:
+  - name: system_type
+    type: enum
+    description: "Architecture style affecting observability approach"
+    required: true
+    default: distributed
+    enum_values:
+      - monolith
+      - distributed
+      - serverless
+      - hybrid
+
+  - name: traffic_volume
+    type: enum
+    description: "Expected log and trace volume"
+    required: true
+    default: medium
+    enum_values:
+      - low
+      - medium
+      - high
+      - massive
+
+  - name: compliance_requirements
+    type: boolean
+    description: "Are there regulatory requirements for log retention and auditing?"
+    required: true
+    default: false
+
+  - name: debug_complexity
+    type: enum
+    description: "How difficult is debugging in the current environment?"
+    required: true
+    default: moderate
+    enum_values:
+      - simple
+      - moderate
+      - complex
+
+  - name: real_time_alerting
+    type: boolean
+    description: "Does the system need real-time alerting on anomalies?"
+    required: true
+    default: true
+
+  - name: budget_constraints
+    type: enum
+    description: "Budget for observability infrastructure"
+    required: false
+    default: moderate
+    enum_values:
+      - minimal
+      - moderate
+      - generous
+
+decision_tree:
+  - id: distributed_needs_tracing
+    priority: 1
+    if:
+      - system_type in [distributed, serverless, hybrid]
+    then:
+      pattern: distributed_tracing
+      standards:
+        - OpenTelemetry
+        - W3C Trace Context
+      notes: "Distributed systems require distributed tracing to follow requests across service boundaries"
+    else:
+      pattern: structured_logging
+      notes: "Monoliths benefit most from structured logging with correlation IDs"
+
+  - id: high_volume_needs_sampling
+    priority: 2
+    if:
+      - traffic_volume in [high, massive]
+    then:
+      pattern: metrics_aggregation
+      standards:
+        - OpenTelemetry
+        - Prometheus exposition format
+      notes: "High-volume systems should use metrics aggregation and trace sampling rather than logging every event"
+
+  - id: compliance_needs_audit_logging
+    priority: 3
+    if:
+      - compliance_requirements == true
+    then:
+      pattern: structured_logging
+      standards:
+        - Structured Logging
+      notes: "Compliance requires immutable, structured audit logs with retention policies"
+
+  - id: complex_debugging_needs_all_three
+    priority: 4
+    if:
+      - debug_complexity == complex
+      - system_type in [distributed, hybrid]
+    then:
+      pattern: distributed_tracing
+      standards:
+        - OpenTelemetry
+      notes: "Complex distributed debugging requires all three pillars: logs, traces, and metrics correlated together"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: structured_logging
+    description: "Structured JSON logging with correlation IDs and appropriate log levels"
+
+patterns:
+  - id: structured_logging
+    name: Structured Logging
+    description: >
+      Emitting log entries as structured data (JSON) rather than free-text strings.
+      Enables machine parsing, filtering, alerting, and correlation across services.
+      The foundation of all observability.
+
+    use_when:
+      - "Any production system (universally applicable)"
+      - "Need to query and filter logs programmatically"
+      - "Compliance requires auditable log records"
+      - "Debugging requires correlation across requests"
+
+    avoid_when:
+      - "Quick prototypes where console.log suffices (temporary)"
+
+    tradeoffs:
+      pros:
+        - "Machine-parseable for automated alerting and dashboards"
+        - "Queryable by any field (user_id, correlation_id, status)"
+        - "Consistent format across all services"
+        - "Enables log-based metrics and alerting"
+      cons:
+        - "Slightly more verbose than plain text"
+        - "Requires discipline to maintain consistent field names"
+        - "JSON parsing overhead (negligible in practice)"
+
+    implementation:
+      guidelines:
+        - "Use JSON format for all log entries"
+        - "Include timestamp, level, message, service, correlation_id in every entry"
+        - "Use consistent field names across all services (define a schema)"
+        - "Log at appropriate levels: ERROR (failures), WARN (degradation), INFO (business events), DEBUG (development)"
+        - "Never log sensitive data (passwords, tokens, PII) — redact or mask"
+        - "Include request context: method, path, status, latency, user_id"
+        - "Use correlation IDs to link logs across services in a single request flow"
+
+      common_errors:
+        - error: "Logging sensitive data (passwords, tokens, PII)"
+          impact: "Credentials exposed in log aggregation systems"
+          fix: "Implement automatic PII redaction in logging framework; never log request bodies containing credentials"
+        - error: "Inconsistent log levels (everything at INFO)"
+          impact: "Cannot filter noise from signal during incidents"
+          fix: "ERROR = failures, WARN = degradation, INFO = business events, DEBUG = dev only"
+        - error: "Unstructured string concatenation logs"
+          impact: "Cannot query, filter, or alert on specific fields"
+          fix: "Use structured logging library that emits JSON with named fields"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: Structured Logging
+        type: spec
+        role: "Log format standard"
+        status: recommended
+      - name: ECS (Elastic Common Schema)
+        type: spec
+        role: "Common field naming standard for logs"
+        status: recommended
+        reference: "https://www.elastic.co/guide/en/ecs/current/index.html"
+
+  - id: distributed_tracing
+    name: Distributed Tracing
+    description: >
+      Propagates trace context across service boundaries to reconstruct the
+      full path of a request through a distributed system. Each service adds
+      spans with timing, status, and metadata.
+
+    use_when:
+      - "Distributed systems with multiple communicating services"
+      - "Need to identify which service causes latency in a request chain"
+      - "Debugging cross-service failures"
+      - "Performance optimization of multi-service workflows"
+
+    avoid_when:
+      - "Single-process monolith (structured logging with correlation IDs suffices)"
+      - "Budget cannot support trace collection infrastructure"
+
+    tradeoffs:
+      pros:
+        - "Visual request flow across services"
+        - "Identifies latency bottlenecks per service"
+        - "Root cause analysis for distributed failures"
+        - "Enables service dependency mapping"
+      cons:
+        - "Infrastructure cost for trace collection and storage"
+        - "Requires instrumentation in every service"
+        - "Sampling needed at high volumes (may miss rare events)"
+
+    implementation:
+      guidelines:
+        - "Use OpenTelemetry SDK for trace instrumentation"
+        - "Propagate W3C Trace Context headers (traceparent, tracestate) across all service calls"
+        - "Create spans for: HTTP requests, database calls, cache lookups, queue operations"
+        - "Include meaningful span names and attributes (http.method, db.operation, etc.)"
+        - "Implement head-based or tail-based sampling for high-volume services"
+        - "Link traces to logs using trace_id and span_id fields in log entries"
+
+      common_errors:
+        - error: "Not propagating trace context across async boundaries"
+          impact: "Trace is broken — downstream spans are orphaned"
+          fix: "Propagate trace context in message headers (Kafka, RabbitMQ, SQS)"
+        - error: "Sampling rate too aggressive"
+          impact: "Rare errors are never captured in traces"
+          fix: "Use tail-based sampling (decide after seeing the result) for error traces; sample successful traces"
+        - error: "Not instrumenting database calls"
+          impact: "Cannot identify slow queries as latency source"
+          fix: "Add spans for all database operations including query text (sanitized)"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: OpenTelemetry
+        type: spec
+        role: "Observability framework for traces, metrics, and logs"
+        status: recommended
+        reference: "https://opentelemetry.io/docs/"
+      - name: W3C Trace Context
+        type: spec
+        role: "Standard header format for trace propagation"
+        status: recommended
+        reference: "https://www.w3.org/TR/trace-context/"
+
+  - id: metrics_aggregation
+    name: Metrics Aggregation
+    description: >
+      Collecting numeric measurements (counters, gauges, histograms) that
+      summarize system behavior over time. Metrics are the most efficient
+      observability signal — low overhead, high compression, fast querying.
+
+    use_when:
+      - "Need dashboards showing system health over time"
+      - "Alerting on thresholds (error rate, latency percentiles)"
+      - "High-traffic systems where logging every event is too expensive"
+      - "Capacity planning and trend analysis"
+
+    avoid_when:
+      - "Need to debug individual request failures (use tracing)"
+      - "Need full context of what happened (use logging)"
+
+    tradeoffs:
+      pros:
+        - "Lowest overhead of all observability signals"
+        - "Highly compressible — efficient long-term storage"
+        - "Fast querying for dashboards and alerts"
+        - "Pre-aggregated — no log parsing required"
+      cons:
+        - "No individual event context (aggregated values only)"
+        - "Cardinality explosion risk with high-dimension labels"
+        - "Requires separate tool for root cause analysis"
+
+    implementation:
+      guidelines:
+        - "Instrument the RED metrics for every service: Rate, Errors, Duration"
+        - "Use USE metrics for infrastructure: Utilization, Saturation, Errors"
+        - "Use histograms for latency (not averages — P50, P95, P99 matter)"
+        - "Keep label cardinality low (no user IDs or request IDs as metric labels)"
+        - "Use OpenTelemetry Metrics API for vendor-neutral instrumentation"
+        - "Define SLOs (Service Level Objectives) based on key metrics"
+
+      common_errors:
+        - error: "Using averages for latency metrics"
+          impact: "Averages hide tail latency — P99 may be 10x the average"
+          fix: "Use histogram-based percentiles (P50, P95, P99)"
+        - error: "High-cardinality labels (user_id as metric label)"
+          impact: "Cardinality explosion — millions of unique time series, crashing metrics backend"
+          fix: "Only use bounded labels (status_code, endpoint, service_name)"
+        - error: "No SLOs defined"
+          impact: "No objective measure of whether the system is healthy"
+          fix: "Define SLOs: e.g., P99 latency < 500ms, error rate < 0.1%, availability > 99.9%"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: OpenTelemetry Metrics
+        type: spec
+        role: "Vendor-neutral metrics instrumentation"
+        status: recommended
+        reference: "https://opentelemetry.io/docs/specs/otel/metrics/"
+      - name: Prometheus Exposition Format
+        type: format
+        role: "Widely adopted metrics exposition format"
+        status: recommended
+        reference: "https://prometheus.io/docs/instrumenting/exposition_formats/"
+
+  - id: alerting_framework
+    name: Alerting Framework
+    description: >
+      Systematic approach to defining, routing, and managing alerts based on
+      SLOs and error budgets. Reduces alert fatigue by focusing on symptoms
+      (user impact) rather than causes.
+
+    use_when:
+      - "Production systems requiring incident response"
+      - "SLOs defined and need enforcement"
+      - "Team on-call rotation needs actionable alerts"
+
+    avoid_when:
+      - "Development/staging environments (use dashboards instead)"
+      - "No on-call process exists (alerts with no responder add noise)"
+
+    tradeoffs:
+      pros:
+        - "Proactive incident detection before users notice"
+        - "SLO-based alerts focus on user impact"
+        - "Error budget tracking prevents over-alerting"
+      cons:
+        - "Alert fatigue if thresholds are wrong"
+        - "Requires ongoing tuning as traffic patterns change"
+        - "On-call burden if alerting is too sensitive"
+
+    implementation:
+      guidelines:
+        - "Alert on symptoms (error rate, latency), not causes (CPU, disk)"
+        - "Define severity levels: P1 (user-impacting), P2 (degraded), P3 (informational)"
+        - "Use multi-window multi-burn-rate alerting for SLO breaches"
+        - "Every alert must have a runbook link"
+        - "Deduplicate and group related alerts"
+        - "Review and tune alerts regularly (remove noisy, add missing)"
+
+      common_errors:
+        - error: "Alerting on every metric threshold"
+          impact: "Alert fatigue — responders ignore all alerts"
+          fix: "Alert on symptoms (user impact), investigate causes via dashboards"
+        - error: "Alerts without runbooks"
+          impact: "On-call responder doesn't know what to do"
+          fix: "Every alert must link to a runbook with investigation steps"
+
+    maturity:
+      level: advanced
+
+    standards:
+      - name: Google SRE Alerting
+        type: spec
+        role: "SLO-based alerting methodology"
+        status: recommended
+        reference: "https://sre.google/workbook/alerting-on-slos/"
+
+examples:
+  - id: structured_log_entry
+    title: "Structured JSON Log Entry"
+    context: "Logging an API request with all required fields"
+    correct: |
+      {
+        "timestamp": "2026-04-22T10:15:30.123Z",
+        "level": "INFO",
+        "service": "user-service",
+        "trace_id": "abc123def456",
+        "span_id": "span789",
+        "correlation_id": "req-abc-123",
+        "message": "Request completed",
+        "http": {
+          "method": "GET",
+          "path": "/api/v1/users/42",
+          "status": 200,
+          "latency_ms": 45
+        },
+        "user_id": "usr_12345"
+      }
+    incorrect: |
+      # WRONG: Unstructured string log
+      print("[2026-04-22 10:15:30] GET /api/v1/users/42 - 200 - 45ms - user: usr_12345")
+      # Cannot query by field, no trace correlation, no consistent format
+    explanation: >
+      Structured JSON logs are machine-parseable, enabling automated alerting,
+      dashboards, and cross-service correlation via trace_id. Plain text logs
+      require regex parsing and break when formats change.
+
+  - id: otel_trace_context
+    title: "OpenTelemetry Trace Propagation"
+    context: "Propagating trace context between services via HTTP"
+    correct: |
+      # Service A — outgoing request
+      span = tracer.start_span("call-service-b")
+      headers = {}
+      propagator.inject(headers, context=span.context)
+      # Headers now contain: traceparent: 00-{trace_id}-{span_id}-01
+
+      response = http.get("http://service-b/api/data", headers=headers)
+      span.set_attribute("http.status_code", response.status)
+      span.end()
+
+      # Service B — incoming request
+      context = propagator.extract(request.headers)
+      span = tracer.start_span("handle-request", parent=context)
+      # This span is now a child of Service A's span
+      # Full trace: Service A -> Service B visible in trace viewer
+    incorrect: |
+      # WRONG: No trace propagation
+      # Service A
+      log("Calling service B")
+      response = http.get("http://service-b/api/data")  # No trace headers
+
+      # Service B
+      log("Received request")  # No correlation to Service A
+      # Result: Two isolated log entries, no way to correlate
+    explanation: >
+      W3C Trace Context propagation via the traceparent header links spans
+      across service boundaries into a single trace. Without propagation,
+      each service logs independently and debugging cross-service issues
+      requires manual timestamp correlation.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Log aggregation endpoints use TLS"
+      - "Log shipping uses authenticated connections"
+
+  data_protection:
+    requirements:
+      - "PII automatically redacted or masked in log entries"
+      - "Logs encrypted at rest in aggregation systems"
+      - "Log retention policies enforce data minimization"
+      - "Access to logs restricted by role (RBAC)"
+
+  access_control:
+    requirements:
+      - "Log modification/deletion restricted to authorized operators"
+      - "Audit trail for log access in compliance environments"
+
+  input_output:
+    requirements:
+      - "Log injection prevention — sanitize user-controlled fields"
+      - "Never log raw request bodies containing credentials or tokens"
+
+  secrets:
+    requirements:
+      - "API keys for log shipping stored in secrets manager"
+      - "Log aggregation credentials rotated regularly"
+
+  monitoring:
+    requirements:
+      - "Alert on log pipeline failures (gaps in log delivery)"
+      - "Monitor log volume anomalies (sudden spikes or drops)"
+
+compliance:
+  standards:
+    - name: ISO 27001
+      relevance: "Information security logging and monitoring requirements"
+      reference: "ISO/IEC 27001:2022 A.12.4"
+
+    - name: GDPR
+      relevance: "PII in logs must comply with data protection regulations"
+      reference: "GDPR Article 5 (data minimization)"
+
+    - name: SOC 2
+      relevance: "Logging and monitoring controls for service organizations"
+      reference: "SOC 2 CC7.2 (System Monitoring)"
+
+  requirements_mapping:
+    - control: log_retention
+      description: "Logs retained for required period and then purged"
+      maps_to:
+        - "ISO 27001 A.12.4.1"
+        - "SOC 2 CC7.2"
+
+    - control: pii_protection
+      description: "PII redacted or pseudonymized in logs"
+      maps_to:
+        - "GDPR Article 5(1)(c)"
+        - "ISO 27001 A.18.1.4"
+
+prompt_recipes:
+  - id: greenfield_observability
+    scenario: greenfield
+    description: "Design observability for a new system"
+    prompt: |
+      Design an observability stack for a new system.
+
+      Context:
+      - System type: [monolith/distributed/serverless]
+      - Traffic volume: [low/medium/high/massive]
+      - Compliance requirements: [yes/no]
+      - Budget: [minimal/moderate/generous]
+
+      Requirements:
+      - Structured JSON logging with correlation IDs
+      - Distributed tracing with OpenTelemetry (if distributed)
+      - RED metrics (Rate, Errors, Duration) per service
+      - SLO-based alerting with runbooks
+      - PII redaction in all logs
+      - Log retention per compliance needs
+
+  - id: audit_observability
+    scenario: audit
+    description: "Audit existing observability implementation"
+    prompt: |
+      Audit the observability implementation against these criteria:
+
+      1. Are logs structured (JSON) with consistent field names?
+      2. Do all log entries include correlation_id and trace_id?
+      3. Is PII automatically redacted from logs?
+      4. Are distributed traces propagated across all service boundaries?
+      5. Are trace context headers (W3C traceparent) used?
+      6. Are RED metrics collected for every service?
+      7. Are latency metrics histogram-based (not averages)?
+      8. Are SLOs defined with alerting on breaches?
+      9. Do all alerts have runbooks?
+      10. Are logs retained per compliance requirements?
+
+      For each item: report compliant/non-compliant/not-applicable with evidence.
+
+  - id: reduce_observability_costs
+    scenario: optimization
+    description: "Reduce observability costs without losing visibility"
+    prompt: |
+      Optimize observability costs for a high-traffic system.
+
+      Current state: [describe current stack and costs]
+
+      Strategies to evaluate:
+      - Trace sampling: head-based (fast) vs tail-based (error-aware)
+      - Log level reduction: reduce INFO volume, keep ERROR/WARN
+      - Metrics cardinality reduction: eliminate high-cardinality labels
+      - Tiered storage: hot (7d), warm (30d), cold (1y) for logs
+      - Aggregate before ship: pre-process logs to extract metrics locally
+
+  - id: distributed_debugging
+    scenario: debugging
+    description: "Debug a latency issue in a distributed system"
+    prompt: |
+      Debug a latency issue using observability tools.
+
+      Steps:
+      1. Check metrics dashboard: Which service has increased P99 latency?
+      2. Search traces: Find slow traces (>Xms) in the affected time window
+      3. Analyze spans: Which span in the trace is the bottleneck?
+      4. Check logs: Query logs with the trace_id for error context
+      5. Check dependencies: Is the bottleneck service's downstream dependency slow?
+      6. Correlate: Match the issue with recent deployments, config changes, or traffic shifts
+
+anti_patterns:
+  - name: "Unstructured logging"
+    description: >
+      Using string concatenation or printf-style logging that produces free-text
+      log lines. Cannot be queried by field, correlated across services, or used
+      for automated alerting without fragile regex parsing.
+    fix: "Use structured logging library that emits JSON with named fields"
+    severity: high
+    related_pattern: structured_logging
+
+  - name: "Logging PII/credentials"
+    description: >
+      Including passwords, API keys, tokens, or personally identifiable information
+      in log entries. These persist in log aggregation systems and may be accessible
+      to operators, third-party tools, or attackers.
+    fix: "Implement automatic PII redaction; never log request bodies containing credentials"
+    severity: critical
+    related_pattern: structured_logging
+
+  - name: "Averages-only latency metrics"
+    description: >
+      Reporting only average latency. Averages hide tail latency — a P99 of 5 seconds
+      is invisible when the average is 50ms. Users experiencing the P99 have a terrible
+      experience that averages cannot detect.
+    fix: "Use histogram-based metrics and track P50, P95, P99 percentiles"
+    severity: high
+    related_pattern: metrics_aggregation
+
+  - name: "Alert fatigue from cause-based alerting"
+    description: >
+      Alerting on every infrastructure metric (CPU > 80%, disk > 70%) instead of
+      user-facing symptoms. Generates hundreds of alerts that responders learn to
+      ignore, causing real incidents to be missed.
+    fix: "Alert on symptoms (error rate, latency SLO breach); investigate causes via dashboards"
+    severity: high
+    related_pattern: alerting_framework
+
+checklist:
+  - id: LOG-01
+    category: design
+    description: "All logs are structured (JSON) with consistent field names"
+    severity: high
+    verified_by: structured_logging
+
+  - id: LOG-02
+    category: observability
+    description: "Correlation ID present in every log entry"
+    severity: critical
+    verified_by: structured_logging
+
+  - id: LOG-03
+    category: security
+    description: "PII and credentials automatically redacted from logs"
+    severity: critical
+    verified_by: structured_logging
+
+  - id: LOG-04
+    category: observability
+    description: "Distributed tracing with W3C Trace Context propagation across all services"
+    severity: critical
+    verified_by: distributed_tracing
+
+  - id: LOG-05
+    category: observability
+    description: "RED metrics (Rate, Errors, Duration) collected per service"
+    severity: high
+    verified_by: metrics_aggregation
+
+  - id: LOG-06
+    category: observability
+    description: "Latency metrics use histograms (P50, P95, P99), not averages"
+    severity: high
+    verified_by: metrics_aggregation
+
+  - id: LOG-07
+    category: observability
+    description: "SLOs defined with alerting on breach (multi-window burn rate)"
+    severity: high
+    verified_by: alerting_framework
+
+  - id: LOG-08
+    category: observability
+    description: "Every alert has a linked runbook"
+    severity: high
+    verified_by: alerting_framework
+
+  - id: LOG-09
+    category: compliance
+    description: "Log retention policy defined and enforced per compliance requirements"
+    severity: high
+    verified_by: structured_logging
+
+  - id: LOG-10
+    category: observability
+    description: "Trace context propagated across async boundaries (queues, events)"
+    severity: high
+    verified_by: distributed_tracing
+
+  - id: LOG-11
+    category: observability
+    description: "Log pipeline health monitored and alerted on failures"
+    severity: medium
+    verified_by: alerting_framework
+
+  - id: LOG-12
+    category: security
+    description: "Log access restricted by RBAC; audit trail for log access in compliance envs"
+    severity: high
+    verified_by: structured_logging

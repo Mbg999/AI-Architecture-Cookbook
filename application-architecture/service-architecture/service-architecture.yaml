@@ -1,0 +1,649 @@
+# =============================================================================
+# AI Architecture Cookbook — Service Architecture
+# Schema: v3 | Domain: service-architecture
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: service-architecture
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Service decomposition strategies — microservices, modular monolith,
+    distributed monolith, and hybrid approaches. Covers when to decompose,
+    how to define service boundaries, and communication patterns.
+
+  tags:
+    - microservices
+    - monolith
+    - modular
+    - service-mesh
+    - decomposition
+    - distributed-systems
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - api-design
+
+  related_standards:
+    - id: domain-driven-design
+      relationship: complementary
+      context: "Bounded contexts from DDD are the primary tool for defining service boundaries"
+    - id: messaging-events
+      relationship: complementary
+      context: "Async messaging is the preferred inter-service communication for loose coupling"
+    - id: api-design
+      relationship: complementary
+      context: "API design governs synchronous inter-service contracts"
+    - id: error-handling
+      relationship: complementary
+      context: "Distributed error handling (circuit breakers, retries) is critical for microservices"
+
+context_inputs:
+  - name: team_structure
+    type: enum
+    description: "How are development teams organized?"
+    required: true
+    default: feature_teams
+    enum_values:
+      - single_team
+      - feature_teams
+      - platform_teams
+      - autonomous_squads
+
+  - name: deployment_independence
+    type: enum
+    description: "How important is deploying services independently?"
+    required: true
+    default: medium
+    enum_values:
+      - low
+      - medium
+      - high
+
+  - name: domain_boundary_clarity
+    type: enum
+    description: "How well-defined are the business domain boundaries?"
+    required: true
+    default: moderate
+    enum_values:
+      - unclear
+      - moderate
+      - clear
+
+  - name: operational_maturity
+    type: enum
+    description: "Team's maturity with distributed systems operations (monitoring, tracing, deployments)"
+    required: true
+    default: moderate
+    enum_values:
+      - low
+      - moderate
+      - high
+
+  - name: data_sharing_needs
+    type: enum
+    description: "How much data is shared across domain boundaries?"
+    required: true
+    default: moderate
+    enum_values:
+      - minimal
+      - moderate
+      - extensive
+
+decision_tree:
+  - id: autonomous_teams_clear_boundaries
+    priority: 1
+    if:
+      - team_structure in [autonomous_squads, platform_teams]
+      - domain_boundary_clarity == clear
+      - operational_maturity == high
+    then:
+      pattern: microservices
+      standards:
+        - "Sam Newman — Building Microservices"
+      notes: >
+        Autonomous teams with clear domain boundaries and operational maturity
+        maximize the benefits of microservices without the coordination overhead.
+    else:
+      pattern: modular_monolith
+      notes: "Without all three prerequisites, start with modular monolith"
+
+  - id: high_deployment_independence
+    priority: 2
+    if:
+      - deployment_independence == high
+      - operational_maturity in [moderate, high]
+    then:
+      pattern: microservices
+      standards:
+        - "12-Factor App"
+      notes: >
+        High deployment independence with adequate operational maturity supports
+        independent service deployment and scaling.
+
+  - id: moderate_boundaries
+    priority: 3
+    if:
+      - domain_boundary_clarity in [moderate, clear]
+      - operational_maturity in [low, moderate]
+    then:
+      pattern: modular_monolith
+      standards:
+        - "Modular Monolith Pattern"
+      notes: >
+        When operational maturity is developing, modular monolith gives boundary
+        separation with single deployment simplicity.
+
+  - id: unclear_or_low_maturity
+    priority: 4
+    if:
+      - domain_boundary_clarity == unclear
+    then:
+      pattern: monolith_first
+      standards:
+        - "Martin Fowler — Monolith First"
+      notes: >
+        Unclear boundaries mean premature decomposition will create wrong service
+        boundaries. Start as monolith, discover boundaries, then extract.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: critical
+  fallback:
+    pattern: modular_monolith
+    description: "Modular monolith is the safest default — enforces boundaries without distributed complexity"
+
+patterns:
+  - id: microservices
+    name: "Microservices Architecture"
+    description: >
+      Application decomposed into independently deployable services, each owning
+      its data and communicating via well-defined APIs or events. Services are
+      organized around business capabilities, not technical layers.
+    use_when:
+      - "Autonomous teams need to deploy independently"
+      - "Different parts of the system have different scaling needs"
+      - "Different services need different technology stacks"
+      - "Domain boundaries are well-understood and stable"
+      - "Organization has operational maturity for distributed systems"
+    avoid_when:
+      - "Team is small and co-located"
+      - "Domain boundaries are unclear or rapidly changing"
+      - "Organization lacks distributed systems operational capabilities"
+      - "Data sharing between services is extensive and transactional"
+    tradeoffs:
+      pros:
+        - "Independent deployment, scaling, and technology choice per service"
+        - "Team autonomy — each team owns their service end-to-end"
+        - "Fault isolation — one service failure doesn't crash the system"
+        - "Enables polyglot development and incremental technology upgrades"
+      cons:
+        - "Distributed system complexity (network, latency, partial failure)"
+        - "Eventual consistency across service boundaries"
+        - "Operational overhead (monitoring, tracing, deployment pipelines per service)"
+        - "Testing complexity — integration and end-to-end tests are harder"
+    implementation:
+      guidelines:
+        - "One service per bounded context — never split a bounded context across services"
+        - "Each service owns its database — no shared databases"
+        - "Prefer async messaging for inter-service communication; sync only when necessary"
+        - "Implement circuit breakers and retries for all synchronous inter-service calls"
+        - "Use API gateway for client-facing traffic; service mesh for internal"
+        - "Distributed tracing is mandatory — correlate requests across services"
+      common_errors:
+        - error: "Shared database between microservices"
+          impact: "Coupling through shared schema; cannot deploy or scale independently"
+          fix: "Each service owns its data; use events or APIs to share data"
+        - error: "Synchronous chains of service calls"
+          impact: "Cascading failures; latency multiplication; tight temporal coupling"
+          fix: "Use async messaging or choreography; break sync chains with event-driven patterns"
+        - error: "Nano-services — too many tiny services"
+          impact: "Operational overhead exceeds benefits; distributed monolith"
+          fix: "Services should be aligned to bounded contexts, not to entities"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Building Microservices (Sam Newman)"
+        type: pattern
+        role: "Primary reference for microservice design and decomposition"
+        status: recommended
+      - name: "12-Factor App"
+        type: spec
+        role: "Service runtime best practices"
+        status: recommended
+        reference: "https://12factor.net/"
+
+  - id: modular_monolith
+    name: "Modular Monolith"
+    description: >
+      Single deployable unit with strict internal module boundaries. Modules
+      communicate through well-defined interfaces, not direct class references.
+      Gives boundary separation of microservices with operational simplicity
+      of a monolith. Can be decomposed into microservices later if needed.
+    use_when:
+      - "Domain boundaries are emerging but not fully stable"
+      - "Team wants module isolation without distributed complexity"
+      - "Operational maturity is developing"
+      - "Startup or early-stage product still finding product-market fit"
+      - "Strong transactional consistency requirements across modules"
+    avoid_when:
+      - "Teams need independent deployment for velocity"
+      - "Different modules need fundamentally different tech stacks"
+      - "Organization has mature platform engineering"
+    tradeoffs:
+      pros:
+        - "Module boundaries enforced without distributed complexity"
+        - "Single deployment — simpler operations, monitoring, and debugging"
+        - "Strong consistency available via local transactions"
+        - "Natural stepping stone to microservices when boundaries stabilize"
+      cons:
+        - "Cannot scale modules independently"
+        - "All modules must use the same technology stack"
+        - "Shared deployment means coordinated releases"
+        - "Risk of boundary erosion without tooling enforcement"
+    implementation:
+      guidelines:
+        - "Each module has its own namespace/package and public API"
+        - "Modules communicate through interfaces or events — never direct internal access"
+        - "Each module manages its own database schema (separate schemas, same DB)"
+        - "Module boundaries enforced by architecture tests in CI"
+        - "Use an internal event bus for cross-module notifications"
+      common_errors:
+        - error: "Modules accessing each other's database tables directly"
+          impact: "Hidden coupling; module boundary is a fiction"
+          fix: "Enforce schema-per-module; expose data only through module APIs"
+        - error: "Circular dependencies between modules"
+          impact: "Cannot extract modules to services later; tangled release coordination"
+          fix: "Introduce an event bus or shared kernel to break cycles"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Modular Monolith (Kamil Grzybek)"
+        type: pattern
+        role: "Reference architecture for modular monolith design"
+        status: recommended
+
+  - id: monolith_first
+    name: "Monolith First"
+    description: >
+      Start with a well-structured monolith; discover domain boundaries through
+      real usage; extract services only when operational need justifies it.
+      Avoids premature decomposition that creates wrong service boundaries.
+    use_when:
+      - "New project where domain boundaries are unclear"
+      - "Small team building first version of a product"
+      - "Need to move fast and learn from user feedback"
+      - "Team has limited distributed systems experience"
+    avoid_when:
+      - "Domain is well-understood from previous versions"
+      - "Organization already has microservices platform maturity"
+      - "Hard requirement for independent service deployment from day one"
+    tradeoffs:
+      pros:
+        - "Fastest time to first version"
+        - "Domain boundaries emerge from real usage patterns"
+        - "No distributed systems complexity during early development"
+        - "Refactoring is cheaper within a single codebase"
+      cons:
+        - "Risk of becoming a big ball of mud without discipline"
+        - "Later extraction to services requires significant refactoring"
+        - "Single scaling unit for the entire application"
+    implementation:
+      guidelines:
+        - "Structure code in logical modules even within the monolith"
+        - "Use interfaces between modules to prepare for future extraction"
+        - "Monitor which parts of the system have different scaling needs"
+        - "Track deployment friction — it signals when to decompose"
+        - "Extract to services only when there is a clear operational driver"
+      common_errors:
+        - error: "No internal module structure — everything is a flat package"
+          impact: "Cannot identify extraction candidates later"
+          fix: "Group by business capability from day one; treat modules as future service boundaries"
+        - error: "Premature extraction before boundaries are stable"
+          impact: "Wrong service boundaries require expensive distributed refactoring"
+          fix: "Wait for boundary stability signals: stable teams, stable data ownership, scaling needs"
+    maturity:
+      level: standard
+    standards:
+      - name: "Monolith First (Martin Fowler)"
+        type: pattern
+        role: "Strategy for greenfield projects"
+        status: recommended
+        reference: "https://martinfowler.com/bliki/MonolithFirst.html"
+
+  - id: distributed_monolith
+    name: "Distributed Monolith (Anti-Pattern Recognition)"
+    description: >
+      A system deployed as multiple services but exhibiting monolithic coupling:
+      shared databases, lock-step deployments, synchronous call chains. Combines
+      the worst of both worlds — distributed complexity with monolithic rigidity.
+      Included as a pattern for recognition and remediation.
+    use_when:
+      - "NEVER — this is an anti-pattern to recognize and fix"
+      - "Include in architecture reviews as a detection pattern"
+    avoid_when:
+      - "Always — this represents a failure state, not a design choice"
+    tradeoffs:
+      pros:
+        - "None — this is an anti-pattern"
+      cons:
+        - "Distributed complexity without independent deployability"
+        - "All services must deploy together despite network overhead"
+        - "Shared database creates hidden coupling"
+        - "Cascading failures from synchronous chains"
+    implementation:
+      guidelines:
+        - "Detect: services cannot deploy independently"
+        - "Detect: services share a database or schema"
+        - "Detect: synchronous call chains span 3+ services"
+        - "Detect: changing one service requires changing others"
+        - "Remediate: consolidate back to modular monolith, then decompose properly"
+      common_errors:
+        - error: "Continuing to add services to a distributed monolith"
+          impact: "Increasing operational cost with no architectural benefit"
+          fix: "Stop decomposing; consolidate shared-data services; re-evaluate boundaries"
+    maturity:
+      level: standard
+    standards:
+      - name: "Distributed Monolith (anti-pattern)"
+        type: pattern
+        role: "Recognition pattern for architecture reviews"
+        status: deprecated
+
+examples:
+  - id: service_boundary_example
+    title: "Defining Service Boundaries with Domain Events"
+    context: "E-commerce system deciding service boundaries for order processing"
+    correct: |
+      # Services aligned to bounded contexts with event-based communication
+      # Each service owns its data and publishes domain events
+
+      # Order Service — owns order lifecycle
+      class OrderService:
+          def place_order(self, cmd):
+              order = Order.create(cmd.customer_id, cmd.items)
+              self.order_repo.save(order)
+              self.event_bus.publish(OrderPlaced(order.id, order.total))
+              return order.id
+
+      # Inventory Service — subscribes to OrderPlaced, manages stock
+      class InventoryEventHandler:
+          def on_order_placed(self, event: OrderPlaced):
+              for item in event.items:
+                  self.stock.reserve(item.sku, item.quantity)
+
+      # Payment Service — subscribes to OrderPlaced, processes payment
+      class PaymentEventHandler:
+          def on_order_placed(self, event: OrderPlaced):
+              result = self.gateway.charge(event.customer_id, event.total)
+              self.event_bus.publish(PaymentProcessed(event.order_id, result))
+    incorrect: |
+      # WRONG: Single "order" endpoint calls inventory and payment synchronously
+      class OrderController:
+          def place_order(self, request):
+              # Synchronous chain — all must succeed or cascading failure
+              inventory_response = http.post(INVENTORY_URL + "/reserve", request.items)
+              payment_response = http.post(PAYMENT_URL + "/charge", request.total)
+              order = http.post(ORDER_DB_URL + "/orders", request)  # Shared DB service!
+              return order
+    explanation: >
+      The correct version uses domain events to decouple services. Each service
+      owns its data and reacts to events asynchronously. The incorrect version
+      creates a synchronous call chain with shared database access — a distributed
+      monolith that combines the worst of both architectures.
+
+  - id: modular_monolith_example
+    title: "Modular Monolith — Module Boundaries with Internal APIs"
+    context: "E-commerce monolith with enforced module boundaries"
+    correct: |
+      # Module public API — the only way other modules interact
+      # catalog_module/api.py
+      class CatalogModule:
+          def get_product(self, product_id) -> ProductDTO:
+              product = self.product_repo.find(product_id)
+              return ProductDTO.from_entity(product)
+
+          def check_availability(self, sku, quantity) -> bool:
+              return self.inventory.is_available(sku, quantity)
+
+      # order_module/services.py — depends on CatalogModule API, not internals
+      class OrderService:
+          def __init__(self, catalog: CatalogModule):
+              self.catalog = catalog
+
+          def create_order(self, items):
+              for item in items:
+                  if not self.catalog.check_availability(item.sku, item.qty):
+                      raise OutOfStock(item.sku)
+              # ... create order using own repository
+    incorrect: |
+      # WRONG: Order module directly imports Catalog internals
+      from catalog_module.models import Product  # Reaching into internal model
+      from catalog_module.repositories import ProductRepository  # Bypassing API
+
+      class OrderService:
+          def create_order(self, items):
+              repo = ProductRepository()  # Direct internal access
+              for item in items:
+                  product = repo.find_by_sku(item.sku)  # Coupled to internal schema
+                  if product.stock_count < item.qty:     # Knows internal field names
+                      raise OutOfStock(item.sku)
+    explanation: >
+      The correct version accesses the catalog module only through its public API
+      (CatalogModule class). The incorrect version imports internal models and
+      repositories, creating hidden coupling that prevents independent module evolution
+      and future service extraction.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All inter-service communication encrypted with TLS 1.2+"
+      - "Service mesh or API gateway terminates TLS and enforces mTLS for internal traffic"
+  data_protection:
+    requirements:
+      - "Each service encrypts its own data at rest"
+      - "PII must not leak across service boundaries in events or API responses"
+  access_control:
+    requirements:
+      - "Service-to-service authentication via mutual TLS or service tokens"
+      - "API gateway enforces authorization for external requests"
+      - "Zero-trust: every service validates the caller's identity and permissions"
+  input_output:
+    requirements:
+      - "Each service validates all incoming requests — never trust internal callers blindly"
+      - "Schema validation on all event payloads before processing"
+  secrets:
+    requirements:
+      - "Service credentials and API keys stored in secret manager, never in code or config"
+      - "Secret rotation automated per service without cross-service coordination"
+  monitoring:
+    requirements:
+      - "Distributed tracing mandatory across all service boundaries"
+      - "Anomaly detection on inter-service traffic patterns"
+
+compliance:
+  standards:
+    - name: "12-Factor App"
+      relevance: "Service runtime best practices for stateless, disposable processes"
+      reference: "https://12factor.net/"
+    - name: "OWASP API Security Top 10"
+      relevance: "API security applies to every inter-service and client-facing API"
+
+  requirements_mapping:
+    - control: service_isolation
+      description: "Each service runs in its own process with its own data store"
+      maps_to:
+        - "12-Factor App — Factor VI (Processes)"
+    - control: service_api_security
+      description: "All service APIs authenticated and authorized"
+      maps_to:
+        - "OWASP API Security — API1 (Broken Object Level Authorization)"
+
+prompt_recipes:
+  - id: service_greenfield
+    scenario: greenfield
+    description: "Design service boundaries for a new system"
+    prompt: |
+      Design the service architecture for a {system_description} system.
+
+      1. Identify bounded contexts using domain events and data ownership
+      2. For each context, determine: service name, owned data, published events, consumed events
+      3. Define synchronous APIs (REST/gRPC) only where real-time response is required
+      4. Map team ownership to service boundaries (Conway's Law alignment)
+      5. Recommend: microservices, modular monolith, or monolith-first — and justify
+
+      Team structure: {team_structure}
+      Operational maturity: {operational_maturity}
+      Current domain boundary clarity: {boundary_clarity}
+
+  - id: service_migration
+    scenario: migration
+    description: "Extract services from an existing monolith"
+    prompt: |
+      I have a monolithic {language} application and need to extract services.
+
+      1. Analyze module coupling — which modules are most/least coupled?
+      2. Identify extraction candidates: modules with independent data, clear APIs, different scaling needs
+      3. Plan extraction order: least-coupled modules first
+      4. For each extraction: define API contract, data migration, event integration
+      5. Create a strangler fig migration plan preserving backward compatibility
+
+      Avoid creating a distributed monolith. Validate each extraction maintains independent deployability.
+
+  - id: service_audit
+    scenario: audit
+    description: "Detect distributed monolith symptoms"
+    prompt: |
+      Audit this service architecture for distributed monolith symptoms:
+
+      1. Can each service deploy independently? (check for lock-step releases)
+      2. Do services share databases or schemas?
+      3. Are there synchronous call chains spanning 3+ services?
+      4. Does changing one service require changes in others?
+      5. Is there a service that everything depends on (God service)?
+
+      For each symptom found, recommend: consolidate back or fix boundary.
+
+  - id: service_decisions
+    scenario: architecture
+    description: "Create a decision record for service decomposition strategy"
+    prompt: |
+      Create an Architecture Decision Record (ADR) for choosing between:
+      - Microservices
+      - Modular Monolith
+      - Monolith First
+
+      Consider: team size ({team_size}), domain maturity ({domain_maturity}),
+      operational capability ({ops_maturity}), deployment requirements ({deploy_needs}).
+
+      Include: context, decision, consequences, and migration path if strategy changes.
+
+anti_patterns:
+  - name: "Distributed Monolith"
+    description: >
+      Multiple services that must be deployed together, share databases, or
+      communicate via synchronous chains — all distributed system costs with
+      none of the benefits.
+    fix: "Consolidate coupled services into a modular monolith; re-evaluate boundaries using domain events and data ownership"
+    severity: critical
+    related_pattern: modular_monolith
+
+  - name: "Premature Decomposition"
+    description: >
+      Breaking a system into microservices before domain boundaries are understood.
+      Results in wrong boundaries that are expensive to fix in a distributed system.
+    fix: "Start monolith-first; discover boundaries through usage; extract only when operational need is clear"
+    severity: high
+    related_pattern: monolith_first
+
+  - name: "Shared Database"
+    description: >
+      Multiple services reading/writing the same database tables. Creates hidden
+      coupling that prevents independent deployment, schema changes, and scaling.
+    fix: "Each service owns its schema; share data through APIs or events; use change data capture for migration"
+    severity: high
+    related_pattern: microservices
+
+  - name: "God Service"
+    description: >
+      One central service that every other service depends on. Single point of
+      failure, deployment bottleneck, and team coordination nightmare.
+    fix: "Decompose the God service by extracting bounded contexts; distribute responsibilities to owning services"
+    severity: high
+    related_pattern: microservices
+
+checklist:
+  - id: SA-01
+    category: design
+    description: "Service decomposition strategy explicitly chosen and documented"
+    severity: high
+    verified_by: microservices
+
+  - id: SA-02
+    category: design
+    description: "Service boundaries aligned to bounded contexts, not technical layers"
+    severity: critical
+    verified_by: microservices
+
+  - id: SA-03
+    category: design
+    description: "Each service owns its data — no shared databases between services"
+    severity: critical
+    verified_by: microservices
+
+  - id: SA-04
+    category: reliability
+    description: "Circuit breakers on all synchronous inter-service calls"
+    severity: high
+    verified_by: microservices
+
+  - id: SA-05
+    category: observability
+    description: "Distributed tracing spans all service boundaries"
+    severity: high
+    verified_by: microservices
+
+  - id: SA-06
+    category: security
+    description: "Service-to-service authentication enforced (mTLS or service tokens)"
+    severity: high
+    verified_by: microservices
+
+  - id: SA-07
+    category: design
+    description: "Module boundaries enforced by architecture tests (modular monolith)"
+    severity: high
+    verified_by: modular_monolith
+
+  - id: SA-08
+    category: maintainability
+    description: "Each service deployable independently without coordinating with other services"
+    severity: high
+    verified_by: microservices
+
+  - id: SA-09
+    category: reliability
+    description: "Async communication preferred over synchronous chains for cross-service flows"
+    severity: medium
+    verified_by: microservices
+
+  - id: SA-10
+    category: performance
+    description: "Service granularity assessed — no nano-services creating excessive network overhead"
+    severity: medium
+    verified_by: modular_monolith
+
+  - id: SA-11
+    category: compliance
+    description: "Data residency and ownership documented per service for regulatory compliance"
+    severity: medium
+    verified_by: microservices
+
+  - id: SA-12
+    category: maintainability
+    description: "Team-to-service mapping documented (Conway's Law alignment)"
+    severity: medium
+    verified_by: microservices

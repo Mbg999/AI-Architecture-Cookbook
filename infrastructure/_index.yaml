@@ -1,0 +1,56 @@
+# Infrastructure & Deployment Standards — Category Index
+category: infrastructure
+description: >
+  Standards for containerization, orchestration, CI/CD pipelines,
+  infrastructure-as-code, cloud architecture, and database migrations.
+  Covers the operational backbone that AI assistants need to generate
+  production-ready deployment configurations and infrastructure code.
+
+entries:
+  - domain: containerization
+    version: "1.0.0"
+    description: "Container image construction, runtime configuration, and security hardening"
+    tags: ["docker", "containers", "oci", "images", "runtime"]
+    prerequisites: []
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: orchestration
+    version: "1.0.0"
+    description: "Container orchestration platforms, service mesh, and workload management"
+    tags: ["kubernetes", "orchestration", "service-mesh", "scheduling", "scaling"]
+    prerequisites: ["containerization"]
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: ci-cd
+    version: "1.0.0"
+    description: "Continuous integration and delivery pipelines, artifact management, and release strategies"
+    tags: ["ci-cd", "pipelines", "automation", "deployment", "release"]
+    prerequisites: []
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: infrastructure-as-code
+    version: "1.0.0"
+    description: "Declarative infrastructure provisioning, state management, and drift detection"
+    tags: ["iac", "terraform", "pulumi", "bicep", "cloudformation"]
+    prerequisites: []
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: cloud-architecture
+    version: "1.0.0"
+    description: "Cloud-native design patterns, multi-cloud strategies, and well-architected principles"
+    tags: ["cloud", "aws", "azure", "gcp", "well-architected", "multi-cloud"]
+    prerequisites: []
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: database-migration
+    version: "1.0.0"
+    description: "Schema evolution, data migration strategies, and zero-downtime database changes"
+    tags: ["database", "migration", "schema", "evolution", "zero-downtime"]
+    prerequisites: ["data-persistence"]
+    pattern_count: 4
+    anti_pattern_count: 4
