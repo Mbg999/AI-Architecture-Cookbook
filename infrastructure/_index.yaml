@@ -54,3 +54,11 @@ entries:
     prerequisites: ["data-persistence"]
     pattern_count: 4
     anti_pattern_count: 4
+
+  - domain: api-gateway-edge-security
+    version: "1.0.0"
+    description: "API gateway and edge security: WAF, DDoS protection, rate limiting, zero-trust, service mesh"
+    tags: ["api-gateway", "edge-security", "waf", "ddos", "rate-limiting", "zero-trust", "mtls"]
+    prerequisites: ["api-design", "authentication", "rate-limiting"]
+    pattern_count: 4
+    anti_pattern_count: 3

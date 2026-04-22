@@ -1,0 +1,608 @@
+# =============================================================================
+# AI Architecture Cookbook — Session Management
+# Schema: v3 | Domain: session-management
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: session-management
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Session management patterns covering stateful and stateless sessions,
+    token lifecycle, session fixation prevention, idle and absolute timeouts,
+    concurrent session controls, and secure session storage.
+
+  tags:
+    - security
+    - session
+    - jwt
+    - token
+    - cookie
+    - session-fixation
+    - csrf
+    - timeout
+    - concurrent-sessions
+
+  categories:
+    - foundational
+
+  prerequisites:
+    - authentication
+
+  related_standards:
+    - id: authentication
+      relationship: complementary
+      context: "Sessions are created after successful authentication"
+    - id: encryption
+      relationship: complementary
+      context: "Session tokens and cookies require cryptographic protection"
+    - id: rate-limiting
+      relationship: complementary
+      context: "Rate limiting protects session endpoints from brute force"
+
+context_inputs:
+  - name: session_type
+    type: enum
+    description: "Primary session mechanism"
+    required: true
+    default: stateless_token
+    enum_values:
+      - server_side_session
+      - stateless_token
+      - hybrid
+
+  - name: client_type
+    type: enum
+    description: "Primary client consuming sessions"
+    required: true
+    default: web_browser
+    enum_values:
+      - web_browser
+      - mobile_app
+      - spa
+      - api_consumer
+
+  - name: security_sensitivity
+    type: enum
+    description: "Security sensitivity of the application"
+    required: true
+    default: standard
+    enum_values:
+      - low
+      - standard
+      - high
+      - critical
+
+  - name: scale_requirements
+    type: enum
+    description: "Scale and distribution requirements"
+    required: true
+    default: moderate
+    enum_values:
+      - single_server
+      - moderate
+      - high_scale
+      - global_distributed
+
+decision_tree:
+  - id: critical_security
+    priority: 1
+    if:
+      - security_sensitivity == critical
+    then:
+      pattern: server_side_session_management
+      standards:
+        - "OWASP Session Management"
+      notes: >
+        Critical security applications should use server-side sessions for
+        immediate revocation capability. Financial services, healthcare, and
+        government applications require server-side session control.
+
+  - id: high_scale_api
+    priority: 2
+    if:
+      - scale_requirements in [high_scale, global_distributed]
+      - client_type in [mobile_app, spa, api_consumer]
+    then:
+      pattern: token_based_session
+      standards:
+        - "RFC 7519 (JWT)"
+      notes: >
+        High-scale APIs and SPAs benefit from stateless token-based sessions
+        with short-lived access tokens and refresh token rotation.
+
+  - id: web_standard
+    priority: 3
+    if:
+      - client_type == web_browser
+      - security_sensitivity in [standard, high]
+    then:
+      pattern: server_side_session_management
+      standards:
+        - "OWASP Session Management"
+      notes: >
+        Traditional web applications with standard or high security should
+        use server-side sessions with secure cookie transport.
+
+  - id: spa_hybrid
+    priority: 4
+    if:
+      - client_type == spa
+    then:
+      pattern: hybrid_session
+      standards:
+        - "OAuth 2.0 BFF Pattern"
+      notes: >
+        SPAs benefit from a Backend-for-Frontend pattern where the server
+        manages the session and issues secure cookies to the browser.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: server_side_session_management
+    description: "Server-side sessions with secure cookies provide the strongest security baseline"
+
+patterns:
+  - id: server_side_session_management
+    name: "Server-Side Session Management"
+    description: >
+      Maintain session state on the server, referenced by an opaque session
+      ID stored in a secure HTTP cookie. Provides immediate revocation,
+      server-side timeout enforcement, and no client-side session data exposure.
+    use_when:
+      - "Traditional web applications"
+      - "High security requirements"
+      - "Need immediate session revocation"
+      - "Session data contains sensitive information"
+    avoid_when:
+      - "Stateless API-to-API communication"
+      - "Global distribution where session store replication is impractical"
+    tradeoffs:
+      pros:
+        - "Immediate revocation (delete session from store)"
+        - "Session data not exposed to client"
+        - "Server controls all session state"
+        - "Simple CSRF protection with SameSite cookies"
+      cons:
+        - "Requires session store (Redis, database)"
+        - "Session store is a scaling bottleneck"
+        - "Session affinity or replication needed for multi-server"
+    implementation:
+      guidelines:
+        - "Generate session ID using cryptographically secure random generator (≥128 bits entropy)"
+        - "Store session in server-side store: Redis (preferred), database, or encrypted cookie"
+        - "Transport session ID via cookie: Secure, HttpOnly, SameSite=Lax (or Strict), Path=/"
+        - "Regenerate session ID after authentication (prevent session fixation)"
+        - "Implement idle timeout: invalidate after 15-30 minutes of inactivity"
+        - "Implement absolute timeout: invalidate after 8-24 hours regardless of activity"
+        - "Invalidate session on logout (delete from store)"
+        - "Limit concurrent sessions per user (configurable per security level)"
+        - "Log session lifecycle events: creation, access, timeout, explicit logout"
+      common_errors:
+        - error: "Not regenerating session ID after login"
+          impact: "Session fixation: attacker pre-sets session ID, victim authenticates, attacker hijacks session"
+          fix: "Always regenerate session ID after successful authentication"
+        - error: "Missing cookie security flags"
+          impact: "Session cookie exposed via HTTP (no Secure flag), JavaScript (no HttpOnly), cross-site requests (no SameSite)"
+          fix: "Set Secure, HttpOnly, and SameSite flags on all session cookies"
+    maturity:
+      level: standard
+    standards:
+      - name: "OWASP Session Management Cheat Sheet"
+        type: reference
+        role: "Comprehensive session management guidance"
+        status: recommended
+        reference: "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html"
+
+  - id: token_based_session
+    name: "Token-Based Session (JWT + Refresh Token Rotation)"
+    description: >
+      Use short-lived access tokens (JWT) for API authentication with refresh
+      token rotation for session continuity. Access tokens are stateless and
+      verifiable without a database lookup. Refresh tokens provide revocation
+      capability and session lifecycle management.
+    use_when:
+      - "API-first architectures"
+      - "Mobile applications"
+      - "Microservices needing distributed authentication"
+      - "High-scale systems where session store is a bottleneck"
+    avoid_when:
+      - "Need immediate revocation (access tokens are valid until expiry)"
+      - "Critical security where even short-lived token compromise is unacceptable"
+    tradeoffs:
+      pros:
+        - "Stateless verification: no session store lookup needed"
+        - "Works across services without shared session store"
+        - "Scales horizontally without session replication"
+      cons:
+        - "Cannot revoke access tokens before expiry (mitigated by short TTL)"
+        - "Token size larger than session ID"
+        - "Token theft gives access for token lifetime"
+    implementation:
+      guidelines:
+        - "Access token: short-lived (5-15 minutes), contains user claims, signed (RS256 or ES256)"
+        - "Refresh token: longer-lived (hours to days), opaque, stored server-side"
+        - "Implement refresh token rotation: new refresh token issued with each access token refresh"
+        - "Detect refresh token reuse: if a rotated-out refresh token is used, revoke all tokens for that session"
+        - "Store refresh tokens server-side with: user_id, device_id, issued_at, expires_at, revoked_at"
+        - "Access token claims: sub, iat, exp, iss, aud, roles/permissions (minimal claims)"
+        - "Never store sensitive data in JWT (it is base64-encoded, not encrypted)"
+        - "Validate all JWT fields on every request: signature, exp, iss, aud"
+        - "Bind refresh tokens to device/client: require device fingerprint for refresh"
+      common_errors:
+        - error: "Long-lived access tokens (hours or days)"
+          impact: "Stolen token provides extended access with no revocation capability"
+          fix: "Access tokens should be 5-15 minutes; use refresh tokens for session continuity"
+        - error: "No refresh token rotation"
+          impact: "Stolen refresh token provides indefinite access"
+          fix: "Issue new refresh token with each use; detect reuse of old refresh tokens"
+    maturity:
+      level: standard
+    standards:
+      - name: "RFC 7519 (JSON Web Token)"
+        type: standard
+        role: "JWT specification"
+        status: recommended
+      - name: "OAuth 2.0 Security Best Current Practice"
+        type: standard
+        role: "Security considerations for token-based auth"
+        status: recommended
+
+  - id: hybrid_session
+    name: "Hybrid Session (BFF Pattern)"
+    description: >
+      Backend-for-Frontend pattern where the server manages tokens and
+      sessions, while the browser receives only secure HTTP cookies. Combines
+      the security of server-side sessions with the scalability of tokens
+      for backend service communication.
+    use_when:
+      - "Single-Page Applications (SPAs)"
+      - "Need OAuth/OIDC integration without exposing tokens to browser"
+      - "Want server-side session security with token-based backend"
+    avoid_when:
+      - "Pure API-to-API communication (tokens suffice)"
+      - "Simple server-rendered applications (server-side sessions suffice)"
+    tradeoffs:
+      pros:
+        - "Tokens never exposed to browser JavaScript"
+        - "Server-side revocation capability"
+        - "Secure cookie transport to browser"
+        - "Token-based communication to backend services"
+      cons:
+        - "Additional BFF server component"
+        - "BFF is a single point of failure"
+        - "More complex architecture"
+    implementation:
+      guidelines:
+        - "BFF server handles OAuth/OIDC flows and stores tokens server-side"
+        - "BFF issues secure HTTP-only cookie to browser (opaque session ID)"
+        - "BFF proxies API requests, attaching access token from server-side session"
+        - "BFF handles token refresh transparently"
+        - "Never send access or refresh tokens to the browser"
+        - "Implement CSRF protection on BFF (SameSite cookies + CSRF token for mutations)"
+        - "BFF session timeout aligns with token lifetime"
+      common_errors:
+        - error: "Storing tokens in browser localStorage or sessionStorage"
+          impact: "XSS attack can steal tokens — no HttpOnly protection for storage APIs"
+          fix: "Tokens stay server-side in BFF; browser gets only HttpOnly cookie"
+        - error: "BFF without CSRF protection"
+          impact: "Cross-site requests can trigger authenticated actions via cookie"
+          fix: "Use SameSite=Lax/Strict cookies and CSRF tokens for state-changing operations"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "OAuth 2.0 for Browser-Based Apps"
+        type: standard
+        role: "Security guidance for SPAs using OAuth"
+        status: recommended
+
+  - id: session_hardening
+    name: "Session Hardening & Attack Prevention"
+    description: >
+      Cross-cutting security hardening for all session types. Covers session
+      fixation prevention, concurrent session limits, device binding, and
+      anomaly detection on session usage patterns.
+    use_when:
+      - "All applications — these are hardening techniques applied on top of any session pattern"
+    avoid_when:
+      - "Never skip hardening"
+    tradeoffs:
+      pros:
+        - "Prevents common session attacks"
+        - "Detects session theft"
+        - "Limits blast radius of compromised sessions"
+      cons:
+        - "Some measures may affect UX (concurrent session limits, re-authentication)"
+    implementation:
+      guidelines:
+        - "Session fixation: regenerate session ID after authentication, privilege change, and role change"
+        - "Concurrent sessions: limit to N active sessions per user; notify on new session from new device"
+        - "Device binding: associate session with device fingerprint (user agent, client hints); challenge on mismatch"
+        - "IP binding (optional, cautious): flag session if source IP changes significantly (different country)"
+        - "Step-up authentication: require re-authentication for sensitive operations (password change, payment)"
+        - "Session enumeration prevention: use cryptographically random session IDs, no sequential patterns"
+        - "Cookie prefix: use __Host- prefix for session cookies (enforces Secure, Path=/, no Domain)"
+        - "Clear all session data on logout: server-side state, cookies, and instruct client to clear local state"
+      common_errors:
+        - error: "Strict IP binding on mobile networks"
+          impact: "Legitimate users constantly logged out as mobile IPs change"
+          fix: "Use IP as a risk signal, not a hard binding; flag but don't invalidate on IP change"
+        - error: "No session invalidation on password change"
+          impact: "Attacker who has stolen session remains authenticated after password reset"
+          fix: "Invalidate all other sessions when password is changed"
+    maturity:
+      level: standard
+    standards:
+      - name: "OWASP Session Management Cheat Sheet"
+        type: reference
+        role: "Session hardening practices"
+        status: recommended
+
+examples:
+  - id: session_cookie_example
+    title: "Secure Session Cookie Configuration"
+    context: "Configuring session cookies with all security flags"
+    correct: |
+      # Secure session cookie configuration
+      session_config = {
+          "cookie_name": "__Host-session",  # __Host- prefix enforces Secure + Path=/
+          "cookie_secure": True,            # Only sent over HTTPS
+          "cookie_httponly": True,           # Not accessible via JavaScript
+          "cookie_samesite": "Lax",         # Prevents CSRF for most cases
+          "cookie_path": "/",               # Required by __Host- prefix
+          "session_id_length": 32,          # 256 bits of entropy
+          "idle_timeout_minutes": 30,       # Invalidate after 30 min inactivity
+          "absolute_timeout_hours": 8,      # Max 8 hours regardless of activity
+          "regenerate_on_auth": True,       # New session ID after login
+          "max_concurrent_sessions": 3,     # Limit active sessions per user
+      }
+
+      # Session creation after authentication
+      def create_session(user, request):
+          # Regenerate session ID to prevent fixation
+          session_id = generate_secure_random(32)
+
+          session = {
+              "session_id": session_id,
+              "user_id": user.id,
+              "created_at": now(),
+              "last_active": now(),
+              "device": request.user_agent,
+              "ip_address": request.remote_ip,
+          }
+          session_store.save(session_id, session, ttl=absolute_timeout)
+
+          # Enforce concurrent session limit
+          enforce_session_limit(user.id, max_concurrent=3)
+
+          return set_cookie(
+              name="__Host-session",
+              value=session_id,
+              secure=True, httponly=True,
+              samesite="Lax", path="/"
+          )
+    incorrect: |
+      # WRONG: Insecure session configuration
+      session_config = {
+          "cookie_name": "sid",                # No __Host- prefix
+          # Missing: secure flag (sent over HTTP)
+          # Missing: httponly flag (accessible via JS)
+          # Missing: samesite flag (CSRF vulnerable)
+          "session_id": str(user.id),          # WRONG: Predictable session ID!
+          # No idle timeout
+          # No absolute timeout
+          # No session regeneration after auth
+          # No concurrent session limit
+      }
+    explanation: >
+      The correct configuration uses __Host- cookie prefix, all security
+      flags, cryptographically random session ID, timeout enforcement,
+      session regeneration, and concurrent session limits. The incorrect
+      version has predictable IDs, no security flags, and no timeouts.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Session cookies use Secure flag (HTTPS only)"
+      - "Session tokens transmitted only over TLS"
+  data_protection:
+    requirements:
+      - "Session store encrypted at rest"
+      - "Session data does not contain plaintext credentials"
+  access_control:
+    requirements:
+      - "Session management configuration requires privileged access"
+      - "Session store access restricted to application service accounts"
+  input_output:
+    requirements:
+      - "Session IDs validated format before lookup (prevent injection)"
+      - "Session cookie uses __Host- prefix where supported"
+  secrets:
+    requirements:
+      - "JWT signing keys stored in secret manager, not application config"
+      - "Session store credentials in secret manager"
+  monitoring:
+    requirements:
+      - "Log session lifecycle: creation, timeout, logout, revocation"
+      - "Alert on concurrent session limit exceeded"
+      - "Monitor for session fixation attempts (pre-auth session ID reuse)"
+
+compliance:
+  standards:
+    - name: "OWASP Session Management Cheat Sheet"
+      relevance: "Comprehensive session management security guidance"
+      reference: "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html"
+    - name: "RFC 7519 (JWT)"
+      relevance: "JSON Web Token specification for token-based sessions"
+
+  requirements_mapping:
+    - control: session_security
+      description: "Secure session management with proper timeouts and regeneration"
+      maps_to:
+        - "OWASP Top 10 A07:2021 (Identification and Authentication Failures)"
+        - "SOC 2 CC6.1"
+    - control: session_revocation
+      description: "Ability to revoke sessions immediately"
+      maps_to:
+        - "PCI DSS 8.2.8"
+        - "NIST SP 800-63B"
+
+prompt_recipes:
+  - id: session_greenfield
+    scenario: greenfield
+    description: "Design session management for a new application"
+    prompt: |
+      Design session management for a new application.
+
+      Context:
+      - Client type: [web browser/SPA/mobile/API]
+      - Security level: [standard/high/critical]
+      - Scale: [single server/moderate/high scale/global]
+      - Auth mechanism: [password/OAuth/SAML]
+
+      Requirements:
+      - Session type recommendation (server-side/token/hybrid)
+      - Cookie or token configuration
+      - Timeout policy (idle + absolute)
+      - Concurrent session limits
+      - Session fixation prevention
+      - Logout and revocation strategy
+
+  - id: session_audit
+    scenario: audit
+    description: "Audit session management security"
+    prompt: |
+      Audit session management security:
+
+      1. Are session IDs cryptographically random (≥128 bits)?
+      2. Are session cookies Secure, HttpOnly, SameSite?
+      3. Is session ID regenerated after authentication?
+      4. Are idle and absolute timeouts configured?
+      5. Is logout implemented (server-side invalidation)?
+      6. Are concurrent sessions limited?
+      7. Is step-up auth required for sensitive operations?
+      8. Are JWT access tokens short-lived (≤15 minutes)?
+      9. Is refresh token rotation implemented?
+      10. Are session lifecycle events logged?
+
+  - id: session_token_migration
+    scenario: migration
+    description: "Migrate from insecure to secure session management"
+    prompt: |
+      Migrate session management to secure configuration.
+
+      Steps:
+      1. Audit current session configuration
+      2. Add missing cookie security flags (Secure, HttpOnly, SameSite)
+      3. Implement session ID regeneration on authentication
+      4. Configure idle timeout (30 min) and absolute timeout (8h)
+      5. Add concurrent session limits
+      6. Implement proper logout (server-side invalidation)
+      7. Add __Host- cookie prefix
+      8. Add session lifecycle logging
+      9. Test session fixation prevention
+      10. Test concurrent session enforcement
+
+  - id: session_spa_bff
+    scenario: optimization
+    description: "Implement BFF pattern for SPA session management"
+    prompt: |
+      Implement the Backend-for-Frontend (BFF) pattern for SPA.
+
+      Architecture:
+      - BFF server handles OAuth/OIDC token exchange
+      - Tokens stored server-side (never sent to browser)
+      - Browser receives HttpOnly session cookie
+      - BFF proxies API calls with access token
+      - BFF handles token refresh transparently
+
+      Implementation steps and security considerations.
+
+anti_patterns:
+  - name: "Tokens in localStorage"
+    description: >
+      Storing access or refresh tokens in browser localStorage or
+      sessionStorage. Any XSS vulnerability can steal tokens because
+      storage APIs are accessible from JavaScript, unlike HttpOnly cookies.
+    fix: "Store tokens server-side (BFF pattern); browser gets only HttpOnly cookies"
+    severity: critical
+    related_pattern: hybrid_session
+
+  - name: "No Session Timeout"
+    description: >
+      Sessions that never expire. A stolen session token or cookie provides
+      indefinite access. Abandoned sessions on shared devices remain active.
+    fix: "Implement both idle timeout (15-30 min) and absolute timeout (8-24h)"
+    severity: high
+    related_pattern: server_side_session_management
+
+  - name: "Predictable Session IDs"
+    description: >
+      Using sequential numbers, timestamps, or user IDs as session
+      identifiers. Attackers can guess or enumerate valid session IDs.
+    fix: "Use cryptographically secure random generator with ≥128 bits entropy"
+    severity: critical
+    related_pattern: server_side_session_management
+
+checklist:
+  - id: SESS-01
+    category: security
+    description: "Session IDs are cryptographically random (≥128 bits entropy)"
+    severity: critical
+    verified_by: server_side_session_management
+
+  - id: SESS-02
+    category: security
+    description: "Session cookies have Secure, HttpOnly, and SameSite flags"
+    severity: critical
+    verified_by: server_side_session_management
+
+  - id: SESS-03
+    category: security
+    description: "Session ID regenerated after authentication"
+    severity: critical
+    verified_by: session_hardening
+
+  - id: SESS-04
+    category: security
+    description: "Idle timeout configured (15-30 minutes)"
+    severity: high
+    verified_by: server_side_session_management
+
+  - id: SESS-05
+    category: security
+    description: "Absolute timeout configured (8-24 hours)"
+    severity: high
+    verified_by: server_side_session_management
+
+  - id: SESS-06
+    category: security
+    description: "Logout invalidates session server-side"
+    severity: high
+    verified_by: server_side_session_management
+
+  - id: SESS-07
+    category: security
+    description: "Access tokens short-lived (≤15 minutes) with refresh rotation"
+    severity: high
+    verified_by: token_based_session
+
+  - id: SESS-08
+    category: security
+    description: "Concurrent sessions limited per user"
+    severity: medium
+    verified_by: session_hardening
+
+  - id: SESS-09
+    category: security
+    description: "Tokens never stored in localStorage or sessionStorage"
+    severity: critical
+    verified_by: hybrid_session
+
+  - id: SESS-10
+    category: security
+    description: "All other sessions invalidated on password change"
+    severity: high
+    verified_by: session_hardening

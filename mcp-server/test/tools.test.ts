@@ -36,7 +36,7 @@ export default {
 
   "search_standards by categories": async () => {
     const res = searchStandards(loader, { categories: ["infrastructure"] });
-    assert.equal(res.total, 6, `Expected 6 infrastructure entries, got ${res.total}`);
+    assert.equal(res.total, 7, `Expected 7 infrastructure entries, got ${res.total}`);
   },
 
   "search_standards by query": async () => {
@@ -56,7 +56,7 @@ export default {
 
   "search_standards no filters returns all": async () => {
     const res = searchStandards(loader, {});
-    assert.equal(res.total, 33, `Expected 33, got ${res.total}`);
+    assert.equal(res.total, 43, `Expected 43, got ${res.total}`);
   },
 
   // --- get_checklist ---

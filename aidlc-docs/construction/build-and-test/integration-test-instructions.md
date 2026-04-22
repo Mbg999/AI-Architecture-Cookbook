@@ -8,7 +8,7 @@ Verify that the distribution channels correctly consume cookbook entries — the
 
 ### Scenario 1: MCP Server Loads All Entries
 
-The MCP server's `CookbookLoader` must discover and parse all 33 entries from disk.
+The MCP server's `CookbookLoader` must discover and parse all 43 entries from disk.
 
 ```bash
 cd mcp-server
@@ -21,15 +21,15 @@ console.log('Categories:', idx.categories.length);
 console.log('Tags:', Object.keys(idx.tag_index).length);
 const domains = loader.getAllDomains();
 console.log('Domains loaded:', domains.length);
-if (domains.length !== 33) {
-  console.error('FAIL: Expected 33 domains, got', domains.length);
+if (domains.length !== 43) {
+  console.error('FAIL: Expected 43 domains, got', domains.length);
   process.exit(1);
 }
-console.log('PASS: All 33 domains loaded');
+console.log('PASS: All 43 domains loaded');
 "
 ```
 
-**Expected**: `Total entries: 33`, `PASS: All 33 domains loaded`
+**Expected**: `Total entries: 43`, `PASS: All 43 domains loaded`
 
 ### Scenario 2: MCP Server Query + Search
 
@@ -123,7 +123,7 @@ print(f'PASS: All {idx[\"total_entries\"]} entry paths resolve')
 
 | Scenario | Description | Dependency |
 |----------|-------------|------------|
-| MCP Loader | All 33 entries load from disk | Node.js + built MCP server |
+| MCP Loader | All 43 entries load from disk | Node.js + built MCP server |
 | MCP Query/Search | Standard retrieval and tag search | MCP server + YAML files |
 | Decision Tree | Evaluator returns valid recommendations | MCP server + evaluator |
 | Compose Pipeline | All 4 formats generate valid output | Python + YAML files |

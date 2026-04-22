@@ -1,0 +1,607 @@
+# =============================================================================
+# AI Architecture Cookbook — Authorization
+# Schema: v3 | Domain: authorization
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: authorization
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Authorization patterns including RBAC, ABAC, ReBAC, and policy-as-code.
+    Covers access control design, permission models, policy engines, least
+    privilege enforcement, and authorization for APIs, data, and UI elements.
+
+  tags:
+    - security
+    - authorization
+    - rbac
+    - abac
+    - rebac
+    - policy-as-code
+    - access-control
+    - permissions
+    - least-privilege
+
+  categories:
+    - foundational
+
+  prerequisites:
+    - authentication
+
+  related_standards:
+    - id: authentication
+      relationship: complementary
+      context: "Authentication establishes identity; authorization determines what that identity can do"
+    - id: api-design
+      relationship: complementary
+      context: "API endpoints enforce authorization decisions"
+    - id: service-architecture
+      relationship: complementary
+      context: "Inter-service authorization in microservices architectures"
+
+context_inputs:
+  - name: authorization_complexity
+    type: enum
+    description: "Complexity of authorization rules needed"
+    required: true
+    default: role_based
+    enum_values:
+      - simple_ownership
+      - role_based
+      - attribute_based
+      - relationship_based
+
+  - name: multi_tenancy
+    type: enum
+    description: "Multi-tenant isolation requirements"
+    required: true
+    default: none
+    enum_values:
+      - none
+      - logical_isolation
+      - strict_isolation
+
+  - name: policy_change_frequency
+    type: enum
+    description: "How often authorization policies change"
+    required: true
+    default: infrequent
+    enum_values:
+      - static
+      - infrequent
+      - frequent
+      - dynamic
+
+  - name: enforcement_points
+    type: enum
+    description: "Where authorization is enforced"
+    required: true
+    default: api_layer
+    enum_values:
+      - api_layer
+      - multi_layer
+      - distributed
+
+decision_tree:
+  - id: relationship_based
+    priority: 1
+    if:
+      - authorization_complexity == relationship_based
+    then:
+      pattern: relationship_based_access
+      standards:
+        - "Google Zanzibar"
+      notes: >
+        Relationship-based access control (ReBAC) is ideal for social graphs,
+        document sharing, organizational hierarchies, and any domain where
+        access depends on relationships between entities.
+
+  - id: attribute_dynamic
+    priority: 2
+    if:
+      - authorization_complexity == attribute_based
+      - policy_change_frequency in [frequent, dynamic]
+    then:
+      pattern: policy_as_code
+      standards:
+        - "NIST ABAC Guide"
+      notes: >
+        Frequently changing attribute-based policies benefit from externalized
+        policy-as-code engines that decouple policy from application code.
+
+  - id: role_based_multi_tenant
+    priority: 3
+    if:
+      - authorization_complexity == role_based
+      - multi_tenancy in [logical_isolation, strict_isolation]
+    then:
+      pattern: rbac_with_tenant_scoping
+      standards:
+        - "NIST RBAC Model"
+      notes: >
+        Multi-tenant RBAC requires roles scoped to tenants — a user's
+        admin role in Tenant A must not grant access to Tenant B.
+
+  - id: simple_rbac
+    priority: 4
+    if:
+      - authorization_complexity in [simple_ownership, role_based]
+    then:
+      pattern: rbac_with_tenant_scoping
+      standards:
+        - "NIST RBAC Model"
+      notes: >
+        Standard RBAC is sufficient for most applications with well-defined
+        user roles and straightforward permission requirements.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: critical
+  fallback:
+    pattern: rbac_with_tenant_scoping
+    description: "RBAC with proper scoping is the safe default for most applications"
+
+patterns:
+  - id: rbac_with_tenant_scoping
+    name: "RBAC with Tenant Scoping"
+    description: >
+      Role-Based Access Control where permissions are grouped into roles
+      and roles are assigned to users. In multi-tenant systems, role
+      assignments are scoped to a specific tenant to prevent cross-tenant
+      access.
+    use_when:
+      - "Well-defined user roles (admin, editor, viewer)"
+      - "Permissions are relatively stable"
+      - "Multi-tenant SaaS applications"
+    avoid_when:
+      - "Access depends on relationships between objects (use ReBAC)"
+      - "Access depends on dynamic attributes (use ABAC)"
+    tradeoffs:
+      pros:
+        - "Simple to understand and implement"
+        - "Easy to audit: enumerate role memberships"
+        - "Well-supported by frameworks and libraries"
+      cons:
+        - "Role explosion: too many fine-grained roles become unmanageable"
+        - "Cannot express contextual rules (time, location, resource attributes)"
+        - "Coarse-grained: all users in a role get same permissions"
+    implementation:
+      guidelines:
+        - "Define roles around job functions, not individual permissions"
+        - "Use hierarchical roles: admin inherits editor permissions, editor inherits viewer"
+        - "Scope role assignments to tenant: (user_id, tenant_id, role) tuple"
+        - "Enforce at the API layer: middleware checks role before handler executes"
+        - "Default deny: if no role grants access, deny"
+        - "Implement least privilege: start with viewer, grant higher roles explicitly"
+        - "Log all authorization decisions (especially denials)"
+        - "Review role assignments quarterly: remove stale permissions"
+        - "Never check roles in business logic — check permissions; roles map to permissions"
+      common_errors:
+        - error: "Checking role names in code instead of permissions"
+          impact: "Tight coupling: adding a new role requires code changes everywhere"
+          fix: "Check permissions, not roles. Roles are containers for permissions."
+        - error: "No tenant scoping on role assignments"
+          impact: "User with admin role in Tenant A can access Tenant B"
+          fix: "Always include tenant_id in role assignment and authorization checks"
+    maturity:
+      level: standard
+    standards:
+      - name: "NIST RBAC Model (SP 800-162)"
+        type: standard
+        role: "Formal RBAC model definition"
+        status: recommended
+
+  - id: policy_as_code
+    name: "Policy-as-Code Authorization"
+    description: >
+      Externalize authorization logic into a dedicated policy engine using
+      a policy language. Policies are version-controlled, testable, and
+      deployable independently of application code. Supports ABAC by
+      evaluating attributes at decision time.
+    use_when:
+      - "Complex, frequently changing authorization rules"
+      - "Need to audit and test policies independently"
+      - "Multiple services need consistent authorization"
+      - "Attribute-based decisions (time, geography, resource properties)"
+    avoid_when:
+      - "Simple RBAC is sufficient"
+      - "Team lacks capacity to manage policy infrastructure"
+    tradeoffs:
+      pros:
+        - "Policies decoupled from application code"
+        - "Policies are testable and version-controlled"
+        - "Consistent authorization across services"
+        - "Supports complex rules: time-based, attribute-based, contextual"
+      cons:
+        - "Additional infrastructure (policy engine)"
+        - "Policy language learning curve"
+        - "Latency for policy evaluation (mitigated by local caching)"
+    implementation:
+      guidelines:
+        - "Choose a policy engine: OPA/Rego, Cedar, Casbin, or cloud-native (AWS IAM, Azure Policy)"
+        - "Structure policies: one policy file per resource type or domain"
+        - "Test policies: unit tests for each policy rule with allow and deny scenarios"
+        - "Version control policies alongside application code (or dedicated policy repo)"
+        - "Deploy policies via CI/CD — same rigor as application deployment"
+        - "Cache policy decisions where safe (immutable inputs = cacheable)"
+        - "Implement policy decision logging for audit trail"
+        - "Use policy bundles for distributing policies to sidecar/embedded engines"
+      common_errors:
+        - error: "Embedding policy engine without input validation"
+          impact: "Malformed policy input leads to unexpected allow/deny decisions"
+          fix: "Validate all policy inputs; define schema for policy input objects"
+        - error: "No policy testing"
+          impact: "Policy changes break authorization — too permissive or too restrictive"
+          fix: "Write policy unit tests; run in CI before deployment; test both allow and deny paths"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "NIST SP 800-162 (ABAC Guide)"
+        type: standard
+        role: "Attribute-Based Access Control definition and guidance"
+        status: recommended
+
+  - id: relationship_based_access
+    name: "Relationship-Based Access Control (ReBAC)"
+    description: >
+      Determine access based on the relationship between the requesting
+      user and the target resource. Ideal for systems where access is
+      inherently relational: document sharing, organizational hierarchies,
+      social networks, and collaborative workspaces.
+    use_when:
+      - "Document sharing and collaboration platforms"
+      - "Organizational hierarchies (manager can see report's data)"
+      - "Social features (friends, followers, team members)"
+      - "Nested resource ownership (project > folder > document)"
+    avoid_when:
+      - "Simple role-based access is sufficient"
+      - "No relational data model"
+    tradeoffs:
+      pros:
+        - "Natural model for collaboration and sharing"
+        - "Fine-grained: access per resource per user relationship"
+        - "Handles complex hierarchies and inheritance"
+      cons:
+        - "More complex to implement and reason about"
+        - "Relationship graph can become performance bottleneck"
+        - "Requires specialized infrastructure (relationship graph store)"
+    implementation:
+      guidelines:
+        - "Model relationships as tuples: (user, relation, object) — e.g., (alice, editor, doc:123)"
+        - "Define relation schemas: document has viewer, editor, owner; folder has viewer, editor"
+        - "Implement relation inheritance: folder editor implies document editor for documents in folder"
+        - "Use a dedicated authorization service (SpiceDB, Ory Keto, Auth0 FGA)"
+        - "Evaluate access by traversing the relationship graph from user to resource"
+        - "Cache frequently checked relationships for performance"
+        - "Implement relationship consistency: when resource is deleted, clean up relationships"
+        - "Test with complex scenarios: transitive access, revocation, concurrent modifications"
+      common_errors:
+        - error: "Not handling relationship revocation propagation"
+          impact: "User removed from team but still has access via cached/stale relationships"
+          fix: "Implement relationship change events; invalidate caches; check consistency"
+        - error: "Unbounded graph traversal for deeply nested hierarchies"
+          impact: "Authorization check takes seconds for deep folder structures"
+          fix: "Limit traversal depth; materialize frequently checked paths; use purpose-built graph stores"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Google Zanzibar"
+        type: reference
+        role: "Foundational paper for ReBAC at scale"
+        status: recommended
+        reference: "https://research.google/pubs/pub48190/"
+
+  - id: resource_level_authorization
+    name: "Resource-Level Authorization"
+    description: >
+      Enforce authorization at the individual resource level, ensuring
+      users can only access specific resources they own or have been
+      granted access to. Prevents horizontal privilege escalation where
+      a user accesses another user's resources by manipulating IDs.
+    use_when:
+      - "Users own resources (profiles, documents, orders)"
+      - "Need to prevent IDOR (Insecure Direct Object Reference)"
+      - "API endpoints accept resource IDs from client"
+    avoid_when:
+      - "Resources are public or access is uniform"
+    tradeoffs:
+      pros:
+        - "Prevents IDOR and horizontal privilege escalation"
+        - "Fine-grained access at individual resource level"
+        - "Simple to implement as middleware or decorator"
+      cons:
+        - "Requires ownership/permission check on every resource access"
+        - "Additional database query per request for ownership verification"
+    implementation:
+      guidelines:
+        - "Always verify resource ownership: fetch resource, check owner matches authenticated user"
+        - "Never trust client-supplied IDs without authorization check"
+        - "Use query scoping: WHERE user_id = :authenticated_user_id (prevents returning other users' data)"
+        - "Implement as middleware or decorator to ensure consistent enforcement"
+        - "For shared resources: check explicit sharing record or role-based access"
+        - "Log all access attempts including the resource ID and authorization decision"
+        - "Return 404 (not 403) for unauthorized resources to prevent enumeration"
+      common_errors:
+        - error: "Trusting client-supplied resource IDs without ownership check"
+          impact: "IDOR vulnerability — user accesses any resource by guessing/enumerating IDs"
+          fix: "Always verify ownership or permission before returning resource data"
+        - error: "Returning 403 for unauthorized resources"
+          impact: "Reveals resource existence — enables enumeration"
+          fix: "Return 404 for resources the user is not authorized to access"
+    maturity:
+      level: standard
+    standards:
+      - name: "OWASP IDOR Prevention"
+        type: reference
+        role: "Prevention of Insecure Direct Object Reference"
+        status: recommended
+
+examples:
+  - id: authorization_middleware_example
+    title: "Authorization Middleware — Permission Check"
+    context: "Implementing API authorization that checks permissions, not roles"
+    correct: |
+      # Authorization middleware — check permissions, not roles
+      from functools import wraps
+
+      def require_permission(permission, resource_param=None):
+          """Decorator that checks the user has a specific permission.
+          Optionally checks resource-level ownership."""
+          def decorator(handler):
+              @wraps(handler)
+              async def wrapper(request, *args, **kwargs):
+                  user = request.authenticated_user
+                  tenant_id = request.tenant_id
+
+                  # Check permission (role -> permission mapping is in auth service)
+                  if not await auth_service.has_permission(
+                      user_id=user.id,
+                      tenant_id=tenant_id,
+                      permission=permission
+                  ):
+                      # Log authorization failure
+                      security_log.warning({
+                          "event": "authorization_denied",
+                          "user_id": user.id,
+                          "permission": permission,
+                          "resource": request.path,
+                      })
+                      raise NotFoundError()  # 404 not 403 — prevent enumeration
+
+                  # Resource-level check if applicable
+                  if resource_param:
+                      resource_id = kwargs.get(resource_param)
+                      if not await auth_service.can_access_resource(
+                          user_id=user.id,
+                          tenant_id=tenant_id,
+                          resource_id=resource_id
+                      ):
+                          raise NotFoundError()
+
+                  return await handler(request, *args, **kwargs)
+              return wrapper
+          return decorator
+
+      # Usage
+      @require_permission("documents:read", resource_param="doc_id")
+      async def get_document(request, doc_id):
+          return await document_service.get(doc_id)
+    incorrect: |
+      # WRONG: Checking role names in code + no resource-level check
+      async def get_document(request, doc_id):
+          user = request.user
+          # WRONG: Checking role name, not permission
+          if user.role != "admin" and user.role != "editor":
+              raise ForbiddenError()  # WRONG: 403 reveals existence
+
+          # WRONG: No resource-level check — any editor can access any document
+          doc = await db.documents.find_one({"_id": doc_id})
+          # WRONG: No tenant scoping — cross-tenant access possible
+          return doc
+    explanation: >
+      The correct implementation checks permissions (not roles), enforces
+      resource-level ownership, scopes to tenant, returns 404 instead of
+      403, and logs authorization failures. The incorrect version hardcodes
+      role names, has no resource-level check, and enables cross-tenant access.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Authorization tokens transmitted only over TLS"
+      - "Policy engine communication encrypted (mTLS for sidecar pattern)"
+  data_protection:
+    requirements:
+      - "Role assignments and permissions are not exposed to unauthorized users"
+      - "Policy evaluation inputs do not leak sensitive attributes"
+  access_control:
+    requirements:
+      - "Authorization configuration changes require privileged access"
+      - "Role assignment changes logged as administrative security events"
+  input_output:
+    requirements:
+      - "Resource IDs validated against expected format before authorization check"
+      - "Authorization decisions are deterministic: same input always produces same output"
+  secrets:
+    requirements:
+      - "Policy engine admin credentials stored in secret manager"
+      - "Service-to-service authorization uses short-lived tokens"
+  monitoring:
+    requirements:
+      - "All authorization denials logged with full context"
+      - "Alert on spike in authorization failures (potential enumeration attack)"
+      - "Monitor for privilege escalation: user gaining new admin roles"
+
+compliance:
+  standards:
+    - name: "NIST SP 800-162 (ABAC)"
+      relevance: "Attribute-Based Access Control implementation guidance"
+    - name: "OWASP Access Control Cheat Sheet"
+      relevance: "Web application access control best practices"
+      reference: "https://cheatsheetseries.owasp.org/cheatsheets/Access_Control_Cheat_Sheet.html"
+
+  requirements_mapping:
+    - control: access_control_enforcement
+      description: "Enforce authorization on every request to protected resources"
+      maps_to:
+        - "OWASP Top 10 A01:2021 (Broken Access Control)"
+        - "SOC 2 CC6.1"
+    - control: least_privilege
+      description: "Users have minimum permissions needed for their function"
+      maps_to:
+        - "NIST SP 800-53 AC-6"
+        - "PCI DSS 7.1"
+
+prompt_recipes:
+  - id: authz_greenfield
+    scenario: greenfield
+    description: "Design authorization for a new application"
+    prompt: |
+      Design the authorization model for a new application.
+
+      Context:
+      - User types: [list roles/personas]
+      - Resources: [list resource types]
+      - Multi-tenant: [yes/no]
+      - Access patterns: [ownership/role/attribute/relationship]
+
+      Requirements:
+      - Define permission model (RBAC/ABAC/ReBAC)
+      - Map roles to permissions
+      - Define resource-level access rules
+      - Tenant isolation strategy
+      - API enforcement approach (middleware/decorator/gateway)
+
+  - id: authz_audit
+    scenario: audit
+    description: "Audit authorization implementation"
+    prompt: |
+      Audit the authorization implementation:
+
+      1. Is authorization enforced on every API endpoint?
+      2. Are permissions checked (not role names)?
+      3. Is resource-level ownership verified (IDOR prevention)?
+      4. Is tenant isolation enforced in all queries?
+      5. Is default deny implemented (no role = no access)?
+      6. Are authorization denials logged?
+      7. Are role assignments reviewed regularly?
+      8. Is the authorization model documented?
+      9. Are there tests for authorization rules?
+      10. Can authorization be bypassed via alternate paths?
+
+  - id: authz_migration
+    scenario: migration
+    description: "Migrate from simple role checks to proper authorization"
+    prompt: |
+      Migrate from hardcoded role checks to a proper authorization model.
+
+      Steps:
+      1. Inventory all authorization checks in codebase
+      2. Extract permissions from role checks
+      3. Build role-to-permission mapping
+      4. Replace role checks with permission checks
+      5. Add resource-level authorization where missing
+      6. Implement authorization middleware/decorator
+      7. Add tenant scoping to all authorization checks
+      8. Add authorization denial logging
+      9. Write authorization tests
+      10. Validate no authorization bypass paths remain
+
+  - id: authz_policy_engine
+    scenario: optimization
+    description: "Implement externalized policy-as-code"
+    prompt: |
+      Implement policy-as-code authorization with a policy engine.
+
+      Context:
+      - Policy engine: [OPA/Cedar/Casbin/cloud-native]
+      - Current authorization: [describe current approach]
+      - Policy complexity: [simple RBAC/ABAC/ReBAC]
+
+      Steps:
+      1. Define policy schema and input format
+      2. Write policies in policy language
+      3. Write policy unit tests
+      4. Deploy policy engine (sidecar/embedded/service)
+      5. Integrate application with policy engine
+      6. Implement policy decision caching
+      7. Set up policy deployment pipeline
+      8. Add policy evaluation logging
+
+anti_patterns:
+  - name: "Role Checking Instead of Permission Checking"
+    description: >
+      Checking role names directly in application code (if user.role == "admin")
+      instead of checking permissions. Adding a new role requires changing code
+      everywhere instead of just updating the role-to-permission mapping.
+    fix: "Check permissions, not roles. Roles are containers that map to permissions."
+    severity: high
+    related_pattern: rbac_with_tenant_scoping
+
+  - name: "Missing Resource-Level Authorization (IDOR)"
+    description: >
+      Verifying the user's role but not checking if they own or have access
+      to the specific resource. Any authenticated user can access any resource
+      by manipulating the ID parameter.
+    fix: "Always verify resource ownership or explicit access grant; use query scoping"
+    severity: critical
+    related_pattern: resource_level_authorization
+
+  - name: "Client-Side Authorization Only"
+    description: >
+      Hiding UI elements based on role but not enforcing authorization on the
+      server side. Users can access any API endpoint directly, bypassing UI
+      restrictions entirely.
+    fix: "Server-side authorization is mandatory. Client-side is cosmetic only."
+    severity: critical
+    related_pattern: rbac_with_tenant_scoping
+
+checklist:
+  - id: AUTHZ-01
+    category: security
+    description: "Authorization enforced server-side on every API endpoint"
+    severity: critical
+    verified_by: rbac_with_tenant_scoping
+
+  - id: AUTHZ-02
+    category: security
+    description: "Permissions checked, not role names, in application code"
+    severity: high
+    verified_by: rbac_with_tenant_scoping
+
+  - id: AUTHZ-03
+    category: security
+    description: "Resource-level ownership verified (IDOR prevention)"
+    severity: critical
+    verified_by: resource_level_authorization
+
+  - id: AUTHZ-04
+    category: security
+    description: "Tenant isolation enforced in all data queries"
+    severity: critical
+    verified_by: rbac_with_tenant_scoping
+
+  - id: AUTHZ-05
+    category: security
+    description: "Default deny: no role/permission = no access"
+    severity: critical
+    verified_by: rbac_with_tenant_scoping
+
+  - id: AUTHZ-06
+    category: security
+    description: "Authorization denials logged with full context"
+    severity: high
+    verified_by: rbac_with_tenant_scoping
+
+  - id: AUTHZ-07
+    category: security
+    description: "404 returned for unauthorized resources (not 403)"
+    severity: medium
+    verified_by: resource_level_authorization
+
+  - id: AUTHZ-08
+    category: security
+    description: "Role assignments scoped to tenant"
+    severity: high
+    verified_by: rbac_with_tenant_scoping

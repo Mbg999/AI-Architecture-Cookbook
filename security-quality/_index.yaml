@@ -54,3 +54,35 @@ entries:
     prerequisites: []
     pattern_count: 3
     anti_pattern_count: 4
+
+  - domain: client-platform-security
+    version: "1.0.0"
+    description: "Client-side security for web, mobile, and desktop: CSP, certificate pinning, root/jailbreak detection, anti-tampering"
+    tags: ["security", "client-security", "certificate-pinning", "root-detection", "csp", "mobile-security", "web-security", "desktop-security"]
+    prerequisites: ["encryption", "authentication"]
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: secure-sdlc
+    version: "1.0.0"
+    description: "Secure SDLC with SAST, DAST, SCA, supply chain security, SBOM, and security gates"
+    tags: ["security", "sdlc", "sast", "dast", "sca", "supply-chain", "sbom", "devsecops"]
+    prerequisites: ["code-quality", "testing-strategies"]
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: compliance-data-privacy
+    version: "1.0.0"
+    description: "GDPR, CCPA, HIPAA compliance with PII handling, consent management, data retention, and right-to-erasure"
+    tags: ["compliance", "privacy", "gdpr", "ccpa", "hipaa", "pii", "consent", "data-retention"]
+    prerequisites: ["encryption", "logging-observability"]
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: security-monitoring
+    version: "1.0.0"
+    description: "Security monitoring, threat detection, SIEM integration, anomaly detection, and incident response"
+    tags: ["security", "monitoring", "siem", "threat-detection", "anomaly-detection", "incident-response"]
+    prerequisites: ["logging-observability", "authentication"]
+    pattern_count: 4
+    anti_pattern_count: 3

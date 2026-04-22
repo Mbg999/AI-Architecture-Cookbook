@@ -6,13 +6,13 @@
 schema_version: 1
 name: AI Architecture Cookbook
 description: Architectural standards and decision frameworks for AI code assistants
-total_entries: 33
+total_entries: 43
 categories:
 - id: foundational
   name: Foundational Standards
   description: Core cross-cutting concerns every system needs
   path: foundational/
-  entry_count: 8
+  entry_count: 11
   entries:
   - domain: api-design
     path: foundational/api-design/api-design.yaml
@@ -125,11 +125,57 @@ categories:
     - streaming
     - event-driven
     prerequisites: []
+  - domain: authorization
+    path: foundational/authorization/authorization.yaml
+    version: 1.0.0
+    description: Authorization patterns including RBAC, ABAC, ReBAC, and policy-as-code for resource-level access control,
+      permission models, and least privilege enforcement.
+    tags:
+    - security
+    - authorization
+    - rbac
+    - abac
+    - rebac
+    - policy-as-code
+    - access-control
+    prerequisites:
+    - authentication
+  - domain: session-management
+    path: foundational/session-management/session-management.yaml
+    version: 1.0.0
+    description: Session management patterns covering server-side sessions, JWT with refresh rotation, BFF pattern, session
+      fixation prevention, idle and absolute timeouts, and concurrent session controls.
+    tags:
+    - security
+    - session
+    - jwt
+    - token
+    - cookie
+    - session-fixation
+    - csrf
+    prerequisites:
+    - authentication
+  - domain: secrets-management
+    path: foundational/secrets-management/secrets-management.yaml
+    version: 1.0.0
+    description: Secrets management patterns for vault services, environment-based injection, automatic rotation, zero-trust
+      secret access, and secure credential lifecycle management.
+    tags:
+    - security
+    - secrets
+    - vault
+    - credentials
+    - api-keys
+    - rotation
+    - kms
+    prerequisites:
+    - encryption
+    - authentication
 - id: application-architecture
   name: Application Architecture
   description: Structural and design patterns for applications
   path: application-architecture/
-  entry_count: 7
+  entry_count: 9
   entries:
   - domain: dependency-injection
     path: application-architecture/dependency-injection/dependency-injection.yaml
@@ -231,11 +277,40 @@ categories:
     - stateless
     prerequisites:
     - data-persistence
+  - domain: resilience-chaos-engineering
+    path: application-architecture/resilience-chaos-engineering/resilience-chaos-engineering.yaml
+    version: 1.0.0
+    description: Resilience patterns and chaos engineering practices including circuit breakers, bulkheads, retries with backoff,
+      steady-state hypothesis testing, and fault injection for distributed systems.
+    tags:
+    - resilience
+    - chaos-engineering
+    - circuit-breaker
+    - retry
+    - bulkhead
+    - fault-tolerance
+    prerequisites:
+    - error-handling
+    - logging-observability
+  - domain: feature-flags
+    path: application-architecture/feature-flags/feature-flags.yaml
+    version: 1.0.0
+    description: Feature flag patterns for progressive delivery including release toggles, canary rollouts, kill switches,
+      A/B testing frameworks, and flag lifecycle management.
+    tags:
+    - feature-flags
+    - progressive-delivery
+    - canary-release
+    - a-b-testing
+    - toggles
+    prerequisites:
+    - configuration-management
+    - logging-observability
 - id: infrastructure
   name: Infrastructure & Deployment
   description: Container, orchestration, CI/CD, and cloud patterns
   path: infrastructure/
-  entry_count: 6
+  entry_count: 7
   entries:
   - domain: ci-cd
     path: infrastructure/ci-cd/ci-cd.yaml
@@ -320,11 +395,28 @@ categories:
     - helm
     prerequisites:
     - containerization
+  - domain: api-gateway-edge-security
+    path: infrastructure/api-gateway-edge-security/api-gateway-edge-security.yaml
+    version: 1.0.0
+    description: API gateway and edge security patterns covering request routing, WAF integration, DDoS protection, rate limiting
+      at the edge, zero-trust network architecture, and service mesh security.
+    tags:
+    - api-gateway
+    - edge-security
+    - waf
+    - ddos
+    - rate-limiting
+    - zero-trust
+    - mtls
+    prerequisites:
+    - api-design
+    - authentication
+    - rate-limiting
 - id: security-quality
   name: Security & Quality
   description: Security hardening, testing, and quality assurance
   path: security-quality/
-  entry_count: 6
+  entry_count: 10
   entries:
   - domain: accessibility
     path: security-quality/accessibility/accessibility.yaml
@@ -407,6 +499,72 @@ categories:
     - quality
     - contract-testing
     prerequisites: []
+  - domain: client-platform-security
+    path: security-quality/client-platform-security/client-platform-security.yaml
+    version: 1.0.0
+    description: Client-side security for web, mobile, and desktop platforms. Covers CSP, certificate pinning, root/jailbreak
+      detection, binary protection, secure storage, and anti-tampering.
+    tags:
+    - security
+    - client-security
+    - certificate-pinning
+    - root-detection
+    - csp
+    - mobile-security
+    - web-security
+    - desktop-security
+    prerequisites:
+    - encryption
+    - authentication
+  - domain: secure-sdlc
+    path: security-quality/secure-sdlc/secure-sdlc.yaml
+    version: 1.0.0
+    description: Secure software development lifecycle with SAST, DAST, SCA, supply chain security, SBOM generation, and security
+      gates integrated into CI/CD pipelines.
+    tags:
+    - security
+    - sdlc
+    - sast
+    - dast
+    - sca
+    - supply-chain
+    - sbom
+    - devsecops
+    prerequisites:
+    - code-quality
+    - testing-strategies
+  - domain: compliance-data-privacy
+    path: security-quality/compliance-data-privacy/compliance-data-privacy.yaml
+    version: 1.0.0
+    description: Data privacy and compliance patterns for GDPR, CCPA, and HIPAA. Covers PII handling, consent management,
+      data retention policies, right-to-erasure, and privacy-by-design architecture.
+    tags:
+    - compliance
+    - privacy
+    - gdpr
+    - ccpa
+    - hipaa
+    - pii
+    - consent
+    - data-retention
+    prerequisites:
+    - encryption
+    - logging-observability
+  - domain: security-monitoring
+    path: security-quality/security-monitoring/security-monitoring.yaml
+    version: 1.0.0
+    description: Security monitoring and threat detection patterns including SIEM integration, anomaly detection, behavioral
+      analytics, RASP, honeypots, and automated incident response.
+    tags:
+    - security
+    - monitoring
+    - siem
+    - threat-detection
+    - anomaly-detection
+    - incident-response
+    prerequisites:
+    - logging-observability
+    - authentication
 - id: integration-data
   name: Integration & Data
   description: External integrations, data pipelines, and versioning
@@ -510,6 +668,10 @@ categories:
 tag_index:
   a11y:
   - accessibility
+  a-b-testing:
+  - feature-flags
+  access-control:
+  - authorization
   accessibility:
   - accessibility
   aggregate:
@@ -532,6 +694,7 @@ tag_index:
   - authentication
   authorization:
   - authentication
+  - authorization
   automation:
   - ci-cd
   aws:
@@ -550,6 +713,7 @@ tag_index:
   - domain-driven-design
   bulkhead:
   - error-handling
+  - resilience-chaos-engineering
   cache:
   - state-management
   caching:
@@ -564,6 +728,7 @@ tag_index:
   circuit-breaker:
   - error-handling
   - third-party-integration
+  - resilience-chaos-engineering
   clean-architecture:
   - layered-architecture
   cloud:
@@ -665,8 +830,10 @@ tag_index:
   - error-handling
   fault-tolerance:
   - error-handling
+  - resilience-chaos-engineering
   feature-flags:
   - configuration-management
+  - feature-flags
   file-storage:
   - file-storage
   flyway:
@@ -746,6 +913,7 @@ tag_index:
   - dependency-injection
   monitoring:
   - logging-observability
+  - security-monitoring
   monolith:
   - service-architecture
   multi-cloud:
@@ -798,6 +966,7 @@ tag_index:
   - rate-limiting
   rate-limiting:
   - rate-limiting
+  - api-gateway-edge-security
   readability:
   - code-quality
   refactoring:
@@ -812,10 +981,12 @@ tag_index:
   - error-handling
   - rate-limiting
   - third-party-integration
+  - resilience-chaos-engineering
   rest:
   - api-design
   retry:
   - error-handling
+  - resilience-chaos-engineering
   runtime:
   - containerization
   s3:
@@ -838,11 +1009,18 @@ tag_index:
   - search
   secrets:
   - configuration-management
+  - secrets-management
   security:
   - authentication
   - input-validation
   - containerization
   - encryption
+  - authorization
+  - session-management
+  - secrets-management
+  - client-platform-security
+  - secure-sdlc
+  - security-monitoring
   semver:
   - versioning
   separation-of-concerns:
@@ -854,8 +1032,10 @@ tag_index:
   service-mesh:
   - service-architecture
   - orchestration
+  - api-gateway-edge-security
   session:
   - state-management
+  - session-management
   solid:
   - design-patterns
   specification:
@@ -890,8 +1070,10 @@ tag_index:
   - rate-limiting
   tls:
   - encryption
+  - client-platform-security
   tokens:
   - authentication
+  - session-management
   tracing:
   - logging-observability
   twelve-factor:
@@ -920,5 +1102,112 @@ tag_index:
   - cloud-architecture
   xss:
   - input-validation
+  api-gateway:
+  - api-gateway-edge-security
+  api-keys:
+  - secrets-management
+  anomaly-detection:
+  - security-monitoring
+  canary-release:
+  - feature-flags
+  ccpa:
+  - compliance-data-privacy
+  certificate-pinning:
+  - client-platform-security
+  chaos-engineering:
+  - resilience-chaos-engineering
+  client-security:
+  - client-platform-security
+  compliance:
+  - compliance-data-privacy
+  consent:
+  - compliance-data-privacy
+  cookie:
+  - session-management
+  credentials:
+  - secrets-management
+  csrf:
+  - session-management
+  csp:
+  - client-platform-security
+  dast:
+  - secure-sdlc
+  data-retention:
+  - compliance-data-privacy
+  ddos:
+  - api-gateway-edge-security
+  desktop-security:
+  - client-platform-security
+  devsecops:
+  - secure-sdlc
+  edge-security:
+  - api-gateway-edge-security
+  gdpr:
+  - compliance-data-privacy
+  hipaa:
+  - compliance-data-privacy
+  incident-response:
+  - security-monitoring
+  jwt:
+  - session-management
+  kill-switch:
+  - feature-flags
+  kms:
+  - secrets-management
+  least-privilege:
+  - authorization
+  mobile-security:
+  - client-platform-security
+  mtls:
+  - api-gateway-edge-security
+  permissions:
+  - authorization
+  pii:
+  - compliance-data-privacy
+  policy-as-code:
+  - authorization
+  privacy:
+  - compliance-data-privacy
+  progressive-delivery:
+  - feature-flags
+  rbac:
+  - authorization
+  abac:
+  - authorization
+  rebac:
+  - authorization
+  root-detection:
+  - client-platform-security
+  rotation:
+  - secrets-management
+  sast:
+  - secure-sdlc
+  sbom:
+  - secure-sdlc
+  sca:
+  - secure-sdlc
+  sdlc:
+  - secure-sdlc
+  session-fixation:
+  - session-management
+  siem:
+  - security-monitoring
+  supply-chain:
+  - secure-sdlc
+  threat-detection:
+  - security-monitoring
+  toggles:
+  - feature-flags
+  token:
+  - session-management
+  vault:
+  - secrets-management
+  waf:
+  - api-gateway-edge-security
+  web-security:
+  - client-platform-security
+  zero-trust:
+  - api-gateway-edge-security
+  - secrets-management
   zero-downtime:
   - database-migration

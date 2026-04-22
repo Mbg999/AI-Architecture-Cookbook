@@ -1,0 +1,642 @@
+# =============================================================================
+# AI Architecture Cookbook — API Gateway & Edge Security
+# Schema: v3 | Domain: api-gateway-edge-security
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: api-gateway-edge-security
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    API gateway and edge security patterns covering request routing, rate
+    limiting, authentication offloading, WAF integration, DDoS protection,
+    API versioning at the edge, request/response transformation, and
+    zero-trust network architecture.
+
+  tags:
+    - api-gateway
+    - edge-security
+    - waf
+    - ddos
+    - rate-limiting
+    - reverse-proxy
+    - zero-trust
+    - mtls
+    - api-versioning
+    - load-balancing
+
+  categories:
+    - infrastructure
+
+  prerequisites:
+    - api-design
+    - authentication
+    - rate-limiting
+
+  related_standards:
+    - id: api-design
+      relationship: complementary
+      context: "API gateway enforces API design standards at the edge"
+    - id: rate-limiting
+      relationship: complementary
+      context: "Rate limiting is a core gateway capability"
+    - id: authentication
+      relationship: complementary
+      context: "Gateway offloads authentication from backend services"
+    - id: containerization
+      relationship: complementary
+      context: "Service mesh and gateway work together in container orchestration"
+
+context_inputs:
+  - name: traffic_pattern
+    type: enum
+    description: "Expected traffic pattern and scale"
+    required: true
+    default: moderate_steady
+    enum_values:
+      - low_internal
+      - moderate_steady
+      - high_variable
+      - extreme_public
+
+  - name: api_consumers
+    type: enum
+    description: "Who consumes the APIs"
+    required: true
+    default: mixed
+    enum_values:
+      - internal_only
+      - partner_apis
+      - public_apis
+      - mixed
+
+  - name: security_posture
+    type: enum
+    description: "Required edge security level"
+    required: true
+    default: standard
+    enum_values:
+      - basic
+      - standard
+      - hardened
+      - zero_trust
+
+  - name: deployment_topology
+    type: enum
+    description: "Infrastructure deployment model"
+    required: true
+    default: cloud_native
+    enum_values:
+      - single_region
+      - multi_region
+      - cloud_native
+      - hybrid
+
+decision_tree:
+  - id: zero_trust_public
+    priority: 1
+    if:
+      - security_posture == zero_trust
+      - api_consumers in [public_apis, mixed]
+    then:
+      pattern: zero_trust_edge
+      standards:
+        - "NIST SP 800-207"
+      notes: >
+        Zero-trust with public API exposure requires mTLS, per-request
+        authentication, request signing, and comprehensive WAF with
+        bot management.
+
+  - id: high_traffic_public
+    priority: 2
+    if:
+      - traffic_pattern in [high_variable, extreme_public]
+      - api_consumers in [public_apis, mixed]
+    then:
+      pattern: multi_layer_gateway
+      standards:
+        - "Cloud Provider WAF Best Practices"
+      notes: >
+        High-traffic public APIs need multi-layer protection: CDN/DDoS
+        at edge, WAF, API gateway, and service mesh — each layer adds
+        defense without creating a single point of failure.
+
+  - id: standard_gateway
+    priority: 3
+    if:
+      - security_posture in [standard, hardened]
+    then:
+      pattern: api_gateway_pattern
+      standards:
+        - "OWASP API Security Top 10"
+      notes: >
+        Standard API gateway with authentication offloading, rate limiting,
+        request validation, and monitoring for most deployments.
+
+  - id: internal_mesh
+    priority: 4
+    if:
+      - api_consumers == internal_only
+    then:
+      pattern: service_mesh_security
+      standards:
+        - "NIST SP 800-204A"
+      notes: >
+        Internal-only APIs in microservices benefit from service mesh
+        for mTLS, traffic management, and observability without a
+        centralized gateway.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: api_gateway_pattern
+    description: "API gateway with WAF and rate limiting covers most deployment scenarios"
+
+patterns:
+  - id: api_gateway_pattern
+    name: "API Gateway Pattern"
+    description: >
+      Centralized API gateway that serves as the single entry point for all
+      API traffic. Handles cross-cutting concerns: authentication, rate
+      limiting, request routing, protocol translation, and monitoring.
+      Backend services focus on business logic.
+    use_when:
+      - "Multiple backend services behind a unified API"
+      - "Need centralized authentication and rate limiting"
+      - "API versioning and routing at the edge"
+      - "Request/response transformation needed"
+    avoid_when:
+      - "Single backend service (reverse proxy sufficient)"
+      - "Gateway becomes a bottleneck (consider distributed gateways)"
+    tradeoffs:
+      pros:
+        - "Single entry point simplifies client interaction"
+        - "Cross-cutting concerns handled once, not per-service"
+        - "Centralized monitoring and access logging"
+        - "API versioning without backend changes"
+      cons:
+        - "Single point of failure (requires HA)"
+        - "Additional network hop (latency)"
+        - "Configuration complexity at scale"
+    implementation:
+      guidelines:
+        - "Deploy gateway in HA: multiple instances behind load balancer"
+        - "Offload authentication: gateway validates tokens, passes user context to backends"
+        - "Implement rate limiting per client/API key with configurable limits"
+        - "Enable request validation: reject malformed requests before reaching backend"
+        - "Configure timeouts per route: connect, read, and write timeouts"
+        - "Implement request/response logging with PII masking"
+        - "Enable health checks for backend services: remove unhealthy backends from routing"
+        - "Implement request size limits: prevent oversized payloads"
+        - "Enable compression: gzip/brotli for response bodies"
+        - "Use circuit breakers in gateway for backend protection"
+      common_errors:
+        - error: "Gateway as a monolithic bottleneck"
+          impact: "All API traffic funneled through single instance; outage takes down everything"
+          fix: "Deploy gateway in HA with auto-scaling; consider team-specific gateway instances"
+        - error: "Business logic in gateway"
+          impact: "Gateway becomes hard to maintain; coupling between gateway and business domain"
+          fix: "Gateway handles only cross-cutting concerns: auth, routing, rate limiting, transformation"
+    maturity:
+      level: standard
+    standards:
+      - name: "OWASP API Security Top 10"
+        type: reference
+        role: "API security risks and mitigations"
+        status: recommended
+        reference: "https://owasp.org/API-Security/"
+
+  - id: multi_layer_gateway
+    name: "Multi-Layer Edge Protection"
+    description: >
+      Defense-in-depth at the network edge with multiple layers: CDN/DDoS
+      protection, WAF (Web Application Firewall), API gateway, and optionally
+      service mesh. Each layer handles specific threat categories, and no
+      single layer compromise exposes the backend.
+    use_when:
+      - "Public-facing APIs with high traffic"
+      - "Compliance requiring WAF (PCI DSS)"
+      - "DDoS protection needed"
+      - "Multiple threat vectors to address"
+    avoid_when:
+      - "Internal-only services (over-engineered)"
+      - "Simple APIs with low traffic"
+    tradeoffs:
+      pros:
+        - "Defense in depth: multiple security layers"
+        - "DDoS absorbed at edge before reaching infrastructure"
+        - "WAF protects against OWASP Top 10"
+        - "Each layer specializes in specific protections"
+      cons:
+        - "Higher infrastructure cost"
+        - "More complex troubleshooting (which layer blocked?)"
+        - "Latency from multiple processing layers"
+    implementation:
+      guidelines:
+        - "Layer 1 (CDN/DDoS): Cloudflare, AWS CloudFront+Shield, Azure Front Door — absorb volumetric attacks"
+        - "Layer 2 (WAF): OWASP Core Rule Set — block SQLi, XSS, path traversal, etc."
+        - "Layer 3 (API Gateway): authentication, rate limiting, request validation, routing"
+        - "Layer 4 (Service Mesh, optional): mTLS between services, east-west traffic control"
+        - "Configure WAF in detection mode first; review blocked requests; switch to prevention mode"
+        - "Implement bot management: distinguish bots from legitimate traffic"
+        - "Set up geographic blocking if API is region-specific"
+        - "Enable real-time WAF logging for security monitoring"
+        - "Tune WAF rules: false positives break legitimate traffic"
+      common_errors:
+        - error: "WAF in prevention mode without tuning"
+          impact: "Legitimate requests blocked by overly aggressive rules"
+          fix: "Deploy in detection mode first; analyze logs; tune rules; then enable prevention"
+        - error: "No DDoS protection for public APIs"
+          impact: "Volumetric attack overwhelms infrastructure; legitimate users locked out"
+          fix: "Use CDN/DDoS service as first layer; absorb attack at edge"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "OWASP ModSecurity Core Rule Set"
+        type: standard
+        role: "WAF rule set for common web attacks"
+        status: recommended
+
+  - id: zero_trust_edge
+    name: "Zero-Trust Edge Architecture"
+    description: >
+      Every request is authenticated and authorized regardless of network
+      location. No implicit trust based on IP, VPN, or network segment.
+      mTLS for all service communication, per-request token validation,
+      and continuous verification.
+    use_when:
+      - "High-security environments"
+      - "Remote workforce (no corporate network perimeter)"
+      - "Multi-cloud or hybrid deployments"
+      - "Compliance requiring zero-trust (FedRAMP, NIST)"
+    avoid_when:
+      - "Isolated lab environments with no external access"
+    tradeoffs:
+      pros:
+        - "No implicit trust — every request verified"
+        - "Effective against lateral movement attacks"
+        - "Works across network boundaries and clouds"
+      cons:
+        - "Certificate management complexity (mTLS)"
+        - "Performance overhead for per-request verification"
+        - "Requires workload identity infrastructure"
+    implementation:
+      guidelines:
+        - "mTLS everywhere: all service-to-service communication encrypted and mutually authenticated"
+        - "Per-request authentication: validate token on every request, even internal"
+        - "No network-based allow lists: do not trust requests just because they come from a 'trusted' network"
+        - "Implement workload identity: SPIFFE/SPIRE for service identity"
+        - "Short-lived certificates: auto-rotate (hours, not years)"
+        - "Request signing: clients sign requests; servers verify signatures (prevents replay)"
+        - "Implement network segmentation as defense-in-depth, not as a trust boundary"
+        - "Log all access decisions for audit trail"
+      common_errors:
+        - error: "mTLS with long-lived certificates"
+          impact: "Compromised certificate provides prolonged access"
+          fix: "Use short-lived certificates (hours/days) with automatic rotation"
+        - error: "Trusting internal network segments"
+          impact: "Attacker who gains internal access moves laterally without detection"
+          fix: "Authenticate and authorize every request regardless of source network"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "NIST SP 800-207 (Zero Trust Architecture)"
+        type: standard
+        role: "Zero trust architecture reference"
+        status: recommended
+        reference: "https://csrc.nist.gov/publications/detail/sp/800-207/final"
+
+  - id: service_mesh_security
+    name: "Service Mesh Security"
+    description: >
+      Use a service mesh (Istio, Linkerd, Consul Connect) for service-to-service
+      security: automatic mTLS, traffic policies, observability, and access
+      control without application code changes.
+    use_when:
+      - "Microservices architecture with many services"
+      - "Need mTLS without application changes"
+      - "East-west traffic security and observability"
+      - "Kubernetes-based infrastructure"
+    avoid_when:
+      - "Few services (overhead not justified)"
+      - "Non-container infrastructure"
+    tradeoffs:
+      pros:
+        - "Automatic mTLS without app changes"
+        - "Traffic policies declarative (not in code)"
+        - "Built-in observability (traces, metrics)"
+        - "Access control between services"
+      cons:
+        - "Significant infrastructure complexity"
+        - "Resource overhead (sidecar proxy per pod)"
+        - "Debugging is more complex (proxy layer)"
+    implementation:
+      guidelines:
+        - "Enable strict mTLS mode: reject plaintext connections between mesh services"
+        - "Define authorization policies: which service can call which service"
+        - "Implement traffic management: retries, timeouts, circuit breakers in mesh config"
+        - "Enable observability: distributed tracing and metrics from mesh sidecars"
+        - "Gradual adoption: start with permissive mode, move to strict after baseline"
+        - "Manage mesh upgrade lifecycle: sidecar version consistency"
+      common_errors:
+        - error: "Permissive mTLS mode in production"
+          impact: "Services accept both encrypted and plaintext — no real security"
+          fix: "Switch to strict mTLS mode after validating all services are in the mesh"
+        - error: "No authorization policies — only mTLS"
+          impact: "Any service in the mesh can call any other service (flat trust)"
+          fix: "Define service-level authorization policies: explicitly allow required call paths"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "NIST SP 800-204A"
+        type: standard
+        role: "Security strategies for microservices"
+        status: recommended
+
+examples:
+  - id: gateway_config_example
+    title: "API Gateway Configuration — Rate Limiting + Auth"
+    context: "Configuring API gateway with authentication offloading and rate limiting"
+    correct: |
+      # API Gateway configuration (conceptual — applies to any gateway)
+      gateway:
+        listeners:
+          - port: 443
+            protocol: HTTPS
+            tls:
+              min_version: "1.2"
+              cipher_suites: ["TLS_AES_256_GCM_SHA384", "TLS_CHACHA20_POLY1305_SHA256"]
+
+        global_policies:
+          # Request size limit
+          max_request_body: "10MB"
+          # Request timeout
+          timeout: "30s"
+          # WAF integration
+          waf:
+            enabled: true
+            mode: "prevention"
+            ruleset: "owasp-crs-4.0"
+
+        routes:
+          - path: "/api/v1/public/**"
+            backend: "public-service"
+            rate_limit:
+              requests_per_second: 100
+              burst: 20
+              key: "client_ip"
+            authentication: "api_key"
+
+          - path: "/api/v1/users/**"
+            backend: "user-service"
+            rate_limit:
+              requests_per_second: 50
+              burst: 10
+              key: "authenticated_user"
+            authentication: "jwt"  # Gateway validates JWT, passes user context
+            authorization:
+              required_scopes: ["users:read"]
+
+          - path: "/api/internal/**"
+            backend: "internal-service"
+            access: "deny_external"  # Only from service mesh
+            authentication: "mtls"
+
+        health_check:
+          path: "/health"
+          interval: "10s"
+          unhealthy_threshold: 3
+    incorrect: |
+      # WRONG: No security at gateway level
+      gateway:
+        routes:
+          - path: "/**"
+            backend: "monolith"
+            # WRONG: No rate limiting — vulnerable to abuse
+            # WRONG: No authentication at gateway — every request hits backend
+            # WRONG: No WAF — OWASP Top 10 attacks reach backend
+            # WRONG: No request size limit — oversized payloads accepted
+            # WRONG: No TLS configuration — may accept weak ciphers
+            # WRONG: No timeout — slow requests tie up resources
+            # WRONG: No health checks — routes to unhealthy backends
+    explanation: >
+      The correct configuration implements defense-in-depth at the gateway:
+      TLS with modern ciphers, WAF with OWASP rules, per-route rate limiting,
+      authentication offloading, request size limits, and health checks.
+      The incorrect configuration passes all traffic through without
+      any security controls.
+
+security_hardening:
+  transport:
+    requirements:
+      - "TLS 1.2+ enforced; TLS 1.0/1.1 disabled"
+      - "Strong cipher suites only; no CBC mode ciphers"
+      - "HSTS header with long max-age"
+  data_protection:
+    requirements:
+      - "Request/response logging masks PII and sensitive headers"
+      - "Gateway does not log request bodies for sensitive endpoints"
+  access_control:
+    requirements:
+      - "Gateway configuration changes require approval"
+      - "Admin API for gateway management restricted to operations team"
+  input_output:
+    requirements:
+      - "Request size limits enforced at gateway"
+      - "Request validation (content-type, required headers) at gateway"
+      - "WAF protects against injection attacks"
+  secrets:
+    requirements:
+      - "TLS certificates and private keys in secret manager"
+      - "API keys and JWT signing keys not embedded in gateway config"
+  monitoring:
+    requirements:
+      - "All requests logged with response code, latency, and client info"
+      - "Alert on spike in 4xx/5xx responses"
+      - "WAF block events forwarded to SIEM"
+      - "Rate limit hit events monitored"
+
+compliance:
+  standards:
+    - name: "OWASP API Security Top 10"
+      relevance: "API-specific security risks and mitigations"
+      reference: "https://owasp.org/API-Security/"
+    - name: "NIST SP 800-207 (Zero Trust Architecture)"
+      relevance: "Zero trust principles for edge security"
+    - name: "PCI DSS Requirement 6.6"
+      relevance: "WAF requirement for web-facing applications"
+
+  requirements_mapping:
+    - control: edge_protection
+      description: "WAF, DDoS protection, and rate limiting at network edge"
+      maps_to:
+        - "PCI DSS 6.6"
+        - "SOC 2 CC6.6"
+    - control: transport_security
+      description: "TLS enforcement with modern cipher suites"
+      maps_to:
+        - "PCI DSS 4.1"
+        - "NIST SP 800-52"
+
+prompt_recipes:
+  - id: gateway_greenfield
+    scenario: greenfield
+    description: "Design API gateway architecture"
+    prompt: |
+      Design API gateway architecture for a new system.
+
+      Context:
+      - API consumers: [internal/partner/public/mixed]
+      - Traffic volume: [low/moderate/high/extreme]
+      - Backend services: [list services and their APIs]
+      - Cloud provider: [AWS/Azure/GCP/multi-cloud]
+      - Security requirements: [standard/hardened/zero-trust]
+
+      Requirements:
+      - Gateway selection (Kong, NGINX, Envoy, cloud-native)
+      - Routing configuration
+      - Authentication strategy (offload to gateway vs. pass-through)
+      - Rate limiting strategy (per-client, per-API, global)
+      - WAF integration
+      - TLS configuration
+      - Health checks and circuit breakers
+
+  - id: gateway_audit
+    scenario: audit
+    description: "Audit API gateway security"
+    prompt: |
+      Audit API gateway security:
+
+      1. Is TLS 1.2+ enforced with strong ciphers?
+      2. Is rate limiting configured per client/API?
+      3. Is WAF enabled in prevention mode?
+      4. Is authentication offloaded at the gateway?
+      5. Are request size limits configured?
+      6. Are timeouts set per route?
+      7. Is HSTS header configured?
+      8. Are health checks active for all backends?
+      9. Is the gateway deployed in HA?
+      10. Are gateway configuration changes audit-logged?
+
+  - id: gateway_waf
+    scenario: optimization
+    description: "Tune WAF rules for production"
+    prompt: |
+      Tune WAF rules for production deployment.
+
+      Steps:
+      1. Deploy in detection mode
+      2. Run for 2 weeks collecting blocked and allowed requests
+      3. Analyze false positives (legitimate requests blocked)
+      4. Create exception rules for validated false positives
+      5. Switch to prevention mode
+      6. Monitor block rate and false positive rate
+      7. Review and tune monthly
+
+  - id: gateway_zero_trust
+    scenario: migration
+    description: "Migrate to zero-trust network architecture"
+    prompt: |
+      Migrate from perimeter security to zero-trust architecture.
+
+      Steps:
+      1. Inventory all service-to-service communication
+      2. Implement workload identity (SPIFFE/SPIRE or cloud-native)
+      3. Deploy service mesh with permissive mTLS
+      4. Enable mTLS strict mode (one service at a time)
+      5. Define authorization policies per service pair
+      6. Remove network-based trust (VPN, IP allow lists)
+      7. Implement continuous monitoring for all access
+      8. Validate with chaos experiments (network partition)
+
+anti_patterns:
+  - name: "Gateway as Single Point of Failure"
+    description: >
+      Deploying API gateway as a single instance without high availability.
+      Gateway failure takes down all API traffic. No failover, no
+      auto-scaling, no health monitoring of the gateway itself.
+    fix: "Deploy gateway in HA: multiple instances, load balanced, auto-scaling, health monitored"
+    severity: critical
+    related_pattern: api_gateway_pattern
+
+  - name: "WAF in Detection-Only Mode in Production"
+    description: >
+      Running WAF in detection mode permanently, never switching to
+      prevention. Attacks are logged but not blocked. Security team
+      monitors but does not act on findings.
+    fix: "Tune rules in staging, then switch to prevention mode in production; monitor false positive rate"
+    severity: high
+    related_pattern: multi_layer_gateway
+
+  - name: "Trusting Internal Network"
+    description: >
+      Assuming that requests from the internal network are safe and
+      skipping authentication/authorization for internal APIs. An
+      attacker who breaches the network perimeter has unrestricted
+      access to all internal services.
+    fix: "Authenticate and authorize all requests regardless of network source; implement zero-trust"
+    severity: critical
+    related_pattern: zero_trust_edge
+
+checklist:
+  - id: GW-01
+    category: security
+    description: "TLS 1.2+ enforced with strong cipher suites"
+    severity: critical
+    verified_by: api_gateway_pattern
+
+  - id: GW-02
+    category: security
+    description: "WAF enabled in prevention mode with tuned rules"
+    severity: high
+    verified_by: multi_layer_gateway
+
+  - id: GW-03
+    category: security
+    description: "Rate limiting configured per client and per API"
+    severity: high
+    verified_by: api_gateway_pattern
+
+  - id: GW-04
+    category: security
+    description: "Authentication offloaded at gateway"
+    severity: high
+    verified_by: api_gateway_pattern
+
+  - id: GW-05
+    category: security
+    description: "Request size limits configured"
+    severity: high
+    verified_by: api_gateway_pattern
+
+  - id: GW-06
+    category: reliability
+    description: "Gateway deployed in HA with auto-scaling"
+    severity: critical
+    verified_by: api_gateway_pattern
+
+  - id: GW-07
+    category: security
+    description: "HSTS header configured with adequate max-age"
+    severity: high
+    verified_by: api_gateway_pattern
+
+  - id: GW-08
+    category: reliability
+    description: "Health checks active for all backend services"
+    severity: high
+    verified_by: api_gateway_pattern
+
+  - id: GW-09
+    category: security
+    description: "Gateway admin API access restricted"
+    severity: high
+    verified_by: api_gateway_pattern
+
+  - id: GW-10
+    category: security
+    description: "All gateway requests logged with response code and latency"
+    severity: high
+    verified_by: api_gateway_pattern

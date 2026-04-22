@@ -61,3 +61,19 @@ entries:
     prerequisites: []
     pattern_count: 6
     anti_pattern_count: 5
+
+  - domain: resilience-chaos-engineering
+    version: "1.0.0"
+    description: "Resilience patterns and chaos engineering: circuit breakers, retries, bulkheads, chaos experiments"
+    tags: ["resilience", "chaos-engineering", "circuit-breaker", "retry", "bulkhead", "fault-tolerance"]
+    prerequisites: ["error-handling", "logging-observability"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: feature-flags
+    version: "1.0.0"
+    description: "Feature flags and progressive delivery: release toggles, canary rollouts, kill switches, A/B testing"
+    tags: ["feature-flags", "progressive-delivery", "canary-release", "a-b-testing", "toggles"]
+    prerequisites: ["configuration-management", "logging-observability"]
+    pattern_count: 4
+    anti_pattern_count: 3

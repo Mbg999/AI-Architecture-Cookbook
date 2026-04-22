@@ -1,0 +1,648 @@
+# =============================================================================
+# AI Architecture Cookbook — Secure SDLC
+# Schema: v3 | Domain: secure-sdlc
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: secure-sdlc
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Secure Software Development Lifecycle integrating SAST, DAST, SCA, and
+    supply chain security into CI/CD pipelines. Covers dependency scanning,
+    SBOM generation, signed artifacts, threat modeling, and security gates.
+
+  tags:
+    - security
+    - sdlc
+    - sast
+    - dast
+    - sca
+    - supply-chain
+    - sbom
+    - dependency-scanning
+    - threat-modeling
+    - devsecops
+
+  categories:
+    - security-quality
+
+  prerequisites:
+    - code-quality
+    - testing-strategies
+
+  related_standards:
+    - id: ci-cd
+      relationship: complementary
+      context: "Security scanning integrates into CI/CD pipeline stages"
+    - id: code-quality
+      relationship: complementary
+      context: "Security linting extends code quality analysis"
+    - id: containerization
+      relationship: complementary
+      context: "Container image scanning is part of secure SDLC"
+
+context_inputs:
+  - name: sdlc_maturity
+    type: enum
+    description: "Current security maturity of the development process"
+    required: true
+    default: developing
+    enum_values:
+      - initial
+      - developing
+      - mature
+      - optimizing
+
+  - name: deployment_frequency
+    type: enum
+    description: "How often code is deployed to production"
+    required: true
+    default: daily
+    enum_values:
+      - monthly
+      - weekly
+      - daily
+      - continuous
+
+  - name: supply_chain_risk
+    type: enum
+    description: "Risk level from third-party dependencies and build tools"
+    required: true
+    default: standard
+    enum_values:
+      - low
+      - standard
+      - high
+      - critical
+
+  - name: regulatory_requirements
+    type: enum
+    description: "External compliance requirements affecting SDLC"
+    required: false
+    default: general
+    enum_values:
+      - general
+      - soc2
+      - pci_dss
+      - hipaa
+      - fedramp
+
+decision_tree:
+  - id: critical_supply_chain
+    priority: 1
+    if:
+      - supply_chain_risk in [critical, high]
+      - regulatory_requirements in [fedramp, pci_dss]
+    then:
+      pattern: comprehensive_supply_chain
+      standards:
+        - "SLSA Level 3"
+        - "NIST SSDF"
+      notes: >
+        Critical supply chain risk with regulatory requirements demands
+        SLSA Level 3: hermetic builds, signed provenance, and full SBOM.
+
+  - id: mature_continuous
+    priority: 2
+    if:
+      - sdlc_maturity in [mature, optimizing]
+      - deployment_frequency in [daily, continuous]
+    then:
+      pattern: shift_left_security
+      standards:
+        - "OWASP SAMM"
+      notes: >
+        Mature teams deploying frequently benefit from fully automated
+        security scanning in every pipeline stage with break-the-build
+        policies for critical findings.
+
+  - id: developing_standard
+    priority: 3
+    if:
+      - sdlc_maturity in [developing]
+    then:
+      pattern: security_gate_pipeline
+      standards:
+        - "OWASP SAMM"
+      notes: >
+        Developing maturity teams should implement security gates at
+        key pipeline stages: commit (SAST), build (SCA), deploy (DAST).
+
+  - id: initial_maturity
+    priority: 4
+    if:
+      - sdlc_maturity == initial
+    then:
+      pattern: dependency_scanning_first
+      standards:
+        - "OWASP Dependency-Check"
+      notes: >
+        Teams starting their security journey should begin with dependency
+        scanning — highest impact for lowest effort.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: security_gate_pipeline
+    description: "Security gates in CI/CD provide a pragmatic starting point for most teams"
+
+patterns:
+  - id: shift_left_security
+    name: "Shift-Left Security Automation"
+    description: >
+      Integrate security testing as early as possible in the development
+      workflow — from IDE plugins and pre-commit hooks through to CI pipeline
+      stages. Developers get immediate feedback on security issues in their
+      normal workflow without context switching.
+    use_when:
+      - "Mature DevOps teams with automated CI/CD"
+      - "High deployment frequency (daily or continuous)"
+      - "Teams that own their security posture (DevSecOps model)"
+    avoid_when:
+      - "Team lacks CI/CD automation"
+      - "No baseline security training for developers"
+    tradeoffs:
+      pros:
+        - "Catches issues earliest when cheapest to fix"
+        - "Developers learn security patterns through feedback"
+        - "Minimal friction when integrated into existing tools"
+        - "Reduces security review bottleneck"
+      cons:
+        - "Initial setup and tuning cost"
+        - "False positives can cause alert fatigue"
+        - "Requires developer buy-in and training"
+    implementation:
+      guidelines:
+        - "IDE plugins: enable security linting (semgrep, SonarLint) for real-time feedback"
+        - "Pre-commit hooks: run secret detection (detect-secrets, gitleaks) and lightweight SAST"
+        - "PR checks: run full SAST scan on changed files; block merge on critical/high findings"
+        - "Build stage: run SCA (dependency scanning) on every build; fail on known critical CVEs"
+        - "Post-deploy: run DAST against staging/preview environments"
+        - "Tune rules incrementally: start with critical-only, expand as false positive rate drops"
+        - "Track mean-time-to-remediate (MTTR) for security findings"
+        - "Maintain a suppression/exception file for verified false positives (reviewed quarterly)"
+      common_errors:
+        - error: "Enabling all rules at once — hundreds of findings"
+          impact: "Developers overwhelmed, ignore all findings, disable the tool"
+          fix: "Start with critical severity only; add high-severity rules after critical backlog is clear"
+        - error: "No false positive management process"
+          impact: "Developers lose trust in tooling and stop reviewing findings"
+          fix: "Establish suppression workflow with documented justification; review suppressions quarterly"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "OWASP SAMM (Software Assurance Maturity Model)"
+        type: standard
+        role: "Maturity model for secure software development"
+        status: recommended
+        reference: "https://owaspsamm.org/"
+
+  - id: security_gate_pipeline
+    name: "Security Gate Pipeline"
+    description: >
+      Define explicit security quality gates at CI/CD pipeline stages.
+      Each gate runs specific security tools and enforces pass/fail criteria.
+      Code cannot progress to the next stage without passing security checks.
+    use_when:
+      - "Teams adopting security scanning incrementally"
+      - "Compliance requirements mandate security testing evidence"
+      - "Need clear separation between scan types"
+    avoid_when:
+      - "Very small teams where pipeline overhead is disproportionate"
+    tradeoffs:
+      pros:
+        - "Clear, auditable security checkpoints"
+        - "Each gate targets specific vulnerability classes"
+        - "Compliance evidence generated automatically"
+        - "Easy to understand pass/fail criteria"
+      cons:
+        - "Pipeline duration increases with each gate"
+        - "Gate failures block deployments — need fast remediation"
+        - "Tool-specific expertise needed for tuning"
+    implementation:
+      guidelines:
+        - "Gate 1 (Commit): Secret detection scan — block if secrets found"
+        - "Gate 2 (Build): SAST scan on source code — block on critical findings"
+        - "Gate 3 (Build): SCA scan on dependencies — block on critical CVEs with known exploits"
+        - "Gate 4 (Deploy-Staging): DAST scan against running application — block on critical findings"
+        - "Gate 5 (Pre-Production): Container image scan — block on critical OS/library vulnerabilities"
+        - "Define severity thresholds per gate: critical = block, high = warn, medium = track"
+        - "Generate SARIF reports for all scans (standard format for IDE/PR integration)"
+        - "Archive scan results as pipeline artifacts for compliance auditing"
+      common_errors:
+        - error: "Making all findings blocking from day one"
+          impact: "Pipeline constantly fails; developers circumvent or disable gates"
+          fix: "Start with critical-only blocking; use baseline to exclude existing findings"
+        - error: "No gate for secrets detection"
+          impact: "Credentials committed to repository; leaked via public repos or logs"
+          fix: "Secret detection is highest-ROI gate — implement first"
+    maturity:
+      level: standard
+    standards:
+      - name: "NIST SP 800-218 (SSDF)"
+        type: standard
+        role: "Secure Software Development Framework"
+        status: recommended
+        reference: "https://csrc.nist.gov/publications/detail/sp/800-218/final"
+
+  - id: comprehensive_supply_chain
+    name: "Comprehensive Supply Chain Security"
+    description: >
+      End-to-end supply chain protection including SBOM generation, artifact
+      signing, provenance attestation, dependency pinning, and build
+      reproducibility. Ensures every component in the software supply chain
+      is verified and traceable.
+    use_when:
+      - "High-value or regulated software products"
+      - "Software distributed to customers or partners"
+      - "Government or critical infrastructure applications"
+      - "SLSA Level 2+ compliance required"
+    avoid_when:
+      - "Internal tools with no external distribution"
+      - "Prototyping or experimental projects"
+    tradeoffs:
+      pros:
+        - "Full traceability from source to deployed artifact"
+        - "Detects tampering at build and distribution stages"
+        - "SBOM enables rapid vulnerability response"
+        - "Meets emerging regulatory requirements (US EO 14028)"
+      cons:
+        - "Significant infrastructure setup (signing keys, attestation service)"
+        - "Build reproducibility is difficult to achieve for all ecosystems"
+        - "SBOM maintenance overhead as dependencies change"
+    implementation:
+      guidelines:
+        - "Generate SBOM in CycloneDX or SPDX format on every build"
+        - "Pin all dependency versions with lock files (package-lock.json, go.sum, Cargo.lock)"
+        - "Verify dependency checksums during installation (npm audit signatures, pip --require-hashes)"
+        - "Sign build artifacts (cosign for containers, GPG for packages)"
+        - "Generate SLSA provenance attestation documenting build inputs and process"
+        - "Use hermetic builds: build environment has no network access, all inputs declared"
+        - "Require signed commits (GPG or SSH key signing)"
+        - "Regularly audit transitive dependencies for unexpected additions"
+        - "Implement private registry/mirror for critical dependencies"
+      common_errors:
+        - error: "Generating SBOM but never consuming or monitoring it"
+          impact: "SBOM provides no value — just compliance theater"
+          fix: "Feed SBOM into vulnerability monitoring service; alert on new CVEs for listed components"
+        - error: "Signing artifacts but not verifying signatures on deployment"
+          impact: "Signing is meaningless if consumers don't verify"
+          fix: "Enforce signature verification in deployment pipeline and runtime (admission controllers)"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "SLSA (Supply-chain Levels for Software Artifacts)"
+        type: framework
+        role: "Supply chain integrity framework"
+        status: recommended
+        reference: "https://slsa.dev/"
+      - name: "NIST SP 800-218 (SSDF)"
+        type: standard
+        role: "Secure Software Development Framework"
+        status: recommended
+
+  - id: dependency_scanning_first
+    name: "Dependency Scanning First"
+    description: >
+      Start the security journey with software composition analysis (SCA)
+      and dependency scanning. Highest ROI security activity because most
+      codebases have more third-party code than first-party code, and
+      dependency vulnerabilities are well-cataloged.
+    use_when:
+      - "Teams just starting security automation"
+      - "Legacy codebases with unknown dependency risk"
+      - "Want maximum security impact with minimum effort"
+    avoid_when:
+      - "Already have SCA in place — move to SAST/DAST"
+    tradeoffs:
+      pros:
+        - "Highest ROI — most vulnerabilities are in dependencies"
+        - "Easy to implement (tool integration takes hours)"
+        - "CVE databases provide clear, actionable findings"
+        - "Automated fix suggestions (dependabot, renovate)"
+      cons:
+        - "Only covers known vulnerabilities in dependencies"
+        - "Does not find application-level logic flaws"
+        - "Can generate noise for unfixable transitive dependencies"
+    implementation:
+      guidelines:
+        - "Enable dependency scanning in CI: npm audit, pip audit, cargo audit, etc."
+        - "Configure automated dependency update PRs (Dependabot, Renovate, Snyk)"
+        - "Set policy: critical CVEs with known exploits block merge within 48 hours"
+        - "High CVEs addressed within 1 sprint; medium within 1 quarter"
+        - "Track dependency age — flag dependencies >2 major versions behind"
+        - "Maintain an exceptions list for accepted risks (with business justification and review date)"
+      common_errors:
+        - error: "Ignoring transitive dependency vulnerabilities"
+          impact: "Indirect dependencies contain 80%+ of vulnerabilities"
+          fix: "Scan full dependency tree; use lock files for full resolution"
+        - error: "Auto-merging dependency updates without testing"
+          impact: "Breaking changes deployed to production"
+          fix: "Require CI pass + human review for major version bumps; auto-merge patch with CI pass"
+    maturity:
+      level: standard
+    standards:
+      - name: "OWASP Dependency-Check"
+        type: tool
+        role: "Software composition analysis for known vulnerabilities"
+        status: recommended
+        reference: "https://owasp.org/www-project-dependency-check/"
+
+examples:
+  - id: security_gate_example
+    title: "CI/CD Security Gates — GitHub Actions"
+    context: "Implementing security quality gates in a GitHub Actions pipeline"
+    correct: |
+      # .github/workflows/security.yml
+      name: Security Gates
+      on: [pull_request]
+
+      jobs:
+        secrets-scan:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+              with: { fetch-depth: 0 }
+            - name: Detect Secrets
+              uses: gitleaks/gitleaks-action@v2
+              # Fails PR if secrets detected — non-negotiable gate
+
+        sast-scan:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - name: SAST Scan
+              uses: returntocorp/semgrep-action@v1
+              with:
+                config: "p/owasp-top-ten p/security-audit"
+            # Upload SARIF for PR annotations
+            - uses: github/codeql-action/upload-sarif@v3
+              with: { sarif_file: semgrep.sarif }
+
+        dependency-scan:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - name: SCA Scan
+              run: |
+                npm audit --audit-level=critical
+                # Block on critical vulnerabilities
+            - name: Generate SBOM
+              run: npx @cyclonedx/cyclonedx-npm --output-file sbom.json
+            - uses: actions/upload-artifact@v4
+              with: { name: sbom, path: sbom.json }
+    incorrect: |
+      # WRONG: Security as an afterthought — no gates, no blocking
+      name: Build
+      on: [push]
+      jobs:
+        build:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+            - run: npm install  # No audit, no lock file verification
+            - run: npm run build
+            - run: npm run test
+            # No SAST, no SCA, no secrets scan
+            # No SBOM generated
+            # Deploys directly — no security gate
+    explanation: >
+      The correct pipeline has three independent security gates: secrets
+      detection (blocks on any finding), SAST (blocks on critical), and
+      dependency scanning (blocks on critical CVEs). SARIF output enables
+      PR annotations. SBOM is archived for compliance. The incorrect version
+      has zero security scanning.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All scanner downloads and updates over HTTPS with signature verification"
+      - "CI/CD secrets (API keys for scanning services) stored in pipeline secret manager"
+  data_protection:
+    requirements:
+      - "SARIF reports may contain source code snippets — restrict access"
+      - "SBOM may expose internal dependency graph — classify appropriately"
+  access_control:
+    requirements:
+      - "Security gate bypass requires explicit approval from security team"
+      - "Scanner configuration changes require code review"
+  input_output:
+    requirements:
+      - "Validate scanner tool integrity before execution (checksum verification)"
+      - "SARIF output validated against schema before processing"
+  secrets:
+    requirements:
+      - "Secret detection runs on every commit — no exceptions"
+      - "Pre-commit hook for local secret detection before push"
+  monitoring:
+    requirements:
+      - "Track security finding trends over time (new, fixed, accepted)"
+      - "Alert on security gate bypass events"
+      - "Monitor scanner coverage — detect repos without security gates"
+
+compliance:
+  standards:
+    - name: "NIST SP 800-218 (SSDF)"
+      relevance: "Secure Software Development Framework requirements"
+      reference: "https://csrc.nist.gov/publications/detail/sp/800-218/final"
+    - name: "SLSA (Supply-chain Levels for Software Artifacts)"
+      relevance: "Supply chain integrity and provenance framework"
+      reference: "https://slsa.dev/"
+    - name: "OWASP SAMM"
+      relevance: "Software security maturity model and assessment"
+      reference: "https://owaspsamm.org/"
+
+  requirements_mapping:
+    - control: static_analysis
+      description: "Automated SAST scanning on every code change"
+      maps_to:
+        - "NIST SSDF PW.7"
+        - "SOC 2 CC8.1"
+    - control: dependency_management
+      description: "Continuous monitoring and patching of third-party dependencies"
+      maps_to:
+        - "NIST SSDF PW.4"
+        - "PCI DSS 6.3"
+    - control: supply_chain_integrity
+      description: "Build provenance, artifact signing, and SBOM generation"
+      maps_to:
+        - "SLSA Level 2+"
+        - "US EO 14028 Section 4"
+
+prompt_recipes:
+  - id: secure_sdlc_greenfield
+    scenario: greenfield
+    description: "Set up security tooling for a new project"
+    prompt: |
+      Set up security scanning for a new project CI/CD pipeline.
+
+      Context:
+      - Language/framework: [specify]
+      - CI platform: [GitHub Actions/GitLab CI/Jenkins/etc.]
+      - Package manager: [npm/pip/maven/cargo/etc.]
+      - Deployment target: [containers/serverless/VMs]
+
+      Requirements:
+      - Secret detection (pre-commit + CI)
+      - SAST scanning on pull requests
+      - Dependency scanning with CVE blocking
+      - SBOM generation on release builds
+      - SARIF report upload for PR annotations
+
+  - id: secure_sdlc_audit
+    scenario: audit
+    description: "Audit existing security tooling coverage"
+    prompt: |
+      Audit the security scanning coverage:
+
+      1. Is secret detection running on every commit?
+      2. Is SAST configured with appropriate rule sets?
+      3. Is SCA scanning the full dependency tree?
+      4. Are security gates enforced (not just advisory)?
+      5. Are findings tracked with SLA (critical: 48h, high: 2w)?
+      6. Is SBOM generated and maintained?
+      7. Are build artifacts signed?
+      8. Are scanner suppressions reviewed quarterly?
+      9. Is DAST running against staging environments?
+      10. Is container image scanning enabled?
+
+  - id: secure_sdlc_sbom
+    scenario: audit
+    description: "Implement SBOM generation and monitoring"
+    prompt: |
+      Implement SBOM (Software Bill of Materials) for compliance.
+
+      Steps:
+      1. Choose format: CycloneDX (recommended) or SPDX
+      2. Integrate generation into build pipeline
+      3. Include: direct deps, transitive deps, build tools, OS packages
+      4. Store SBOM with each release (artifact or registry)
+      5. Feed SBOM into vulnerability monitoring service
+      6. Alert on new CVEs for components in latest SBOM
+      7. Define response SLA by CVE severity
+
+  - id: secure_sdlc_migration
+    scenario: migration
+    description: "Migrate from no security scanning to full coverage"
+    prompt: |
+      Migrate a project from zero security scanning to full coverage.
+
+      Phase 1 (Week 1): Secret detection
+      - Pre-commit hook + CI gate
+      - Scan git history for existing secrets, rotate any found
+
+      Phase 2 (Week 2-3): Dependency scanning
+      - Enable SCA in CI
+      - Fix critical CVEs, triage high
+      - Configure automated update PRs
+
+      Phase 3 (Week 4-6): SAST
+      - Enable with critical-only rules
+      - Fix initial findings
+      - Gradually expand rule set
+
+      Phase 4 (Week 7-8): DAST + Supply Chain
+      - DAST against staging
+      - SBOM generation
+      - Artifact signing
+
+anti_patterns:
+  - name: "Security Scanning Without Enforcement"
+    description: >
+      Running security scans that produce reports but never block deployments
+      or require remediation. Teams accumulate hundreds of findings that are
+      never addressed, creating a false sense of security.
+    fix: "Define severity-based blocking thresholds; start with critical-only blocking and expand"
+    severity: high
+    related_pattern: security_gate_pipeline
+
+  - name: "Committing Secrets to Version Control"
+    description: >
+      Accidentally committing API keys, passwords, tokens, or private keys
+      to git repositories. Once in git history, secrets persist even after
+      deletion from the working tree. Public repos leak secrets instantly.
+    fix: "Pre-commit secret detection hooks; CI secret scan gate; rotate any detected secrets immediately"
+    severity: critical
+    related_pattern: shift_left_security
+
+  - name: "Ignoring Transitive Dependencies"
+    description: >
+      Only scanning direct dependencies while ignoring the transitive
+      dependency tree. Most vulnerabilities exist in transitive dependencies
+      that developers never explicitly chose or reviewed.
+    fix: "Use lock files; scan the full resolved dependency tree; monitor transitive dependency additions"
+    severity: high
+    related_pattern: dependency_scanning_first
+
+  - name: "SBOM as Checkbox Compliance"
+    description: >
+      Generating SBOM to satisfy an audit requirement but never consuming it
+      for vulnerability monitoring or incident response. The SBOM sits in
+      an artifact store, never queried, providing zero security value.
+    fix: "Feed SBOM into continuous vulnerability monitoring; use it for incident response triage"
+    severity: medium
+    related_pattern: comprehensive_supply_chain
+
+checklist:
+  - id: SSDLC-01
+    category: security
+    description: "Secret detection runs on every commit (pre-commit + CI)"
+    severity: critical
+    verified_by: shift_left_security
+
+  - id: SSDLC-02
+    category: security
+    description: "SAST scanning configured on pull requests with blocking for critical findings"
+    severity: high
+    verified_by: security_gate_pipeline
+
+  - id: SSDLC-03
+    category: security
+    description: "SCA/dependency scanning on full dependency tree with CVE blocking"
+    severity: high
+    verified_by: dependency_scanning_first
+
+  - id: SSDLC-04
+    category: compliance
+    description: "SBOM generated in CycloneDX or SPDX format on release builds"
+    severity: high
+    verified_by: comprehensive_supply_chain
+
+  - id: SSDLC-05
+    category: security
+    description: "Build artifacts signed with verifiable signatures"
+    severity: high
+    verified_by: comprehensive_supply_chain
+
+  - id: SSDLC-06
+    category: security
+    description: "All dependency versions pinned with lock files"
+    severity: high
+    verified_by: comprehensive_supply_chain
+
+  - id: SSDLC-07
+    category: compliance
+    description: "Security finding remediation SLA defined and tracked (critical: 48h, high: 2 weeks)"
+    severity: high
+    verified_by: security_gate_pipeline
+
+  - id: SSDLC-08
+    category: security
+    description: "DAST scanning configured against staging/preview environments"
+    severity: medium
+    verified_by: security_gate_pipeline
+
+  - id: SSDLC-09
+    category: security
+    description: "Scanner suppressions/exceptions documented with justification and review date"
+    severity: medium
+    verified_by: shift_left_security
+
+  - id: SSDLC-10
+    category: security
+    description: "Container images scanned for OS and library vulnerabilities before deployment"
+    severity: high
+    verified_by: security_gate_pipeline

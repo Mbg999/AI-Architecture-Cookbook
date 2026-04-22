@@ -189,3 +189,190 @@
 - **Quality gates**: 12/12 pass
 
 ---
+
+## New Workflow - Initial User Request
+**Timestamp**: 2026-04-22T14:00:00Z
+**User Input**: "Using AI-DLC, we need to add new architectural standards and best practices for this repo, add some stuffs like security for web, mobile and desktop (ssl, pinning, prevent root devices, or something) and anyother you want"
+**AI Response**: "Starting new AI-DLC workflow cycle. Previous lifecycle COMPLETE. Detecting workspace state — brownfield project with existing 33 standards. Proceeding with INCEPTION phase for new standards."
+**Context**: New workflow cycle - Workspace Detection
+
+---
+
+## Workspace Detection (New Cycle)
+**Timestamp**: 2026-04-22T14:00:30Z
+**AI Response**: "Brownfield project detected. 33 existing YAML standards across 5 categories (foundational, application-architecture, infrastructure, security-quality, integration-data). MCP server, validation tooling, and prompts composer present. Previous AI-DLC lifecycle completed. Starting new cycle for additional standards. Proceeding to Requirements Analysis."
+**Context**: INCEPTION - Workspace Detection (brownfield, artifacts exist)
+
+---
+
+## Requirements Analysis - Questions Created (Cycle 2)
+**Timestamp**: 2026-04-22T14:02:00Z
+**AI Response**: "Created requirement-verification-questions-cycle2.md with 7 questions covering: client-platform security scope, additional new standards selection, detail level, category placement, priority ordering, code example style, and extension enforcement. Awaiting user answers."
+**Context**: INCEPTION - Requirements Analysis (Standard depth)
+
+---
+
+## Requirements Analysis - User Answers Received (Cycle 2)
+**Timestamp**: 2026-04-22T14:10:00Z
+**User Input**: "continue" (answers provided in requirement-verification-questions-cycle2.md)
+**AI Response**: "Analyzing answers - no contradictions or ambiguities detected. All 7 questions answered. Generating requirements document."
+**Context**: INCEPTION - Requirements Analysis
+
+### Answer Summary (Cycle 2)
+- Q1: A — All three platforms (Web, Mobile iOS/Android, Desktop) with full platform-specific patterns
+- Q2: I (All 8 additional standards) + Custom: Security Monitoring & Threat Detection (anomalous access patterns, failed login attempts, privilege escalation)
+- Q3: A — Full treatment, enterprise level (comprehensive decision trees, 4+ patterns, code examples, security hardening, anti-patterns, checklists)
+- Q4: C — Mix (security standards in security-quality/, non-security in natural categories)
+- Q5: B — All standards in parallel (batch together)
+- Q6: A — Technology-agnostic only (consistent with existing 33 standards)
+- Q7: A — Keep both extensions enforced (Security Baseline + PBT Full)
+
+### New Standards Identified (10 total)
+1. client-platform-security → security-quality/
+2. authorization → foundational/
+3. session-management → foundational/
+4. secrets-management → foundational/
+5. secure-sdlc → security-quality/
+6. compliance-data-privacy → security-quality/
+7. resilience-chaos-engineering → application-architecture/
+8. api-gateway-edge-security → infrastructure/
+9. feature-flags → application-architecture/
+10. security-monitoring → security-quality/
+
+---
+
+## Requirements Analysis - Completion (Cycle 2)
+**Timestamp**: 2026-04-22T14:15:00Z
+**AI Response**: "Requirements document generated at aidlc-docs/inception/requirements/requirements-cycle2.md. 10 new standards identified across 4 categories (security-quality: 4, foundational: 3, application-architecture: 2, infrastructure: 1). Full enterprise-grade treatment. Presenting for user approval."
+**Context**: INCEPTION - Requirements Analysis — Awaiting Approval
+
+---
+
+## Requirements Analysis - Approval (Cycle 2)
+**Timestamp**: 2026-04-22T14:20:00Z
+**User Input**: "Approve & Continue"
+**AI Response**: "Requirements approved. Proceeding to Workflow Planning."
+**Context**: INCEPTION - Requirements Analysis — APPROVED
+
+---
+
+## Workflow Planning - Plan Created (Cycle 2)
+**Timestamp**: 2026-04-22T14:25:00Z
+**AI Response**: "Execution plan created at aidlc-docs/inception/plans/execution-plan-cycle2.md. 2 stages to execute (Code Generation in 5 batches + Build and Test), 8 stages skipped. Risk: Low. Presenting for user approval."
+**Context**: INCEPTION - Workflow Planning — Awaiting Approval
+
+---
+
+## Workflow Planning - Approval (Cycle 2)
+**Timestamp**: 2026-04-22T14:30:00Z
+**User Input**: "Approve & Continue"
+**AI Response**: "Workflow plan approved. Proceeding to Code Generation — creating Part 1 plan for all 5 batches."
+**Context**: INCEPTION - Workflow Planning — APPROVED. Moving to CONSTRUCTION - Code Generation.
+
+---
+
+## Code Generation — Part 2 Execution (Cycle 2)
+**Timestamp**: 2026-04-22T15:00:00Z
+**AI Response**: "Code Generation Part 2 — executing all 16 steps across 5 batches."
+**Context**: CONSTRUCTION - Code Generation — Execution Start
+
+---
+
+## Code Generation — Batch 1 Complete (Cycle 2)
+**Timestamp**: 2026-04-22T15:30:00Z
+**AI Response**: "Batch 1 complete: created 4 security-quality YAML standards (client-platform-security, secure-sdlc, compliance-data-privacy, security-monitoring). Steps 1-4 done."
+**Context**: CONSTRUCTION - Code Generation — Batch 1 (security-quality)
+
+---
+
+## Code Generation — Batch 2 Complete (Cycle 2)
+**Timestamp**: 2026-04-22T16:00:00Z
+**AI Response**: "Batch 2 complete: created 3 foundational YAML standards (authorization, session-management, secrets-management). Steps 5-7 done."
+**Context**: CONSTRUCTION - Code Generation — Batch 2 (foundational)
+
+---
+
+## Code Generation — Batch 3 Complete (Cycle 2)
+**Timestamp**: 2026-04-22T16:20:00Z
+**AI Response**: "Batch 3 complete: created 2 application-architecture YAML standards (resilience-chaos-engineering, feature-flags). Steps 8-9 done."
+**Context**: CONSTRUCTION - Code Generation — Batch 3 (application-architecture)
+
+---
+
+## Code Generation — Batch 4 Complete (Cycle 2)
+**Timestamp**: 2026-04-22T16:35:00Z
+**AI Response**: "Batch 4 complete: created 1 infrastructure YAML standard (api-gateway-edge-security). Step 10 done."
+**Context**: CONSTRUCTION - Code Generation — Batch 4 (infrastructure)
+
+---
+
+## Code Generation — Validation Fixes (Cycle 2)
+**Timestamp**: 2026-04-22T16:45:00Z
+**AI Response**: "Ran python3 tools/validate.py — 33 passed, 10 failed with enum value errors. Fixed 30 invalid enum values across 10 files (type: guideline→reference, type: article→reference, type: paper→reference, type: methodology→practice, type: regulation→standard, status: required→recommended, category: deployment→reliability, scenario: incident→security, scenario: compliance→audit). Re-ran validation: 43/43 pass, 0 errors, 0 warnings."
+**Context**: CONSTRUCTION - Code Generation — Validation and Fixes
+
+---
+
+## Code Generation — Batch 5 Complete (Cycle 2)
+**Timestamp**: 2026-04-22T17:00:00Z
+**AI Response**: "Batch 5 complete: updated index.yaml (total_entries: 43, 10 new entries, tag_index updated), 4 category _index.yaml files (security-quality +4, foundational +3, application-architecture +2, infrastructure +1), and README.md catalog tables (all 5 category sections updated with new standards and counts). Steps 11-16 done. All 16 plan checkboxes marked [x]."
+**Context**: CONSTRUCTION - Code Generation — Batch 5 (distribution updates)
+
+---
+
+## Code Generation — Stage Complete (Cycle 2)
+**Timestamp**: 2026-04-22T17:05:00Z
+**AI Response**: "Code Generation stage complete. 10 new YAML standards created, all index files and README updated, validation passes 43/43. Presenting for user approval."
+**Context**: CONSTRUCTION - Code Generation — Awaiting Approval
+
+---
+
+## Code Generation — Approval (Cycle 2)
+**Timestamp**: 2026-04-22T17:10:00Z
+**User Input**: "continue"
+**AI Response**: "Code Generation approved. Proceeding to Build and Test stage."
+**Context**: CONSTRUCTION - Code Generation — APPROVED. Moving to Build and Test.
+
+---
+
+## Build and Test Stage (Cycle 2)
+**Timestamp**: 2026-04-22T17:15:00Z
+**Build Status**: Success
+**Test Status**: All Pass
+**Results**:
+- Cookbook validation: 43/43 pass, 0 errors, 0 warnings
+- MCP server build: `tsc` clean compile
+- MCP server tests: 30/30 pass (had 5 hardcoded count assertions from Cycle 1 — updated to 43)
+- Build-and-test docs: all 4 files updated from 33→43 counts
+**Files Updated**:
+- mcp-server/test/loader.test.ts (counts: 33→43, 8→11)
+- mcp-server/test/tools.test.ts (counts: 6→7, 33→43)
+- aidlc-docs/construction/build-and-test/build-instructions.md
+- aidlc-docs/construction/build-and-test/unit-test-instructions.md
+- aidlc-docs/construction/build-and-test/integration-test-instructions.md
+- aidlc-docs/construction/build-and-test/build-and-test-summary.md
+**Context**: CONSTRUCTION - Build and Test — COMPLETE
+
+---
+
+## Build and Test — Approval (Cycle 2)
+**Timestamp**: 2026-04-22T17:30:00Z
+**User Input**: "Approve & Continue"
+**AI Response**: "Build and Test approved. Proceeding to Operations (placeholder — no actionable steps). Cycle 2 complete."
+**Context**: CONSTRUCTION - Build and Test — APPROVED
+
+---
+
+## Operations Stage (Cycle 2)
+**Timestamp**: 2026-04-22T17:31:00Z
+**AI Response**: "Operations stage is a placeholder per aidlc-rule-details/operations/operations.md. No actionable steps. Marked complete."
+**Context**: OPERATIONS - Operations — COMPLETE (placeholder)
+
+---
+
+## Cycle 2 — Complete
+**Timestamp**: 2026-04-22T17:32:00Z
+**AI Response**: "AI-DLC Cycle 2 complete. 10 new architectural standards added to the AI Architecture Cookbook (33→43 total). All stages executed: Inception (Workspace Detection, Requirements Analysis, Workflow Planning), Construction (Code Generation 16/16 steps, Build and Test 43/43+30/30), Operations (placeholder). Final state updated in aidlc-state.md."
+**Context**: CYCLE 2 — COMPLETE
+
+---

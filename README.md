@@ -1,6 +1,6 @@
 # AI Architecture Cookbook
 
-Strongly opinionated architectural standards for AI code assistants. 33 domain-specific decision frameworks covering authentication, API design, containerization, encryption, testing, and more — each with context-aware decision trees, implementation patterns, anti-patterns, security hardening, and verification checklists.
+Strongly opinionated architectural standards for AI code assistants. 43 domain-specific decision frameworks covering authentication, API design, containerization, encryption, testing, and more — each with context-aware decision trees, implementation patterns, anti-patterns, security hardening, and verification checklists.
 
 ## Why?
 
@@ -316,14 +316,14 @@ python3 prompts/compose.py --format copilot --categories foundational,security-q
 Read `index.yaml` for the full catalog, then load specific entries as needed:
 
 ```
-index.yaml                    → Master catalog (all 33 entries, tag index)
+index.yaml                    → Master catalog (all 43 entries, tag index)
 {category}/_index.yaml        → Category metadata
 {category}/{domain}/{domain}.yaml → Full standard
 ```
 
 ## Standards Catalog
 
-### Foundational (8 standards)
+### Foundational (11 standards)
 | Standard | Description |
 |----------|-------------|
 | [authentication](foundational/authentication/) | OIDC, OAuth2, JWT, DPoP, mTLS |
@@ -334,8 +334,11 @@ index.yaml                    → Master catalog (all 33 entries, tag index)
 | [input-validation](foundational/input-validation/) | Validation, sanitization, injection prevention |
 | [messaging-events](foundational/messaging-events/) | Queues, pub/sub, event sourcing, CQRS |
 | [configuration-management](foundational/configuration-management/) | Env vars, secrets, feature flags |
+| [authorization](foundational/authorization/) | RBAC, ABAC, ReBAC, policy-as-code |
+| [session-management](foundational/session-management/) | Server-side sessions, JWT rotation, BFF |
+| [secrets-management](foundational/secrets-management/) | Vault services, rotation, zero-trust access |
 
-### Application Architecture (7 standards)
+### Application Architecture (9 standards)
 | Standard | Description |
 |----------|-------------|
 | [layered-architecture](application-architecture/layered-architecture/) | Clean, hexagonal, onion architecture |
@@ -345,8 +348,10 @@ index.yaml                    → Master catalog (all 33 entries, tag index)
 | [dependency-injection](application-architecture/dependency-injection/) | DI, IoC, composition root |
 | [repository-pattern](application-architecture/repository-pattern/) | Data access, unit of work |
 | [design-patterns](application-architecture/design-patterns/) | SOLID principles, GoF patterns |
+| [resilience-chaos-engineering](application-architecture/resilience-chaos-engineering/) | Circuit breakers, bulkheads, chaos experiments |
+| [feature-flags](application-architecture/feature-flags/) | Progressive delivery, kill switches, A/B testing |
 
-### Infrastructure (6 standards)
+### Infrastructure (7 standards)
 | Standard | Description |
 |----------|-------------|
 | [containerization](infrastructure/containerization/) | Docker, OCI, runtime security |
@@ -355,8 +360,9 @@ index.yaml                    → Master catalog (all 33 entries, tag index)
 | [infrastructure-as-code](infrastructure/infrastructure-as-code/) | Terraform, Pulumi, Bicep |
 | [cloud-architecture](infrastructure/cloud-architecture/) | Cloud-native, well-architected |
 | [database-migration](infrastructure/database-migration/) | Schema evolution, zero-downtime |
+| [api-gateway-edge-security](infrastructure/api-gateway-edge-security/) | WAF, DDoS protection, zero-trust edge |
 
-### Security & Quality (6 standards)
+### Security & Quality (10 standards)
 | Standard | Description |
 |----------|-------------|
 | [encryption](security-quality/encryption/) | TLS, cryptography, key management |
@@ -365,6 +371,10 @@ index.yaml                    → Master catalog (all 33 entries, tag index)
 | [code-quality](security-quality/code-quality/) | Linting, static analysis |
 | [performance-optimization](security-quality/performance-optimization/) | Profiling, caching, scaling |
 | [accessibility](security-quality/accessibility/) | WCAG, ARIA, inclusive design |
+| [client-platform-security](security-quality/client-platform-security/) | CSP, cert pinning, root detection, anti-tamper |
+| [secure-sdlc](security-quality/secure-sdlc/) | SAST, DAST, SCA, supply chain, SBOM |
+| [compliance-data-privacy](security-quality/compliance-data-privacy/) | GDPR, CCPA, HIPAA, consent, data retention |
+| [security-monitoring](security-quality/security-monitoring/) | SIEM, anomaly detection, incident response |
 
 ### Integration & Data (6 standards)
 | Standard | Description |

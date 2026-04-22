@@ -1,0 +1,642 @@
+# =============================================================================
+# AI Architecture Cookbook — Compliance & Data Privacy
+# Schema: v3 | Domain: compliance-data-privacy
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: compliance-data-privacy
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Data privacy and regulatory compliance patterns covering GDPR, CCPA, HIPAA,
+    and SOC 2. Includes PII handling, consent management, data retention and
+    deletion, data residency, audit trails, and privacy-by-design architecture.
+
+  tags:
+    - compliance
+    - privacy
+    - gdpr
+    - ccpa
+    - hipaa
+    - pii
+    - consent
+    - data-retention
+    - data-residency
+    - right-to-erasure
+
+  categories:
+    - security-quality
+
+  prerequisites:
+    - encryption
+    - logging-observability
+
+  related_standards:
+    - id: encryption
+      relationship: complementary
+      context: "PII encryption at rest and in transit is a compliance requirement"
+    - id: logging-observability
+      relationship: complementary
+      context: "Audit logging is required for compliance evidence"
+    - id: data-persistence
+      relationship: complementary
+      context: "Data retention and deletion policies affect persistence layer design"
+    - id: authentication
+      relationship: complementary
+      context: "Consent and privacy preferences are tied to authenticated identities"
+
+context_inputs:
+  - name: regulation
+    type: enum
+    description: "Primary regulatory framework to comply with"
+    required: true
+    default: gdpr
+    enum_values:
+      - gdpr
+      - ccpa
+      - hipaa
+      - soc2
+      - pci_dss
+      - multi_regulation
+
+  - name: pii_volume
+    type: enum
+    description: "Volume and variety of personally identifiable information processed"
+    required: true
+    default: moderate
+    enum_values:
+      - minimal
+      - moderate
+      - extensive
+      - sensitive_special_category
+
+  - name: data_residency
+    type: enum
+    description: "Geographic constraints on data storage"
+    required: true
+    default: single_region
+    enum_values:
+      - no_restriction
+      - single_region
+      - multi_region_restricted
+      - sovereign
+
+  - name: user_base_geography
+    type: enum
+    description: "Geographic distribution of users/data subjects"
+    required: true
+    default: single_country
+    enum_values:
+      - single_country
+      - single_continent
+      - global
+      - mixed_jurisdictions
+
+decision_tree:
+  - id: multi_regulation_global
+    priority: 1
+    if:
+      - regulation == multi_regulation
+      - user_base_geography == global
+    then:
+      pattern: privacy_by_design
+      standards:
+        - "GDPR Art. 25"
+        - "ISO 27701"
+      notes: >
+        Global operations under multiple regulations require privacy-by-design
+        architecture with configurable consent, regional data residency, and
+        the most restrictive regulation as the baseline.
+
+  - id: gdpr_extensive_pii
+    priority: 2
+    if:
+      - regulation == gdpr
+      - pii_volume in [extensive, sensitive_special_category]
+    then:
+      pattern: privacy_by_design
+      standards:
+        - "GDPR Art. 25"
+        - "GDPR Art. 35 (DPIA)"
+      notes: >
+        Extensive PII under GDPR requires Data Protection Impact Assessment,
+        privacy-by-design, and explicit consent management.
+
+  - id: hipaa_sensitive
+    priority: 3
+    if:
+      - regulation == hipaa
+      - pii_volume in [moderate, extensive, sensitive_special_category]
+    then:
+      pattern: data_classification_handling
+      standards:
+        - "HIPAA Privacy Rule"
+        - "HIPAA Security Rule"
+      notes: >
+        HIPAA requires PHI classification, minimum necessary access,
+        Business Associate Agreements, and breach notification within 60 days.
+
+  - id: standard_compliance
+    priority: 4
+    if:
+      - pii_volume in [minimal, moderate]
+    then:
+      pattern: consent_lifecycle
+      standards:
+        - "GDPR Art. 6-7"
+      notes: >
+        Standard PII handling needs consent management, data minimization,
+        and documented retention policies.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: critical
+  fallback:
+    pattern: consent_lifecycle
+    description: "Consent management with documented retention is the minimum for any PII processing"
+
+patterns:
+  - id: privacy_by_design
+    name: "Privacy-by-Design Architecture"
+    description: >
+      Embed privacy controls into the system architecture from the start
+      rather than bolting them on later. Data minimization, purpose limitation,
+      and user control are architectural constraints, not features.
+    use_when:
+      - "New systems processing PII"
+      - "Multi-regulation environments (GDPR + CCPA + etc.)"
+      - "Systems handling special category data (health, biometric, financial)"
+      - "Global user base with mixed jurisdictions"
+    avoid_when:
+      - "Systems that genuinely process no personal data"
+    tradeoffs:
+      pros:
+        - "Compliance is built-in, not retrofitted"
+        - "Reduces cost of future regulation changes"
+        - "User trust through demonstrable privacy controls"
+        - "Simplifies audit and certification processes"
+      cons:
+        - "Higher upfront design complexity"
+        - "May constrain product feature design"
+        - "Requires cross-functional collaboration (legal, product, engineering)"
+    implementation:
+      guidelines:
+        - "Classify all data fields: PII, sensitive PII, special category, non-personal"
+        - "Implement data minimization: collect only what is necessary for the stated purpose"
+        - "Enforce purpose limitation: data collected for purpose A cannot be used for purpose B without new consent"
+        - "Design consent as a first-class entity: consent_id, purpose, granted_at, revoked_at, legal_basis"
+        - "Implement right-to-erasure as a system capability, not a manual process"
+        - "Use pseudonymization: replace direct identifiers with tokens; store mapping separately with higher access controls"
+        - "Build data residency into the persistence layer: route data to region-appropriate storage based on user jurisdiction"
+        - "Conduct Data Protection Impact Assessment (DPIA) for high-risk processing"
+        - "Maintain a Record of Processing Activities (ROPA) as a living document"
+      common_errors:
+        - error: "Treating privacy as a feature flag instead of an architectural constraint"
+          impact: "PII leaks into systems not designed for it (logs, analytics, caches)"
+          fix: "PII handling is a data classification policy enforced at all layers, not a toggle"
+        - error: "Collecting data because you might need it later"
+          impact: "Violates data minimization; increases breach impact"
+          fix: "Define and document purpose before collection; delete when purpose fulfilled"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "GDPR Article 25 (Data Protection by Design)"
+        type: standard
+        role: "Legal requirement for privacy-by-design"
+        status: recommended
+      - name: "ISO 27701"
+        type: standard
+        role: "Privacy information management system extension to ISO 27001"
+        status: recommended
+
+  - id: consent_lifecycle
+    name: "Consent Lifecycle Management"
+    description: >
+      Manage user consent as a versioned, auditable lifecycle. Track what
+      the user consented to, when, under which version of terms, and
+      provide mechanisms to withdraw consent with downstream propagation.
+    use_when:
+      - "Any system processing PII with consent as legal basis"
+      - "Marketing, analytics, or profiling that requires opt-in"
+      - "Cookie consent and tracking preferences"
+    avoid_when:
+      - "Processing based on legitimate interest, contractual necessity, or legal obligation (consent not the legal basis)"
+    tradeoffs:
+      pros:
+        - "Clear audit trail for regulatory inquiries"
+        - "User trust through transparent preference management"
+        - "Granular consent enables compliant personalization"
+      cons:
+        - "UX complexity for consent collection"
+        - "Consent withdrawal requires downstream propagation to all processors"
+        - "Consent versioning adds data model complexity"
+    implementation:
+      guidelines:
+        - "Model consent as: {user_id, purpose, version, granted_at, source, revoked_at, legal_basis}"
+        - "Separate consent per purpose — never bundle (e.g., separate marketing from analytics)"
+        - "Record the consent collection context: which UI, which version of privacy policy"
+        - "Implement consent withdrawal that propagates to all downstream processors"
+        - "Provide self-service consent dashboard (preference center)"
+        - "Re-request consent when privacy policy changes materially"
+        - "Default to opt-out for non-essential processing"
+        - "Log all consent events as immutable audit records"
+      common_errors:
+        - error: "Pre-checked consent boxes"
+          impact: "Invalid consent under GDPR — consent must be freely given, specific, informed, unambiguous"
+          fix: "All consent checkboxes unchecked by default; user must take affirmative action"
+        - error: "No mechanism to withdraw consent"
+          impact: "Regulatory violation — right to withdraw is as easy as granting"
+          fix: "Provide consent withdrawal in preference center; propagate to all processors"
+    maturity:
+      level: standard
+    standards:
+      - name: "GDPR Articles 6-7"
+        type: standard
+        role: "Legal basis for processing and conditions for consent"
+        status: recommended
+
+  - id: data_classification_handling
+    name: "Data Classification & Handling Framework"
+    description: >
+      Classify all data by sensitivity and apply handling rules proportional
+      to the classification. Ensures sensitive data gets stronger controls
+      while allowing efficient handling of non-sensitive data.
+    use_when:
+      - "Organizations handling mixed sensitivity data"
+      - "HIPAA or healthcare data environments"
+      - "Financial data subject to PCI DSS"
+      - "Government data classification requirements"
+    avoid_when:
+      - "All data is the same classification (rare)"
+    tradeoffs:
+      pros:
+        - "Proportional security controls — strong where needed, efficient where not"
+        - "Clear handling rules reduce human error"
+        - "Enables automated policy enforcement"
+      cons:
+        - "Classification requires initial data audit effort"
+        - "Misclassification leads to under-protection or over-restriction"
+        - "Ongoing classification of new data fields needed"
+    implementation:
+      guidelines:
+        - "Define classification levels: Public, Internal, Confidential, Restricted"
+        - "Map handling rules per level: encryption, access control, retention, logging"
+        - "Tag data fields with classification in schemas and data dictionaries"
+        - "Automate classification for known patterns (email, SSN, credit card via regex/ML)"
+        - "Implement data masking for non-production environments"
+        - "Restrict Restricted-class data to dedicated storage with enhanced access controls"
+        - "Log all access to Confidential and Restricted data"
+        - "Review and update classification quarterly"
+      common_errors:
+        - error: "Classifying everything as Confidential"
+          impact: "Over-classification makes all controls equally burdensome; teams circumvent"
+          fix: "Be specific — classify at field level; most data is Internal or Public"
+        - error: "Not classifying data in logs and analytics"
+          impact: "PII leaks into log aggregators accessible to many engineers"
+          fix: "Include logs and analytics in data classification scope; mask/redact PII in logs"
+    maturity:
+      level: standard
+    standards:
+      - name: "NIST SP 800-60 (Information Types)"
+        type: standard
+        role: "Guide for mapping information types to security categories"
+        status: recommended
+      - name: "HIPAA Security Rule (45 CFR 164)"
+        type: standard
+        role: "Security standards for electronic protected health information"
+        status: recommended
+
+  - id: data_retention_deletion
+    name: "Data Retention & Right-to-Erasure"
+    description: >
+      Implement data retention policies with automated enforcement and
+      honor data subject deletion requests (right to erasure) across
+      all systems including backups, caches, and third-party processors.
+    use_when:
+      - "Any system storing PII with retention obligations"
+      - "GDPR right-to-erasure compliance"
+      - "CCPA right-to-delete compliance"
+      - "Reducing data liability through proactive deletion"
+    avoid_when:
+      - "Legal hold or litigation preservation overrides retention policy (temporary)"
+    tradeoffs:
+      pros:
+        - "Reduces breach impact by limiting stored data"
+        - "Demonstrates compliance with data minimization"
+        - "Reduces storage costs over time"
+      cons:
+        - "Deletion across distributed systems is complex"
+        - "Backup deletion may require special handling"
+        - "Legal hold exceptions add complexity"
+    implementation:
+      guidelines:
+        - "Define retention periods per data type: transactional (7 years), logs (90 days), analytics (2 years)"
+        - "Implement automated deletion jobs that run on schedule"
+        - "For right-to-erasure: delete or anonymize personal data within 30 days of request"
+        - "Propagate deletion to all processors: third-party APIs, analytics, email providers"
+        - "Handle backups: mark records for deletion on next restore, or use crypto-shredding"
+        - "Use crypto-shredding for backup compliance: encrypt each user's data with a unique key, destroy the key to effectively delete"
+        - "Maintain deletion log as compliance evidence"
+        - "Implement soft-delete with grace period before hard-delete (allows undo for accidental requests)"
+      common_errors:
+        - error: "Deleting from primary database but not from backups, caches, or analytics"
+          impact: "Data persists in secondary systems — non-compliant with erasure request"
+          fix: "Inventory all data locations per PII type; implement deletion across all systems or use crypto-shredding"
+        - error: "No automated retention enforcement"
+          impact: "Data accumulates indefinitely; retention policy exists on paper only"
+          fix: "Implement scheduled deletion jobs; monitor execution; alert on failures"
+    maturity:
+      level: standard
+    standards:
+      - name: "GDPR Article 17 (Right to Erasure)"
+        type: standard
+        role: "Legal right to data deletion"
+        status: recommended
+      - name: "CCPA Section 1798.105"
+        type: standard
+        role: "Consumer right to delete personal information"
+        status: recommended
+
+examples:
+  - id: consent_model_example
+    title: "Consent Data Model — Granular Purpose-Based Consent"
+    context: "Modeling user consent with per-purpose tracking and audit trail"
+    correct: |
+      # Consent record schema
+      consent_record = {
+        "consent_id": "uuid-v4",
+        "user_id": "user-123",
+        "purpose": "marketing_email",        # One consent per purpose
+        "legal_basis": "consent",             # consent | legitimate_interest | contract
+        "status": "granted",                  # granted | withdrawn
+        "granted_at": "2026-04-22T10:00:00Z",
+        "revoked_at": null,
+        "policy_version": "2.1",              # Which privacy policy version
+        "collection_method": "web_form",      # How consent was collected
+        "ip_address_hash": "sha256...",       # Evidence of collection (hashed)
+        "propagated_to": [                    # Track downstream processors
+          {"processor": "email-service", "notified_at": "2026-04-22T10:00:05Z"},
+          {"processor": "analytics", "notified_at": "2026-04-22T10:00:05Z"}
+        ]
+      }
+
+      # Withdrawal propagation
+      def withdraw_consent(user_id, purpose):
+          consent = find_consent(user_id, purpose)
+          consent.status = "withdrawn"
+          consent.revoked_at = now()
+
+          # Propagate to all downstream processors
+          for processor in consent.propagated_to:
+              notify_processor_withdrawal(processor, user_id, purpose)
+
+          # Log immutable audit event
+          audit_log.append({
+              "event": "consent_withdrawn",
+              "user_id": user_id,
+              "purpose": purpose,
+              "timestamp": now()
+          })
+    incorrect: |
+      # WRONG: Single boolean for all consent — no granularity
+      user = {
+        "accepted_terms": true,  # Bundles all consent into one checkbox
+        "accepted_at": "2026-04-22"
+        # No purpose tracking
+        # No policy version
+        # No withdrawal mechanism
+        # No downstream propagation
+        # No audit trail
+      }
+
+      # WRONG: Pre-checked consent in UI
+      <input type="checkbox" checked>  # Invalid — must be unchecked by default
+    explanation: >
+      The correct model tracks consent per purpose with full audit trail,
+      policy versioning, and downstream propagation. Withdrawal is automated
+      across all processors. The incorrect version bundles all consent into
+      one boolean with no granularity, versioning, or withdrawal capability.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All PII transmitted over TLS 1.2+ only"
+      - "Cross-border data transfers use approved mechanisms (SCCs, adequacy decisions)"
+  data_protection:
+    requirements:
+      - "PII encrypted at rest with per-user or per-tenant keys where feasible"
+      - "Pseudonymization applied to PII in analytics and non-production environments"
+      - "Data masking for PII in logs (email, phone, SSN redacted)"
+  access_control:
+    requirements:
+      - "PII access restricted to authorized personnel with documented need"
+      - "Access to Restricted-class data requires approval and is time-limited"
+      - "All PII access logged with user identity and timestamp"
+  input_output:
+    requirements:
+      - "PII not exposed in URLs, error messages, or debug logs"
+      - "Export/download of PII requires authorization and audit logging"
+  secrets:
+    requirements:
+      - "Encryption keys for PII stored in KMS/HSM, not application config"
+      - "Crypto-shredding keys managed with same rigor as the data they protect"
+  monitoring:
+    requirements:
+      - "Alert on bulk PII access or export (potential data exfiltration)"
+      - "Monitor consent withdrawal rates for anomalies"
+      - "Track data deletion job execution and failures"
+
+compliance:
+  standards:
+    - name: "GDPR (General Data Protection Regulation)"
+      relevance: "EU data protection regulation — primary framework for PII handling"
+      reference: "https://gdpr-info.eu/"
+    - name: "CCPA (California Consumer Privacy Act)"
+      relevance: "California privacy law for consumer data rights"
+    - name: "HIPAA (Health Insurance Portability and Accountability Act)"
+      relevance: "US healthcare data protection requirements"
+    - name: "ISO 27701"
+      relevance: "Privacy information management system standard"
+
+  requirements_mapping:
+    - control: consent_management
+      description: "Granular, purpose-based consent with withdrawal capability"
+      maps_to:
+        - "GDPR Art. 6-7"
+        - "CCPA 1798.120"
+    - control: data_subject_rights
+      description: "Right to access, rectification, erasure, portability"
+      maps_to:
+        - "GDPR Art. 15-20"
+        - "CCPA 1798.100-125"
+    - control: data_minimization
+      description: "Collect only necessary data for stated purpose"
+      maps_to:
+        - "GDPR Art. 5(1)(c)"
+
+prompt_recipes:
+  - id: privacy_greenfield
+    scenario: greenfield
+    description: "Design privacy architecture for a new system"
+    prompt: |
+      Design the privacy and compliance architecture for a new system.
+
+      Context:
+      - Regulations: [GDPR/CCPA/HIPAA/multi-regulation]
+      - PII types: [list: email, name, phone, SSN, health data, etc.]
+      - User geography: [single country/global/mixed jurisdictions]
+      - Data residency: [no restriction/single region/sovereign]
+
+      Requirements:
+      - Data classification for all PII fields
+      - Consent model (per-purpose with lifecycle)
+      - Retention policy per data type
+      - Right-to-erasure implementation
+      - Audit trail for compliance evidence
+
+  - id: privacy_audit
+    scenario: audit
+    description: "Audit privacy compliance posture"
+    prompt: |
+      Audit the system's privacy compliance:
+
+      1. Is all PII classified and documented?
+      2. Is consent collected per purpose (not bundled)?
+      3. Can users withdraw consent with downstream propagation?
+      4. Are retention policies defined and automated?
+      5. Can right-to-erasure be fulfilled within 30 days?
+      6. Is PII encrypted at rest and in transit?
+      7. Is PII masked in logs and non-production environments?
+      8. Is cross-border data transfer using approved mechanisms?
+      9. Is there a Data Protection Impact Assessment for high-risk processing?
+      10. Is the Record of Processing Activities maintained?
+
+  - id: privacy_deletion
+    scenario: operations
+    description: "Implement right-to-erasure across distributed systems"
+    prompt: |
+      Implement right-to-erasure (GDPR Art. 17) across the system.
+
+      Steps:
+      1. Inventory all systems storing user PII
+      2. Design deletion API that accepts user_id and propagates
+      3. Implement per-system deletion: database, cache, search index, files
+      4. Handle backups: crypto-shredding or mark for exclusion on restore
+      5. Notify third-party processors to delete
+      6. Generate deletion confirmation with timestamp and systems processed
+      7. Implement 30-day SLA monitoring and alerting
+
+  - id: privacy_dpia
+    scenario: audit
+    description: "Conduct a Data Protection Impact Assessment"
+    prompt: |
+      Conduct a DPIA (Data Protection Impact Assessment).
+
+      Sections:
+      1. Processing description: what data, what purpose, what legal basis
+      2. Necessity assessment: is this processing proportionate?
+      3. Risk assessment: identify risks to data subjects
+      4. Mitigation measures: controls to reduce identified risks
+      5. Consultation: involve DPO and affected stakeholders
+      6. Decision: proceed, modify, or abandon the processing
+      7. Review schedule: when to reassess (annually minimum)
+
+anti_patterns:
+  - name: "Consent Dark Patterns"
+    description: >
+      UI designs that manipulate users into granting consent: pre-checked
+      boxes, confusing opt-out flows, "accept all" prominently displayed
+      while "manage preferences" is hidden, or requiring more clicks to
+      decline than to accept.
+    fix: "Equal prominence for accept and decline; all boxes unchecked by default; one-click opt-out"
+    severity: high
+    related_pattern: consent_lifecycle
+
+  - name: "PII in Logs"
+    description: >
+      Logging full email addresses, phone numbers, IP addresses, or other
+      PII to application logs accessible to engineering teams. Violates
+      data minimization and creates uncontrolled copies of personal data.
+    fix: "Mask/redact PII in logs (show last 4 digits, hash emails); use structured logging with PII fields tagged for automatic redaction"
+    severity: high
+    related_pattern: data_classification_handling
+
+  - name: "Retention Without Deletion"
+    description: >
+      Defining data retention policies in documentation but never implementing
+      automated deletion. Data accumulates indefinitely, increasing breach
+      impact and violating data minimization principles.
+    fix: "Implement automated retention enforcement with scheduled deletion jobs; monitor job execution"
+    severity: high
+    related_pattern: data_retention_deletion
+
+  - name: "Copy-Paste Compliance"
+    description: >
+      Copying another organization's privacy policy without mapping it to
+      actual data processing activities. The policy describes practices
+      that don't exist or omits practices that do exist.
+    fix: "Map privacy policy to actual processing activities; maintain Record of Processing Activities (ROPA)"
+    severity: medium
+    related_pattern: privacy_by_design
+
+checklist:
+  - id: CDP-01
+    category: compliance
+    description: "All PII fields classified and documented in data dictionary"
+    severity: critical
+    verified_by: data_classification_handling
+
+  - id: CDP-02
+    category: compliance
+    description: "Consent collected per purpose with audit trail"
+    severity: critical
+    verified_by: consent_lifecycle
+
+  - id: CDP-03
+    category: compliance
+    description: "Right-to-erasure can be fulfilled within 30 days across all systems"
+    severity: critical
+    verified_by: data_retention_deletion
+
+  - id: CDP-04
+    category: compliance
+    description: "Data retention policies defined and automated"
+    severity: high
+    verified_by: data_retention_deletion
+
+  - id: CDP-05
+    category: security
+    description: "PII encrypted at rest and in transit"
+    severity: critical
+    verified_by: privacy_by_design
+
+  - id: CDP-06
+    category: compliance
+    description: "PII masked in logs and non-production environments"
+    severity: high
+    verified_by: data_classification_handling
+
+  - id: CDP-07
+    category: compliance
+    description: "Cross-border data transfers use approved mechanisms"
+    severity: high
+    verified_by: privacy_by_design
+
+  - id: CDP-08
+    category: compliance
+    description: "DPIA conducted for high-risk processing activities"
+    severity: high
+    verified_by: privacy_by_design
+
+  - id: CDP-09
+    category: compliance
+    description: "Record of Processing Activities (ROPA) maintained and current"
+    severity: high
+    verified_by: privacy_by_design
+
+  - id: CDP-10
+    category: compliance
+    description: "Consent withdrawal propagates to all downstream processors"
+    severity: critical
+    verified_by: consent_lifecycle

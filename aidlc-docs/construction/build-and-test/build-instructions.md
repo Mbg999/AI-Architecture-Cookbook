@@ -42,8 +42,8 @@ python3 tools/validate.py
 
 **Expected output**:
 ```
-Entries validated: 33
-Passed: 33
+Entries validated: 43
+Passed: 43
 Failed: 0
 ✓ All entries valid. (0 warnings)
 ```
@@ -72,7 +72,7 @@ import yaml, os
 | Artifact | Path | Description |
 |----------|------|-------------|
 | Compiled MCP server | `mcp-server/dist/` | JavaScript output (ES2022) |
-| Validation report | stdout | 33/33 pass, 0 warnings |
+| Validation report | stdout | 43/43 pass, 0 warnings |
 | Generated instructions | stdout or `--output` path | Copilot/Claude/Cursor instruction files |
 
 ## Troubleshooting

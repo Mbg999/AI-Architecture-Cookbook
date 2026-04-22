@@ -1,0 +1,664 @@
+# =============================================================================
+# AI Architecture Cookbook — Security Monitoring
+# Schema: v3 | Domain: security-monitoring
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: security-monitoring
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Security monitoring and threat detection patterns for detecting anomalous
+    access, failed login attempts, privilege escalation, and suspicious activity.
+    Covers SIEM integration, runtime application self-protection (RASP),
+    honeypots, alerting strategies, and incident response automation.
+
+  tags:
+    - security
+    - monitoring
+    - siem
+    - threat-detection
+    - anomaly-detection
+    - incident-response
+    - rasp
+    - honeypot
+    - brute-force
+    - privilege-escalation
+
+  categories:
+    - security-quality
+
+  prerequisites:
+    - logging-observability
+    - authentication
+
+  related_standards:
+    - id: logging-observability
+      relationship: complementary
+      context: "Security monitoring builds on application logging and metrics infrastructure"
+    - id: authentication
+      relationship: complementary
+      context: "Authentication events are primary signals for security monitoring"
+    - id: rate-limiting
+      relationship: complementary
+      context: "Rate limiting provides first line of defense; monitoring detects bypass attempts"
+    - id: encryption
+      relationship: complementary
+      context: "Monitoring detects attempts to access encrypted data without authorization"
+
+context_inputs:
+  - name: threat_model
+    type: enum
+    description: "Primary threat profile for the application"
+    required: true
+    default: standard_web_app
+    enum_values:
+      - internal_tool
+      - standard_web_app
+      - financial_service
+      - critical_infrastructure
+
+  - name: monitoring_maturity
+    type: enum
+    description: "Current security monitoring capability level"
+    required: true
+    default: basic
+    enum_values:
+      - none
+      - basic
+      - intermediate
+      - advanced
+
+  - name: incident_response_capability
+    type: enum
+    description: "Ability to respond to detected security events"
+    required: true
+    default: manual
+    enum_values:
+      - manual
+      - semi_automated
+      - fully_automated
+
+  - name: data_sensitivity
+    type: enum
+    description: "Sensitivity of data the application handles"
+    required: true
+    default: confidential
+    enum_values:
+      - public
+      - internal
+      - confidential
+      - restricted
+
+decision_tree:
+  - id: critical_infrastructure
+    priority: 1
+    if:
+      - threat_model == critical_infrastructure
+      - data_sensitivity == restricted
+    then:
+      pattern: defense_in_depth_monitoring
+      standards:
+        - "NIST SP 800-137"
+        - "NIST CSF DE.CM"
+      notes: >
+        Critical infrastructure with restricted data requires multi-layer
+        monitoring: network, application, data access, and user behavior
+        analytics with automated response capabilities.
+
+  - id: financial_advanced
+    priority: 2
+    if:
+      - threat_model == financial_service
+      - monitoring_maturity in [intermediate, advanced]
+    then:
+      pattern: behavioral_anomaly_detection
+      standards:
+        - "PCI DSS Req. 10"
+      notes: >
+        Financial services with existing monitoring should implement
+        behavioral anomaly detection for account takeover, fraud,
+        and insider threat detection.
+
+  - id: standard_basic
+    priority: 3
+    if:
+      - threat_model == standard_web_app
+      - monitoring_maturity in [none, basic]
+    then:
+      pattern: security_event_logging
+      standards:
+        - "OWASP Logging Cheat Sheet"
+      notes: >
+        Standard web apps should start with comprehensive security event
+        logging and basic alerting on critical events.
+
+  - id: internal_monitoring
+    priority: 4
+    if:
+      - threat_model == internal_tool
+    then:
+      pattern: security_event_logging
+      standards:
+        - "OWASP Logging Cheat Sheet"
+      notes: >
+        Internal tools need security event logging for insider threat
+        detection and access audit trails.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: security_event_logging
+    description: "Comprehensive security event logging is the foundation for all monitoring strategies"
+
+patterns:
+  - id: security_event_logging
+    name: "Security Event Logging & Alerting"
+    description: >
+      Comprehensive logging of security-relevant events with structured
+      formats, centralized collection, and alerting on critical events.
+      This is the foundation that all other monitoring patterns build on.
+    use_when:
+      - "All applications — this is the baseline"
+      - "Teams starting their security monitoring journey"
+      - "Compliance requirements for audit trails"
+    avoid_when:
+      - "Never skip this — always implement as a minimum"
+    tradeoffs:
+      pros:
+        - "Foundation for all advanced monitoring"
+        - "Compliance audit trail"
+        - "Incident investigation capability"
+        - "Low implementation complexity"
+      cons:
+        - "Log volume can be significant"
+        - "Requires log management infrastructure"
+        - "Alerts without context can cause fatigue"
+    implementation:
+      guidelines:
+        - "Log all authentication events: login success, failure, MFA challenge, password reset, account lockout"
+        - "Log all authorization failures: access denied, privilege insufficient, resource not permitted"
+        - "Log all administrative actions: user creation, role changes, permission grants, config changes"
+        - "Log data access events: PII access, bulk exports, API key usage"
+        - "Use structured logging format: {timestamp, event_type, severity, actor, action, resource, outcome, source_ip, user_agent, correlation_id}"
+        - "Include context: source IP, user agent, session ID, request correlation ID"
+        - "Never log secrets, passwords, tokens, or full credit card numbers"
+        - "Set up alerts for: N failed logins in T minutes, admin actions outside business hours, access from new geographic location"
+        - "Centralize logs in SIEM or log aggregator with retention per compliance requirements"
+        - "Implement log integrity: append-only storage, hash chains, or write-once storage"
+      common_errors:
+        - error: "Logging authentication success but not failure"
+          impact: "Cannot detect brute force attacks or credential stuffing"
+          fix: "Log both success and failure with same detail level; failure logs are more security-relevant"
+        - error: "Including sensitive data in security logs"
+          impact: "Log access becomes a data breach vector"
+          fix: "Never log passwords, tokens, or full PII; mask/hash sensitive fields"
+    maturity:
+      level: standard
+    standards:
+      - name: "OWASP Logging Cheat Sheet"
+        type: reference
+        role: "Security logging best practices"
+        status: recommended
+        reference: "https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html"
+
+  - id: behavioral_anomaly_detection
+    name: "Behavioral Anomaly Detection"
+    description: >
+      Detect security threats by identifying deviations from established
+      behavioral baselines. Monitor user behavior, API usage patterns,
+      and data access patterns to detect account takeover, insider threats,
+      and advanced persistent threats that evade rule-based detection.
+    use_when:
+      - "Financial services and high-value targets"
+      - "Need to detect account takeover attacks"
+      - "Insider threat detection required"
+      - "Existing rule-based monitoring is insufficient"
+    avoid_when:
+      - "No baseline security event logging in place (implement that first)"
+      - "Insufficient data history to establish baselines"
+    tradeoffs:
+      pros:
+        - "Detects novel attacks that rule-based systems miss"
+        - "Adapts to evolving threat landscape"
+        - "Effective against insider threats"
+      cons:
+        - "Requires significant data to establish baselines"
+        - "Higher false positive rate than rule-based detection"
+        - "More complex to implement and tune"
+    implementation:
+      guidelines:
+        - "Establish baselines: typical login times, locations, devices, API call patterns per user"
+        - "Monitor for velocity anomalies: sudden spike in API calls, data access, or failed operations"
+        - "Detect geographic anomalies: impossible travel (login from two distant locations within short time)"
+        - "Track session anomalies: user agent changes mid-session, IP changes mid-session"
+        - "Monitor data access anomalies: accessing resources outside normal scope, bulk data retrieval"
+        - "Implement risk scoring: combine multiple weak signals into a composite risk score"
+        - "Use sliding time windows for baseline comparison (7-day, 30-day rolling averages)"
+        - "Implement adaptive thresholds that account for legitimate changes (new device, travel)"
+        - "Alert triage: high-confidence alerts trigger automated response, low-confidence go to queue"
+      common_errors:
+        - error: "Static thresholds without baseline learning"
+          impact: "Constant false positives or missed detections due to fixed arbitrary thresholds"
+          fix: "Use per-user or per-cohort baselines that adapt over time"
+        - error: "Alerting on every anomaly without risk scoring"
+          impact: "Security team overwhelmed with low-significance alerts"
+          fix: "Implement composite risk scoring; only alert when risk score exceeds threshold"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "MITRE ATT&CK"
+        type: framework
+        role: "Threat model for mapping detection to attack techniques"
+        status: recommended
+        reference: "https://attack.mitre.org/"
+
+  - id: defense_in_depth_monitoring
+    name: "Defense-in-Depth Monitoring"
+    description: >
+      Multi-layer monitoring covering network, application, data, and
+      identity layers. Each layer has independent detection capabilities,
+      and correlation across layers enables detection of sophisticated
+      multi-stage attacks.
+    use_when:
+      - "Critical infrastructure or high-value targets"
+      - "Restricted data requiring maximum protection"
+      - "Advanced persistent threat (APT) defense"
+      - "Regulatory requirements for continuous monitoring (FedRAMP, PCI DSS)"
+    avoid_when:
+      - "Low-risk internal tools"
+      - "No security operations capability to respond to multi-layer alerts"
+    tradeoffs:
+      pros:
+        - "Comprehensive coverage — no single blind spot"
+        - "Cross-layer correlation detects sophisticated attacks"
+        - "Defense in depth — one layer failing doesn't mean undetected"
+      cons:
+        - "Significant infrastructure and operational cost"
+        - "Requires security operations team or managed SOC"
+        - "Complex correlation rules needed to avoid alert storms"
+    implementation:
+      guidelines:
+        - "Network layer: monitor for unusual traffic patterns, DNS anomalies, unexpected outbound connections"
+        - "Application layer: security event logging, RASP, API abuse detection"
+        - "Data layer: database activity monitoring, file integrity monitoring"
+        - "Identity layer: authentication anomalies, privilege escalation, orphaned accounts"
+        - "Implement SIEM with correlation rules across layers"
+        - "Map detections to MITRE ATT&CK framework for coverage analysis"
+        - "Implement automated response playbooks for high-confidence detections"
+        - "Run purple team exercises: validate detection coverage against simulated attacks"
+        - "Maintain detection-as-code: version control all detection rules, correlation logic"
+      common_errors:
+        - error: "Monitoring each layer in isolation without correlation"
+          impact: "Cannot detect multi-stage attacks that span layers"
+          fix: "Implement SIEM correlation rules; use common identifiers (correlation ID, session ID, user ID) across layers"
+        - error: "No response automation for high-confidence alerts"
+          impact: "Detected threats persist while waiting for human response"
+          fix: "Automate containment for high-confidence, high-severity detections (block IP, disable account, isolate host)"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "NIST SP 800-137"
+        type: standard
+        role: "Information Security Continuous Monitoring guidance"
+        status: recommended
+        reference: "https://csrc.nist.gov/publications/detail/sp/800-137/final"
+      - name: "NIST CSF Detect Function (DE)"
+        type: framework
+        role: "Detection capabilities framework"
+        status: recommended
+
+  - id: honeypot_canary
+    name: "Honeypots & Canary Tokens"
+    description: >
+      Deploy decoy resources and tokens that have no legitimate use.
+      Any access to a honeypot or trigger of a canary token is by definition
+      suspicious, providing high-fidelity alerts with near-zero false positives.
+    use_when:
+      - "Want high-confidence breach detection"
+      - "Need to detect lateral movement or insider threats"
+      - "Supplement existing monitoring with low-noise alerts"
+    avoid_when:
+      - "No capability to respond to alerts (useless to detect if you cannot respond)"
+    tradeoffs:
+      pros:
+        - "Near-zero false positives — any trigger is suspicious"
+        - "Low implementation cost for high detection value"
+        - "Detects attacks that evade other monitoring"
+        - "Works against insider threats"
+      cons:
+        - "Only detects threats that interact with the decoys"
+        - "Limited coverage — attacker might not encounter canaries"
+        - "Requires strategic placement for effectiveness"
+    implementation:
+      guidelines:
+        - "Deploy canary tokens in: source code repos (fake API keys), documents (tracking URLs), config files (fake credentials)"
+        - "Place honeypot API endpoints: /admin, /backup, /debug — any access triggers alert"
+        - "Create decoy database records: accounts, files, or entries that should never be accessed"
+        - "Deploy honeypot services on internal network to detect lateral movement"
+        - "Use DNS canaries: register internal-only domains that resolve to monitoring"
+        - "Rotate canary placement periodically to prevent attacker learning"
+        - "Alert on any canary trigger goes directly to security team — no triage needed"
+        - "Document canary inventory to prevent false alarms from internal staff"
+      common_errors:
+        - error: "Deploying honeypots but not monitoring them"
+          impact: "Attacker accesses honeypot, no one notices"
+          fix: "Canary alerts must be high-priority, auto-escalated to security team"
+        - error: "Placing canaries in locations attackers would never reach"
+          impact: "Canaries never trigger — no detection value"
+          fix: "Place canaries along common attack paths: admin pages, config files, database tables"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "MITRE ATT&CK D3FEND"
+        type: framework
+        role: "Countermeasure knowledge base including deception techniques"
+        status: recommended
+
+examples:
+  - id: security_monitoring_example
+    title: "Security Event Logging — Structured Authentication Events"
+    context: "Implementing security event logging for authentication with anomaly alerting"
+    correct: |
+      # Structured security event logging
+      import logging
+      import json
+      from datetime import datetime, timezone
+
+      security_logger = logging.getLogger("security")
+
+      def log_security_event(event_type, actor, action, resource, outcome, **context):
+          """Log a structured security event."""
+          event = {
+              "timestamp": datetime.now(timezone.utc).isoformat(),
+              "event_type": event_type,
+              "severity": _severity_for(event_type, outcome),
+              "actor": {
+                  "user_id": actor.get("user_id"),  # Never log passwords/tokens
+                  "session_id": actor.get("session_id"),
+                  "source_ip": actor.get("source_ip"),
+                  "user_agent": actor.get("user_agent"),
+              },
+              "action": action,
+              "resource": resource,
+              "outcome": outcome,  # "success" | "failure" | "denied"
+              "correlation_id": context.get("correlation_id"),
+              "metadata": context.get("metadata", {}),
+          }
+          security_logger.info(json.dumps(event))
+
+      # Usage — login failure with brute force detection context
+      log_security_event(
+          event_type="authentication",
+          actor={"user_id": "user-123", "source_ip": "203.0.113.50",
+                 "session_id": None, "user_agent": "Mozilla/5.0..."},
+          action="login",
+          resource="/api/auth/login",
+          outcome="failure",
+          metadata={"reason": "invalid_password",
+                    "consecutive_failures": 4,
+                    "lockout_threshold": 5}
+      )
+
+      # Alert rule: N failed logins in T minutes
+      BRUTE_FORCE_THRESHOLD = 5
+      BRUTE_FORCE_WINDOW_MINUTES = 10
+      # Query: count(event_type=authentication AND outcome=failure
+      #              AND source_ip=X) within 10m >= 5
+      # Action: alert security team + temporarily block IP
+    incorrect: |
+      # WRONG: Unstructured logging with sensitive data
+      import logging
+      logger = logging.getLogger()
+
+      def login(username, password):
+          if not check_password(username, password):
+              # WRONG: Logging the password!
+              logger.info(f"Login failed for {username} with password {password}")
+              # WRONG: No structured format — hard to query/alert
+              # WRONG: No source IP, session, or correlation context
+              # WRONG: No severity classification
+              return False
+
+          logger.info(f"Login OK: {username}")
+          # WRONG: No security-specific event type
+          # WRONG: No anomaly detection integration
+          return True
+    explanation: >
+      The correct implementation uses structured security events with
+      consistent fields, never logs sensitive data, includes context for
+      anomaly detection, and defines alerting rules. The incorrect version
+      logs passwords, uses unstructured format, and has no anomaly detection.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Security logs transmitted over encrypted channels to SIEM"
+      - "Log forwarding agents authenticate to log collector"
+  data_protection:
+    requirements:
+      - "Security logs never contain passwords, tokens, or secret values"
+      - "PII in security logs masked or pseudonymized"
+      - "Log storage encrypted at rest"
+  access_control:
+    requirements:
+      - "Security logs are append-only — no modification or deletion by application"
+      - "SIEM access restricted to security team"
+      - "Alert rule changes require security team approval"
+  input_output:
+    requirements:
+      - "Log injection prevented: sanitize user-controlled values in log entries"
+      - "Canary tokens validated before deployment to prevent false positives"
+  secrets:
+    requirements:
+      - "SIEM credentials and API keys stored in secret manager"
+      - "Canary credentials are monitored, not reusable for actual access"
+  monitoring:
+    requirements:
+      - "Monitor the monitoring: alert if security log pipeline stops"
+      - "Track alert volume and response times"
+      - "Validate detection coverage against MITRE ATT&CK matrix"
+
+compliance:
+  standards:
+    - name: "NIST SP 800-137"
+      relevance: "Information Security Continuous Monitoring guidance"
+      reference: "https://csrc.nist.gov/publications/detail/sp/800-137/final"
+    - name: "PCI DSS Requirement 10"
+      relevance: "Track and monitor all access to network resources and cardholder data"
+    - name: "MITRE ATT&CK"
+      relevance: "Adversarial tactics and techniques knowledge base for detection mapping"
+      reference: "https://attack.mitre.org/"
+
+  requirements_mapping:
+    - control: security_event_logging
+      description: "Log all security-relevant events with structured format"
+      maps_to:
+        - "PCI DSS 10.2"
+        - "SOC 2 CC7.2"
+    - control: anomaly_detection
+      description: "Detect anomalous access patterns and behavioral deviations"
+      maps_to:
+        - "NIST CSF DE.AE"
+        - "PCI DSS 10.6"
+    - control: incident_response_automation
+      description: "Automated containment actions for high-confidence detections"
+      maps_to:
+        - "NIST CSF RS.RP"
+        - "SOC 2 CC7.4"
+
+prompt_recipes:
+  - id: security_monitoring_greenfield
+    scenario: greenfield
+    description: "Set up security monitoring for a new application"
+    prompt: |
+      Set up security monitoring for a new application.
+
+      Context:
+      - Application type: [web app/API/microservices/mobile backend]
+      - Authentication method: [session/JWT/OAuth/API key]
+      - Deployment: [cloud provider/on-premises/hybrid]
+      - Log infrastructure: [existing SIEM/new setup/cloud-native]
+
+      Requirements:
+      - Structured security event logging (auth, authz, admin, data access)
+      - Failed login brute force detection
+      - Privilege escalation detection
+      - Anomalous access pattern alerting
+      - Alert escalation and response playbooks
+
+  - id: security_monitoring_audit
+    scenario: audit
+    description: "Audit security monitoring coverage"
+    prompt: |
+      Audit the security monitoring coverage:
+
+      1. Are authentication events logged (success + failure)?
+      2. Are authorization failures logged?
+      3. Are administrative actions logged?
+      4. Is brute force detection configured?
+      5. Is impossible travel detection enabled?
+      6. Are alerts routed to security team with SLA?
+      7. Is the monitoring pipeline itself monitored?
+      8. Are detection rules mapped to MITRE ATT&CK?
+      9. Are response playbooks documented and tested?
+      10. Are canary tokens deployed?
+
+  - id: security_monitoring_incident
+    scenario: operations
+    description: "Implement incident response automation"
+    prompt: |
+      Implement automated incident response for detected security events.
+
+      Detection -> Triage -> Contain -> Investigate -> Remediate
+
+      For each detection type, define:
+      1. Detection rule (what triggers it)
+      2. Confidence level (high/medium/low)
+      3. Automated containment (block IP, disable account, revoke session)
+      4. Alert routing (who gets notified, what SLA)
+      5. Investigation runbook (what to check, what evidence to preserve)
+      6. Escalation criteria (when to involve incident response team)
+
+  - id: security_monitoring_threat_model
+    scenario: audit
+    description: "Map monitoring to MITRE ATT&CK"
+    prompt: |
+      Map security monitoring detections to MITRE ATT&CK framework.
+
+      For each relevant ATT&CK technique:
+      1. Technique ID and name
+      2. Current detection capability (none/partial/full)
+      3. Detection rule or data source
+      4. False positive rate
+      5. Gap analysis and improvement plan
+
+      Focus on techniques relevant to:
+      - Initial access (T1190, T1078)
+      - Credential access (T1110, T1539)
+      - Privilege escalation (T1068, T1548)
+      - Lateral movement (T1021)
+      - Exfiltration (T1048)
+
+anti_patterns:
+  - name: "Alert Fatigue"
+    description: >
+      Generating so many alerts that the security team cannot process them.
+      Important alerts are lost in noise. Common causes: over-broad rules,
+      no severity classification, alerting on informational events.
+    fix: "Implement severity tiers; only page on critical; use risk scoring to filter; tune rules based on false positive rates"
+    severity: high
+    related_pattern: security_event_logging
+
+  - name: "Monitoring Without Response"
+    description: >
+      Detecting security events but having no process or capability to
+      respond. Events are logged, alerts fire, but no one investigates
+      or takes containment actions.
+    fix: "Define response playbooks for each alert type; assign ownership; measure MTTD and MTTR"
+    severity: critical
+    related_pattern: defense_in_depth_monitoring
+
+  - name: "Logging Sensitive Data in Security Events"
+    description: >
+      Including passwords, tokens, API keys, or full PII in security event
+      logs. This turns the logging system into a data breach vector where
+      anyone with log access can harvest credentials.
+    fix: "Never log secrets or full PII; mask sensitive fields; use security-specific logger with automated redaction"
+    severity: critical
+    related_pattern: security_event_logging
+
+checklist:
+  - id: SM-01
+    category: security
+    description: "All authentication events logged (success and failure)"
+    severity: critical
+    verified_by: security_event_logging
+
+  - id: SM-02
+    category: security
+    description: "Authorization failures logged with actor, resource, and context"
+    severity: high
+    verified_by: security_event_logging
+
+  - id: SM-03
+    category: security
+    description: "Brute force detection configured (N failures in T minutes)"
+    severity: high
+    verified_by: security_event_logging
+
+  - id: SM-04
+    category: security
+    description: "Administrative actions logged and alerted outside business hours"
+    severity: high
+    verified_by: security_event_logging
+
+  - id: SM-05
+    category: security
+    description: "Security logs use structured format with consistent fields"
+    severity: high
+    verified_by: security_event_logging
+
+  - id: SM-06
+    category: security
+    description: "No passwords, tokens, or secrets in security logs"
+    severity: critical
+    verified_by: security_event_logging
+
+  - id: SM-07
+    category: security
+    description: "Log pipeline monitored — alert if security logging stops"
+    severity: high
+    verified_by: defense_in_depth_monitoring
+
+  - id: SM-08
+    category: security
+    description: "Privilege escalation detection configured"
+    severity: high
+    verified_by: behavioral_anomaly_detection
+
+  - id: SM-09
+    category: security
+    description: "Impossible travel or geographic anomaly detection enabled"
+    severity: medium
+    verified_by: behavioral_anomaly_detection
+
+  - id: SM-10
+    category: security
+    description: "Incident response playbooks defined for each alert type"
+    severity: high
+    verified_by: defense_in_depth_monitoring
+
+  - id: SM-11
+    category: security
+    description: "Canary tokens deployed in high-value locations"
+    severity: medium
+    verified_by: honeypot_canary
+
+  - id: SM-12
+    category: security
+    description: "Detection coverage mapped to MITRE ATT&CK techniques"
+    severity: medium
+    verified_by: defense_in_depth_monitoring

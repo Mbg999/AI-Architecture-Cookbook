@@ -1,0 +1,618 @@
+# =============================================================================
+# AI Architecture Cookbook — Feature Flags & Progressive Delivery
+# Schema: v3 | Domain: feature-flags
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: feature-flags
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Feature flag and progressive delivery patterns for safe deployments,
+    A/B testing, canary releases, and operational toggles. Covers flag
+    lifecycle management, targeting rules, technical debt prevention,
+    and integration with CI/CD pipelines.
+
+  tags:
+    - feature-flags
+    - progressive-delivery
+    - canary-release
+    - a-b-testing
+    - toggles
+    - deployment
+    - dark-launch
+    - kill-switch
+    - trunk-based-development
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - configuration-management
+    - logging-observability
+
+  related_standards:
+    - id: ci-cd
+      relationship: complementary
+      context: "Feature flags enable trunk-based development and progressive delivery in CI/CD"
+    - id: configuration-management
+      relationship: complementary
+      context: "Feature flags are a specialized form of runtime configuration"
+    - id: logging-observability
+      relationship: complementary
+      context: "Flag evaluation must be observable for debugging and analytics"
+
+context_inputs:
+  - name: deployment_strategy
+    type: enum
+    description: "Primary deployment and release strategy"
+    required: true
+    default: progressive
+    enum_values:
+      - big_bang
+      - blue_green
+      - canary
+      - progressive
+
+  - name: flag_complexity
+    type: enum
+    description: "Complexity of flag targeting and rules"
+    required: true
+    default: simple_boolean
+    enum_values:
+      - simple_boolean
+      - user_targeted
+      - percentage_rollout
+      - multi_variant
+
+  - name: team_size
+    type: enum
+    description: "Size of the engineering organization"
+    required: true
+    default: medium
+    enum_values:
+      - small
+      - medium
+      - large
+      - enterprise
+
+  - name: experimentation_need
+    type: enum
+    description: "Need for A/B testing and experimentation"
+    required: true
+    default: basic
+    enum_values:
+      - none
+      - basic
+      - advanced
+      - data_driven_product
+
+decision_tree:
+  - id: enterprise_experimentation
+    priority: 1
+    if:
+      - team_size in [large, enterprise]
+      - experimentation_need in [advanced, data_driven_product]
+    then:
+      pattern: experimentation_platform
+      standards:
+        - "Statistical significance testing"
+      notes: >
+        Large teams with data-driven product development need a full
+        experimentation platform with statistical rigor, mutual exclusion,
+        and automated analysis.
+
+  - id: progressive_canary
+    priority: 2
+    if:
+      - deployment_strategy in [canary, progressive]
+      - flag_complexity in [percentage_rollout, multi_variant]
+    then:
+      pattern: progressive_rollout
+      standards:
+        - "OpenFeature specification"
+      notes: >
+        Progressive delivery with percentage rollouts enables safe
+        deployments with automatic rollback on metric degradation.
+
+  - id: standard_flags
+    priority: 3
+    if:
+      - flag_complexity in [simple_boolean, user_targeted]
+    then:
+      pattern: release_toggle
+      standards:
+        - "Martin Fowler Feature Toggles"
+      notes: >
+        Simple release toggles and user-targeted flags cover most
+        development team needs without complex infrastructure.
+
+  - id: operational_safety
+    priority: 4
+    if:
+      - deployment_strategy in [big_bang, blue_green]
+    then:
+      pattern: operational_toggle
+      standards:
+        - "Netflix Feature Flag Practices"
+      notes: >
+        Operational toggles as kill switches and graceful degradation
+        controls, independent of deployment strategy.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: release_toggle
+    description: "Simple release toggles are the safest starting point for any team"
+
+patterns:
+  - id: release_toggle
+    name: "Release Toggles"
+    description: >
+      Feature flags that control the visibility of new features in
+      production. Enables trunk-based development by allowing incomplete
+      features to be deployed but hidden. Release toggles are short-lived
+      and should be removed after full rollout.
+    use_when:
+      - "Deploying incomplete features to production (dark launch)"
+      - "Trunk-based development with continuous deployment"
+      - "Want to decouple deployment from release"
+      - "Need to release features to specific users first (beta)"
+    avoid_when:
+      - "Feature is complete and unconditionally released — remove the flag"
+    tradeoffs:
+      pros:
+        - "Deploy anytime without waiting for feature completion"
+        - "Instant rollback without redeployment"
+        - "Test in production with real traffic"
+        - "Targeted release to beta users or internal team"
+      cons:
+        - "Technical debt if flags are not cleaned up"
+        - "Code paths become conditional — harder to reason about"
+        - "Flag configuration becomes a dependency"
+    implementation:
+      guidelines:
+        - "Create flag with metadata: owner, creation date, expected removal date, JIRA ticket"
+        - "Default to off (feature hidden) for new release flags"
+        - "Flag naming convention: {team}_{feature}_{purpose} (e.g., payments_new_checkout_release)"
+        - "Implement flag evaluation at the highest level possible (not deep in business logic)"
+        - "When flag is on for 100% of users and stable, schedule flag removal"
+        - "Set flag expiry alerts: flag older than 30 days without removal plan triggers warning"
+        - "Track flag inventory: dashboard showing all flags, their state, age, and owner"
+        - "Remove both the flag evaluation AND the old code path when cleaning up"
+      common_errors:
+        - error: "Flags that never get removed"
+          impact: "Codebase becomes a maze of conditional logic; no one knows which path is active"
+          fix: "Enforce flag lifecycle: creation date, expected removal date, automated stale flag alerts"
+        - error: "Flag evaluation deep in business logic"
+          impact: "Difficult to understand behavior; flag removal requires touching many files"
+          fix: "Evaluate flags at the entry point (controller/handler) and pass the result down"
+    maturity:
+      level: standard
+    standards:
+      - name: "Martin Fowler — Feature Toggles"
+        type: reference
+        role: "Canonical reference for feature toggle categorization"
+        status: recommended
+        reference: "https://martinfowler.com/articles/feature-toggles.html"
+
+  - id: progressive_rollout
+    name: "Progressive Rollout (Percentage-Based)"
+    description: >
+      Gradually roll out a feature to increasing percentages of users.
+      Monitor key metrics at each stage. Automatically pause or rollback
+      if metrics degrade beyond thresholds. Provides safe, data-informed
+      feature releases.
+    use_when:
+      - "Deploying risky or high-impact changes"
+      - "Want data-informed rollout decisions"
+      - "Need automatic rollback on metric degradation"
+    avoid_when:
+      - "Feature must be all-or-nothing (database migration)"
+      - "Feature has no measurable metrics"
+    tradeoffs:
+      pros:
+        - "Limits blast radius of defective releases"
+        - "Data-informed go/no-go decisions"
+        - "Automatic rollback reduces incident impact"
+        - "Builds deployment confidence"
+      cons:
+        - "Requires metric monitoring integration"
+        - "Percentage targeting must be sticky (same user gets same experience)"
+        - "Slower release timeline than big-bang"
+    implementation:
+      guidelines:
+        - "Stage rollout: 1% -> 5% -> 25% -> 50% -> 100%"
+        - "Soak time at each stage: 1h at 1%, 4h at 5%, 24h at 25%, 48h at 50%"
+        - "Sticky targeting: user always gets the same variant (hash user_id % 100)"
+        - "Define key metrics: error rate, latency P99, conversion rate, revenue"
+        - "Auto-pause if error rate increases >5% or latency P99 increases >20%"
+        - "Auto-rollback if critical alerts fire"
+        - "Manual promotion gate at 50% -> 100% for final review"
+        - "Log flag evaluation with user cohort for analytics"
+      common_errors:
+        - error: "Non-sticky percentage targeting"
+          impact: "User sees feature on one request, doesn't see it on next — inconsistent UX"
+          fix: "Hash user identifier to determine bucket; same user always in same bucket"
+        - error: "No automated rollback criteria"
+          impact: "Degraded experience rolls out to 100% before anyone notices"
+          fix: "Define metric thresholds and wire them to automatic pause/rollback"
+    maturity:
+      level: standard
+    standards:
+      - name: "OpenFeature Specification"
+        type: standard
+        role: "Vendor-neutral feature flag evaluation API"
+        status: recommended
+        reference: "https://openfeature.dev/"
+
+  - id: operational_toggle
+    name: "Operational Toggles (Kill Switches)"
+    description: >
+      Feature flags used as operational controls to degrade or disable
+      functionality in production during incidents. Kill switches provide
+      instant mitigation without redeployment. Operational toggles are
+      long-lived and always present for critical features.
+    use_when:
+      - "Need instant mitigation during incidents"
+      - "Expensive features that can be disabled under load"
+      - "Third-party integrations that may become unavailable"
+      - "Graceful degradation strategy"
+    avoid_when:
+      - "Core functionality that cannot be degraded (authentication)"
+    tradeoffs:
+      pros:
+        - "Instant incident mitigation without deployment"
+        - "Graceful degradation under extreme load"
+        - "Operational flexibility for on-call engineers"
+      cons:
+        - "Must be tested regularly (untested kill switches fail when needed)"
+        - "Permanently present in codebase"
+        - "Requires operational runbooks documenting which toggles to use when"
+    implementation:
+      guidelines:
+        - "Identify features that can be degraded: search, recommendations, analytics, notifications"
+        - "Name clearly: ops_kill_{feature} (e.g., ops_kill_recommendations)"
+        - "Default to ON (feature enabled) — toggle to OFF to disable"
+        - "Make toggleable from operations dashboard (no code deployment)"
+        - "Include in incident runbooks: 'If recommendation service is down, disable ops_kill_recommendations'"
+        - "Test kill switches in chaos experiments: verify feature disables cleanly"
+        - "Monitor toggle state: alert if critical kill switch is OFF for >1 hour"
+        - "Document fallback behavior when each toggle is off"
+      common_errors:
+        - error: "Kill switch never tested"
+          impact: "During incident, kill switch doesn't work — disabling causes errors"
+          fix: "Test kill switches in chaos experiments; validate fallback path works"
+        - error: "No documentation of which toggle to use for which scenario"
+          impact: "On-call engineer doesn't know which toggles exist or what they do"
+          fix: "Runbook per toggle: what it controls, when to use, expected impact"
+    maturity:
+      level: standard
+    standards:
+      - name: "Netflix Feature Flag Practices"
+        type: reference
+        role: "Operational toggle patterns at scale"
+        status: recommended
+
+  - id: experimentation_platform
+    name: "Experimentation Platform (A/B Testing)"
+    description: >
+      Rigorous A/B testing infrastructure with statistical significance,
+      mutual exclusion, and automated analysis. Enables data-driven
+      product decisions by measuring the impact of changes on key metrics
+      with scientific rigor.
+    use_when:
+      - "Product decisions driven by experimentation"
+      - "Need statistical confidence in feature impact"
+      - "Running multiple concurrent experiments"
+      - "Measuring business metrics (conversion, revenue, engagement)"
+    avoid_when:
+      - "Features with no measurable business metric"
+      - "Infrastructure changes where A/B doesn't apply"
+    tradeoffs:
+      pros:
+        - "Data-informed product decisions"
+        - "Statistical confidence in results"
+        - "Measures actual impact, not assumptions"
+      cons:
+        - "Requires sufficient traffic for statistical significance"
+        - "Complex infrastructure (assignment, logging, analysis)"
+        - "Experiments take time to reach significance"
+    implementation:
+      guidelines:
+        - "Define experiment: hypothesis, variants, primary metric, guardrail metrics"
+        - "Calculate required sample size for desired statistical power"
+        - "Assign users to variants using consistent hashing (sticky assignment)"
+        - "Implement mutual exclusion: user in experiment A excluded from experiment B if they share layers"
+        - "Log all variant assignments with timestamp for analysis"
+        - "Define guardrail metrics: metrics that must NOT degrade (page load time, error rate)"
+        - "Run for minimum duration to capture weekly patterns"
+        - "Automated significance calculation with multiple comparison correction"
+        - "Ship winning variant; remove experiment code"
+      common_errors:
+        - error: "Peeking at results and stopping early when favorable"
+          impact: "False positives: apparent significance disappears with more data"
+          fix: "Pre-commit to sample size; use sequential testing methods if early stopping is needed"
+        - error: "No guardrail metrics"
+          impact: "Feature improves primary metric but degrades performance or reliability"
+          fix: "Always monitor guardrails: latency, error rate, engagement alongside primary metric"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Controlled Experiments on the Web"
+        type: reference
+        role: "Foundational paper on A/B testing"
+        status: recommended
+
+examples:
+  - id: feature_flag_example
+    title: "Feature Flag Lifecycle — Release Toggle"
+    context: "Implementing a release toggle with proper lifecycle management"
+    correct: |
+      # Feature flag with lifecycle management
+      from datetime import datetime, timezone
+
+      # Flag definition with metadata
+      FLAG_REGISTRY = {
+          "payments_new_checkout_release": {
+              "owner": "payments-team",
+              "created": "2026-04-01",
+              "expected_removal": "2026-05-15",
+              "jira": "PAY-1234",
+              "type": "release",
+              "default": False,
+          }
+      }
+
+      # Flag evaluation at the entry point (not deep in logic)
+      async def checkout_handler(request):
+          user = request.authenticated_user
+
+          if feature_flags.is_enabled("payments_new_checkout_release", user):
+              return await new_checkout_flow(request)
+          else:
+              return await legacy_checkout_flow(request)
+
+      # Flag stale detection
+      def check_stale_flags():
+          """Alert on flags past expected removal date."""
+          for name, meta in FLAG_REGISTRY.items():
+              removal_date = datetime.fromisoformat(meta["expected_removal"])
+              if datetime.now(timezone.utc).date() > removal_date.date():
+                  alert(f"Stale flag: {name} (owner: {meta['owner']}, "
+                        f"expected removal: {meta['expected_removal']})")
+
+      # Progressive rollout
+      # 1% -> 5% -> 25% -> 50% -> 100%
+      feature_flags.set_rollout("payments_new_checkout_release", percentage=5)
+      # After soak period with good metrics:
+      feature_flags.set_rollout("payments_new_checkout_release", percentage=25)
+    incorrect: |
+      # WRONG: Feature flag anti-patterns
+      async def checkout_handler(request):
+          user = request.user
+
+          # WRONG: Flag deep in business logic (should be at entry point)
+          total = calculate_cart_total(request.cart)
+
+          if feature_flags.is_enabled("use_new_tax_calc"):
+              # WRONG: No owner, no expiry, no lifecycle management
+              tax = new_tax_calculation(total)
+          else:
+              tax = old_tax_calculation(total)
+
+          # WRONG: Nested flags create combinatorial complexity
+          if feature_flags.is_enabled("flag_a"):
+              if feature_flags.is_enabled("flag_b"):
+                  if feature_flags.is_enabled("flag_c"):
+                      # 8 possible code paths — untestable
+                      pass
+
+          # WRONG: Flag used as permanent configuration
+          if feature_flags.is_enabled("enable_logging"):
+              logger.info("processing")
+          # This flag will never be removed — use config, not a flag
+    explanation: >
+      The correct implementation has flag metadata (owner, expiry, ticket),
+      evaluates at the entry point, implements progressive rollout, and
+      detects stale flags. The incorrect version has flags deep in logic,
+      nested flags creating combinatorial complexity, no lifecycle
+      management, and misuses flags for permanent configuration.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Flag evaluation service communication encrypted (TLS)"
+      - "Flag configuration changes transmitted over authenticated channels"
+  data_protection:
+    requirements:
+      - "User targeting attributes minimized (hash user_id, don't store PII in flag service)"
+      - "Experiment assignment logs do not contain sensitive user data"
+  access_control:
+    requirements:
+      - "Flag creation/modification requires authorized role"
+      - "Production flag changes require approval or are audit-logged"
+      - "Kill switch toggling restricted to on-call engineers and above"
+  input_output:
+    requirements:
+      - "Flag evaluation defaults to safe value on service unavailability"
+      - "Flag names validated against naming conventions"
+  secrets:
+    requirements:
+      - "Flag service API keys stored in secret manager"
+      - "Flag service admin credentials are not shared"
+  monitoring:
+    requirements:
+      - "Log all flag state changes with who, what, when"
+      - "Alert on unexpected flag changes in production"
+      - "Monitor flag evaluation latency (should be <5ms)"
+
+compliance:
+  standards:
+    - name: "OpenFeature Specification"
+      relevance: "Vendor-neutral feature flag API specification"
+      reference: "https://openfeature.dev/"
+    - name: "Martin Fowler — Feature Toggles"
+      relevance: "Canonical reference for feature toggle types and lifecycle"
+      reference: "https://martinfowler.com/articles/feature-toggles.html"
+
+  requirements_mapping:
+    - control: safe_deployment
+      description: "Feature flags enable safe progressive deployments"
+      maps_to:
+        - "DORA Metrics (Deployment Frequency, Change Failure Rate)"
+    - control: flag_governance
+      description: "Flag lifecycle management and cleanup"
+      maps_to:
+        - "Technical Debt Management"
+
+prompt_recipes:
+  - id: flags_greenfield
+    scenario: greenfield
+    description: "Design feature flag strategy for a new project"
+    prompt: |
+      Design a feature flag strategy for a new project.
+
+      Context:
+      - Team size: [small/medium/large]
+      - Deployment frequency: [weekly/daily/continuous]
+      - Experimentation need: [none/basic/advanced]
+      - Flag service: [self-hosted/LaunchDarkly/Unleash/Flagsmith/Split]
+
+      Requirements:
+      - Flag types and naming conventions
+      - Lifecycle management (creation, expiry, cleanup)
+      - Progressive rollout stages
+      - Operational kill switches
+      - Flag evaluation architecture (SDK, API, edge)
+      - Governance and access control
+
+  - id: flags_audit
+    scenario: audit
+    description: "Audit feature flag practices"
+    prompt: |
+      Audit feature flag practices:
+
+      1. Do flags have metadata (owner, creation date, expected removal)?
+      2. Are stale flags detected and alerted?
+      3. Is flag evaluation at entry points (not deep in logic)?
+      4. Are nested flags avoided?
+      5. Are flags tested in both on and off states?
+      6. Are operational kill switches tested in chaos experiments?
+      7. Is flag evaluation latency monitored?
+      8. Are flag changes audit-logged?
+      9. Do progressive rollouts have automated rollback criteria?
+      10. Is there a flag cleanup process?
+
+  - id: flags_cleanup
+    scenario: operations
+    description: "Clean up stale feature flags"
+    prompt: |
+      Clean up stale feature flags.
+
+      Steps:
+      1. List all flags with creation date, expected removal, current state
+      2. Identify flags past expected removal date
+      3. For each stale flag:
+         a. Verify it's at 100% rollout or permanently off
+         b. Remove flag evaluation code
+         c. Remove the unused code path
+         d. Remove flag from flag service
+         e. Update tests
+      4. Generate cleanup report (flags removed, code lines removed)
+
+  - id: flags_experiment
+    scenario: optimization
+    description: "Design an A/B test experiment"
+    prompt: |
+      Design an A/B test experiment.
+
+      Experiment definition:
+      - Hypothesis: [what you expect to happen]
+      - Primary metric: [what to measure]
+      - Guardrail metrics: [what must NOT degrade]
+      - Variants: [control, treatment(s)]
+      - Target audience: [who to include/exclude]
+      - Duration: [minimum run time]
+      - Sample size: [calculated for desired power]
+      - Success criteria: [statistical significance + practical significance]
+
+anti_patterns:
+  - name: "Permanent Feature Flags"
+    description: >
+      Feature flags that are never removed after the feature is fully
+      released. Over time the codebase accumulates hundreds of flag
+      evaluations, creating dead code paths and making the system
+      impossible to reason about.
+    fix: "Enforce flag lifecycle: expiry date, stale flag alerts, scheduled cleanup sprints"
+    severity: high
+    related_pattern: release_toggle
+
+  - name: "Nested Flag Evaluation"
+    description: >
+      Evaluating multiple feature flags in nested conditionals, creating
+      exponential code paths. With 3 nested boolean flags, there are 8
+      possible paths — most untested and some with unexpected behavior.
+    fix: "Flatten flag evaluation; avoid nesting; use composite flags if combinations are needed"
+    severity: medium
+    related_pattern: release_toggle
+
+  - name: "Flags as Configuration"
+    description: >
+      Using feature flags for permanent configuration (log level, connection
+      pool size, timeout values) instead of proper configuration management.
+      These flags will never be removed and misuse the flag system.
+    fix: "Use configuration management for permanent settings; flags are for temporary toggles"
+    severity: medium
+    related_pattern: operational_toggle
+
+checklist:
+  - id: FF-01
+    category: reliability
+    description: "All feature flags have metadata: owner, creation date, expected removal"
+    severity: high
+    verified_by: release_toggle
+
+  - id: FF-02
+    category: reliability
+    description: "Stale flag detection alerts on flags past expected removal date"
+    severity: high
+    verified_by: release_toggle
+
+  - id: FF-03
+    category: reliability
+    description: "Flag evaluation at entry points, not deep in business logic"
+    severity: medium
+    verified_by: release_toggle
+
+  - id: FF-04
+    category: reliability
+    description: "Progressive rollout uses sticky targeting (consistent user experience)"
+    severity: high
+    verified_by: progressive_rollout
+
+  - id: FF-05
+    category: reliability
+    description: "Automated rollback criteria defined for progressive rollouts"
+    severity: high
+    verified_by: progressive_rollout
+
+  - id: FF-06
+    category: reliability
+    description: "Operational kill switches tested in chaos experiments"
+    severity: high
+    verified_by: operational_toggle
+
+  - id: FF-07
+    category: reliability
+    description: "Flag changes audit-logged with who, what, when"
+    severity: high
+    verified_by: release_toggle
+
+  - id: FF-08
+    category: reliability
+    description: "Flag service unavailability defaults to safe values"
+    severity: high
+    verified_by: release_toggle

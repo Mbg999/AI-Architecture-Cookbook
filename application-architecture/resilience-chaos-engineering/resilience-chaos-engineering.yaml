@@ -1,0 +1,644 @@
+# =============================================================================
+# AI Architecture Cookbook — Resilience & Chaos Engineering
+# Schema: v3 | Domain: resilience-chaos-engineering
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: resilience-chaos-engineering
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Resilience patterns and chaos engineering practices for building systems
+    that withstand and recover from failures. Covers circuit breakers, retries,
+    bulkheads, timeouts, fallbacks, graceful degradation, and chaos experiments
+    to validate resilience in production.
+
+  tags:
+    - resilience
+    - chaos-engineering
+    - circuit-breaker
+    - retry
+    - bulkhead
+    - timeout
+    - fallback
+    - graceful-degradation
+    - fault-tolerance
+    - availability
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - error-handling
+    - logging-observability
+
+  related_standards:
+    - id: error-handling
+      relationship: complementary
+      context: "Resilience patterns build on error handling as the foundation"
+    - id: logging-observability
+      relationship: complementary
+      context: "Observability is essential for detecting failures and measuring resilience"
+    - id: service-architecture
+      relationship: complementary
+      context: "Distributed services need resilience patterns for inter-service communication"
+
+context_inputs:
+  - name: architecture_style
+    type: enum
+    description: "System architecture style"
+    required: true
+    default: microservices
+    enum_values:
+      - monolith
+      - modular_monolith
+      - microservices
+      - serverless
+
+  - name: availability_target
+    type: enum
+    description: "Target availability SLA"
+    required: true
+    default: high
+    enum_values:
+      - standard
+      - high
+      - very_high
+      - mission_critical
+
+  - name: failure_blast_radius
+    type: enum
+    description: "Impact of a single component failure"
+    required: true
+    default: moderate
+    enum_values:
+      - isolated
+      - moderate
+      - cascading
+
+  - name: chaos_maturity
+    type: enum
+    description: "Current chaos engineering practice maturity"
+    required: true
+    default: none
+    enum_values:
+      - none
+      - gamedays
+      - automated_staging
+      - continuous_production
+
+decision_tree:
+  - id: mission_critical_cascading
+    priority: 1
+    if:
+      - availability_target == mission_critical
+      - failure_blast_radius == cascading
+    then:
+      pattern: bulkhead_isolation
+      standards:
+        - "Netflix/Hystrix patterns"
+      notes: >
+        Mission-critical systems with cascading failure risk need bulkhead
+        isolation to contain failures and prevent total system outage.
+
+  - id: microservices_high_availability
+    priority: 2
+    if:
+      - architecture_style == microservices
+      - availability_target in [high, very_high]
+    then:
+      pattern: circuit_breaker_with_fallback
+      standards:
+        - "Microsoft Cloud Design Patterns"
+      notes: >
+        Microservices with high availability targets need circuit breakers
+        to prevent cascade failures and fallbacks for graceful degradation.
+
+  - id: standard_resilience
+    priority: 3
+    if:
+      - failure_blast_radius in [isolated, moderate]
+    then:
+      pattern: retry_with_backoff
+      standards:
+        - "Exponential Backoff RFC"
+      notes: >
+        Standard resilience starts with proper retry strategies with
+        exponential backoff and jitter for transient failures.
+
+  - id: chaos_validation
+    priority: 4
+    if:
+      - chaos_maturity in [gamedays, automated_staging, continuous_production]
+    then:
+      pattern: chaos_experimentation
+      standards:
+        - "Principles of Chaos Engineering"
+      notes: >
+        Teams with chaos maturity should formalize experiments to
+        continuously validate resilience under real failure conditions.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: circuit_breaker_with_fallback
+    description: "Circuit breakers with fallbacks provide the best general-purpose resilience"
+
+patterns:
+  - id: circuit_breaker_with_fallback
+    name: "Circuit Breaker with Fallback"
+    description: >
+      Prevent cascade failures by wrapping remote calls in a circuit breaker
+      that opens when failure rate exceeds a threshold. When open, requests
+      fail fast or use a fallback response. After a cooldown period, the
+      circuit half-opens to test if the downstream has recovered.
+    use_when:
+      - "Calling remote services that may become unavailable"
+      - "Need to prevent cascade failures in distributed systems"
+      - "Want graceful degradation instead of complete failure"
+    avoid_when:
+      - "Local in-process calls (no network failure possible)"
+      - "Fire-and-forget async messaging (retry is handled by message broker)"
+    tradeoffs:
+      pros:
+        - "Prevents cascade failures"
+        - "Fails fast when downstream is unavailable"
+        - "Provides graceful degradation via fallbacks"
+        - "Automatic recovery when downstream recovers"
+      cons:
+        - "Configuration tuning required (thresholds, timeouts, cooldown)"
+        - "Fallback data may be stale or incomplete"
+        - "Added complexity to every remote call"
+    implementation:
+      guidelines:
+        - "Wrap every remote service call in a circuit breaker"
+        - "Configure thresholds: failure rate (50%), slow call rate (50%), minimum calls (10)"
+        - "Configure timing: wait duration in open state (30s), permitted calls in half-open (3)"
+        - "Implement fallbacks: cached data, default values, degraded functionality"
+        - "Use sliding window for failure rate calculation (count-based or time-based)"
+        - "Emit circuit breaker state change events for monitoring (closed -> open -> half-open)"
+        - "Set per-service circuit breakers, not a shared global breaker"
+        - "Include circuit breaker state in health checks"
+        - "Dashboard showing circuit breaker states across all services"
+      common_errors:
+        - error: "Single global circuit breaker for all remote calls"
+          impact: "One failing service opens the circuit for all services"
+          fix: "Use separate circuit breaker per downstream service"
+        - error: "No fallback — circuit open returns raw error to user"
+          impact: "Users see error pages instead of degraded but usable experience"
+          fix: "Implement fallbacks: cached data, default responses, feature flags to disable functionality"
+    maturity:
+      level: standard
+    standards:
+      - name: "Microsoft Circuit Breaker Pattern"
+        type: pattern
+        role: "Cloud design pattern for fault tolerance"
+        status: recommended
+
+  - id: retry_with_backoff
+    name: "Retry with Exponential Backoff and Jitter"
+    description: >
+      Automatically retry transient failures with increasing delays between
+      attempts. Jitter prevents thundering herd when multiple clients retry
+      simultaneously. Only retry idempotent operations and transient errors.
+    use_when:
+      - "Transient network or service errors (timeouts, 503s)"
+      - "Idempotent operations (GET, PUT with idempotency key)"
+      - "Infrastructure hiccups (DNS resolution, connection resets)"
+    avoid_when:
+      - "Non-idempotent operations without idempotency keys"
+      - "Client errors (4xx) — these will not succeed on retry"
+      - "Business logic errors — these are deterministic failures"
+    tradeoffs:
+      pros:
+        - "Handles transient failures transparently"
+        - "Simple to implement"
+        - "Backoff prevents overwhelming recovering services"
+      cons:
+        - "Adds latency for failing requests"
+        - "Can amplify load if not properly configured"
+        - "Retry storms possible without jitter and limits"
+    implementation:
+      guidelines:
+        - "Retry only transient errors: connection timeout, 429, 502, 503, 504"
+        - "Never retry: 400, 401, 403, 404, 409 (client errors are deterministic)"
+        - "Use exponential backoff: delay = base * 2^attempt (e.g., 100ms, 200ms, 400ms, 800ms)"
+        - "Add jitter: random(0, delay) to prevent thundering herd"
+        - "Set maximum retry count (3-5 attempts)"
+        - "Set maximum total retry duration (30 seconds)"
+        - "Ensure operation is idempotent, or use idempotency keys"
+        - "Log each retry attempt with context (attempt number, error, delay)"
+        - "Emit metrics: retry count, final outcome (success after retry vs. exhausted)"
+      common_errors:
+        - error: "Immediate retry without backoff"
+          impact: "Retry storm overwhelms already struggling service"
+          fix: "Always use exponential backoff with jitter"
+        - error: "Retrying non-idempotent operations"
+          impact: "Duplicate side effects: double charges, duplicate records"
+          fix: "Only retry idempotent operations; use idempotency keys for POST requests"
+    maturity:
+      level: standard
+    standards:
+      - name: "AWS Exponential Backoff"
+        type: reference
+        role: "Retry strategy best practices"
+        status: recommended
+
+  - id: bulkhead_isolation
+    name: "Bulkhead Isolation"
+    description: >
+      Partition system resources so that a failure in one partition cannot
+      exhaust resources for others. Named after ship bulkheads that prevent
+      one flooded compartment from sinking the entire ship.
+    use_when:
+      - "Multiple downstream dependencies with different reliability"
+      - "Need to prevent one slow service from consuming all threads/connections"
+      - "Mission-critical operations must be protected from non-critical traffic"
+    avoid_when:
+      - "Single downstream dependency"
+      - "Resource partitioning overhead is too high for the scale"
+    tradeoffs:
+      pros:
+        - "Failure containment: one partition failure doesn't affect others"
+        - "Priority traffic gets guaranteed resources"
+        - "Prevents resource exhaustion from slow calls"
+      cons:
+        - "Resource underutilization (partitions may be idle)"
+        - "Configuration complexity (sizing partitions)"
+        - "Need monitoring per partition"
+    implementation:
+      guidelines:
+        - "Thread pool isolation: separate thread pool per downstream service"
+        - "Connection pool isolation: dedicated connection pool per downstream"
+        - "Semaphore isolation: limit concurrent requests per downstream (lighter than thread pools)"
+        - "Size partitions based on expected concurrency and acceptable rejection rate"
+        - "Monitor partition utilization and rejection rates"
+        - "Combine with circuit breaker: bulkhead prevents resource exhaustion, circuit breaker prevents repeated failures"
+        - "Prioritize: critical path gets larger partition, non-critical gets smaller"
+        - "Queue overflow strategy: reject with backpressure (429) rather than unbounded queuing"
+      common_errors:
+        - error: "Shared connection pool for all downstream services"
+          impact: "One slow service exhausts connections, blocking all other services"
+          fix: "Dedicated connection pool per downstream with maximum size"
+        - error: "Bulkhead partition too small"
+          impact: "Legitimate traffic rejected under normal load"
+          fix: "Size based on expected concurrency at peak; monitor rejection rates"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Microsoft Bulkhead Pattern"
+        type: pattern
+        role: "Cloud design pattern for resource isolation"
+        status: recommended
+
+  - id: chaos_experimentation
+    name: "Chaos Experimentation"
+    description: >
+      Proactively inject failures into the system to validate resilience
+      and discover weaknesses before they cause real outages. Follows the
+      scientific method: hypothesis, experiment, observation, conclusion.
+    use_when:
+      - "Want to validate resilience patterns work under real conditions"
+      - "Preparing for production incidents"
+      - "Need to build confidence in system reliability"
+      - "Post-implementation of circuit breakers, retries, bulkheads"
+    avoid_when:
+      - "No resilience patterns implemented yet (implement first, then test)"
+      - "No observability to measure impact (cannot observe = cannot learn)"
+      - "No ability to abort experiment if blast radius exceeds plan"
+    tradeoffs:
+      pros:
+        - "Discovers weaknesses before real incidents"
+        - "Validates resilience patterns work as designed"
+        - "Builds operational confidence and muscle memory"
+        - "Reveals unexpected dependencies"
+      cons:
+        - "Risk of unintended impact (mitigated by blast radius control)"
+        - "Requires organizational buy-in"
+        - "Needs mature observability to be effective"
+    implementation:
+      guidelines:
+        - "Start in non-production: validate experiments in staging first"
+        - "Define hypothesis: 'When service X is unavailable, users can still complete checkout via cached prices'"
+        - "Limit blast radius: percentage of traffic, single AZ, canary group"
+        - "Have abort criteria: stop experiment if error rate exceeds N% or latency exceeds Xms"
+        - "Experiment types: network failure, service shutdown, latency injection, resource exhaustion, DNS failure"
+        - "Measure steady-state: define normal metrics before experiment"
+        - "Run during business hours (initially): team available to respond"
+        - "Document results: hypothesis, observations, findings, follow-up actions"
+        - "Automate recurring experiments in CI/CD: regression testing for resilience"
+        - "Progress: staging chaos -> gamedays -> automated staging -> production chaos"
+      common_errors:
+        - error: "Chaos experiments without abort criteria"
+          impact: "Experiment causes real outage with no mechanism to stop"
+          fix: "Define automatic abort criteria; use tooling with kill switch"
+        - error: "Skipping the hypothesis step"
+          impact: "Random failure injection without learning goals — just breaking things"
+          fix: "Always start with a hypothesis about expected behavior under failure"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Principles of Chaos Engineering"
+        type: reference
+        role: "Foundational principles for chaos engineering practice"
+        status: recommended
+        reference: "https://principlesofchaos.org/"
+
+examples:
+  - id: circuit_breaker_example
+    title: "Circuit Breaker with Fallback — Product Catalog"
+    context: "Implementing a circuit breaker for a product catalog service call"
+    correct: |
+      # Circuit breaker with fallback
+      from datetime import datetime, timedelta, timezone
+
+      class CircuitBreaker:
+          CLOSED = "closed"
+          OPEN = "open"
+          HALF_OPEN = "half_open"
+
+          def __init__(self, name, failure_threshold=5, recovery_timeout=30,
+                       half_open_max_calls=3):
+              self.name = name
+              self.state = self.CLOSED
+              self.failure_count = 0
+              self.failure_threshold = failure_threshold
+              self.recovery_timeout = timedelta(seconds=recovery_timeout)
+              self.half_open_max_calls = half_open_max_calls
+              self.last_failure_time = None
+              self.half_open_calls = 0
+
+          async def call(self, func, fallback=None, *args, **kwargs):
+              if self.state == self.OPEN:
+                  if self._should_attempt_recovery():
+                      self._transition(self.HALF_OPEN)
+                  else:
+                      # Fail fast — use fallback
+                      metrics.increment(f"circuit_breaker.{self.name}.rejected")
+                      if fallback:
+                          return await fallback(*args, **kwargs)
+                      raise CircuitOpenError(self.name)
+
+              try:
+                  result = await func(*args, **kwargs)
+                  self._on_success()
+                  return result
+              except TransientError as e:
+                  self._on_failure()
+                  if self.state == self.OPEN and fallback:
+                      return await fallback(*args, **kwargs)
+                  raise
+
+          def _on_success(self):
+              if self.state == self.HALF_OPEN:
+                  self.half_open_calls += 1
+                  if self.half_open_calls >= self.half_open_max_calls:
+                      self._transition(self.CLOSED)
+              self.failure_count = 0
+
+          def _on_failure(self):
+              self.failure_count += 1
+              self.last_failure_time = datetime.now(timezone.utc)
+              if self.failure_count >= self.failure_threshold:
+                  self._transition(self.OPEN)
+
+          def _transition(self, new_state):
+              logger.info(f"Circuit {self.name}: {self.state} -> {new_state}")
+              metrics.gauge(f"circuit_breaker.{self.name}.state", new_state)
+              self.state = new_state
+
+      # Usage: separate breaker per service
+      catalog_breaker = CircuitBreaker("catalog-service")
+
+      async def get_products(category):
+          return await catalog_breaker.call(
+              func=lambda: catalog_client.get_products(category),
+              fallback=lambda: cache.get(f"products:{category}", default=[])
+          )
+    incorrect: |
+      # WRONG: No circuit breaker, no fallback, no timeout
+      async def get_products(category):
+          # WRONG: No timeout — hangs if service is slow
+          # WRONG: No circuit breaker — keeps hammering failed service
+          # WRONG: No fallback — complete failure if service is down
+          response = await catalog_client.get_products(category)
+          # WRONG: No retry for transient errors
+          # WRONG: No metrics or logging on failure
+          return response
+    explanation: >
+      The correct implementation uses a per-service circuit breaker with
+      three states (closed, open, half-open), fail-fast behavior when open,
+      a fallback to cached data, and metrics/logging for monitoring. The
+      incorrect version has no resilience: no timeout, no circuit breaker,
+      no fallback, and no observability.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Circuit breaker state shared across instances via secure channel"
+      - "Chaos experiment commands transmitted over authenticated channels"
+  data_protection:
+    requirements:
+      - "Fallback cached data has same security classification as live data"
+      - "Chaos experiment results do not expose sensitive system details externally"
+  access_control:
+    requirements:
+      - "Chaos experiments require explicit authorization"
+      - "Production chaos experiments restricted to authorized operators"
+  input_output:
+    requirements:
+      - "Retry mechanisms do not replay sensitive authentication tokens beyond their validity"
+      - "Fallback responses clearly indicate degraded state where appropriate"
+  secrets:
+    requirements:
+      - "Chaos tooling credentials stored in vault"
+      - "Experiment abort keys secured and accessible"
+  monitoring:
+    requirements:
+      - "Circuit breaker state changes emitted as metrics and alerts"
+      - "Chaos experiment impact measured against steady-state metrics"
+      - "Alert on unexpected circuit breaker opening (not chaos-induced)"
+
+compliance:
+  standards:
+    - name: "Principles of Chaos Engineering"
+      relevance: "Foundation for chaos engineering practices"
+      reference: "https://principlesofchaos.org/"
+    - name: "Microsoft Cloud Design Patterns"
+      relevance: "Circuit Breaker, Retry, and Bulkhead patterns"
+
+  requirements_mapping:
+    - control: fault_tolerance
+      description: "System continues operating (possibly degraded) when components fail"
+      maps_to:
+        - "SOC 2 A1.2"
+    - control: disaster_recovery
+      description: "System recovers from failures within defined RTO"
+      maps_to:
+        - "SOC 2 A1.3"
+
+prompt_recipes:
+  - id: resilience_greenfield
+    scenario: greenfield
+    description: "Design resilience for a new distributed system"
+    prompt: |
+      Design resilience patterns for a new distributed system.
+
+      Context:
+      - Architecture: [monolith/microservices/serverless]
+      - Availability target: [99.9%/99.95%/99.99%]
+      - Key dependencies: [list external services]
+      - Failure modes: [list known failure scenarios]
+
+      Requirements:
+      - Circuit breaker configuration per dependency
+      - Retry strategy (what to retry, backoff configuration)
+      - Timeout budget per request chain
+      - Fallback strategy per critical path
+      - Bulkhead isolation for resource protection
+      - Graceful degradation plan
+
+  - id: resilience_chaos_plan
+    scenario: operations
+    description: "Create a chaos engineering experiment plan"
+    prompt: |
+      Create a chaos engineering experiment plan.
+
+      For each experiment:
+      1. Hypothesis: what we expect to happen
+      2. Steady state: normal metrics to compare against
+      3. Injection: what failure to inject
+      4. Blast radius: scope of impact (% traffic, AZ, region)
+      5. Abort criteria: when to stop
+      6. Observation: what to measure
+      7. Expected outcome: fallback activates, degraded mode, etc.
+
+      Experiments to design:
+      - Service dependency unavailable
+      - Database connection failure
+      - Network latency injection
+      - Resource exhaustion (CPU, memory, connections)
+      - DNS resolution failure
+
+  - id: resilience_audit
+    scenario: audit
+    description: "Audit system resilience"
+    prompt: |
+      Audit system resilience:
+
+      1. Are all remote calls wrapped in circuit breakers?
+      2. Are retries configured with exponential backoff and jitter?
+      3. Are timeouts set on all remote calls?
+      4. Are fallbacks implemented for critical paths?
+      5. Are thread/connection pools isolated per downstream?
+      6. Are circuit breaker states monitored and alerted?
+      7. Has the system been tested with chaos experiments?
+      8. Are graceful degradation modes defined and tested?
+      9. Is there a timeout budget for request chains?
+      10. Are non-idempotent operations protected from retry?
+
+  - id: resilience_timeout_budget
+    scenario: optimization
+    description: "Design timeout budget for request chain"
+    prompt: |
+      Design timeout budget for a request chain.
+
+      Given: end-to-end SLA of [X] seconds
+
+      For each service in the chain:
+      1. Allocate timeout proportional to expected latency
+      2. Account for retry attempts (timeout * retries < budget)
+      3. Leave headroom for serialization and network overhead
+      4. Define fallback if timeout is exceeded
+      5. Monitor P99 latency against allocated budget
+
+anti_patterns:
+  - name: "Retry Storm"
+    description: >
+      Multiple clients retrying simultaneously without backoff or jitter,
+      overwhelming a recovering service. Each retry wave prevents the
+      service from recovering, creating a positive feedback loop.
+    fix: "Exponential backoff with full jitter; circuit breaker to stop retrying when service is down"
+    severity: high
+    related_pattern: retry_with_backoff
+
+  - name: "Cascading Failure"
+    description: >
+      One failing service causes its callers to fail, which causes their
+      callers to fail, eventually taking down the entire system. Usually
+      caused by missing timeouts and circuit breakers.
+    fix: "Circuit breakers on all remote calls; timeouts at every level; bulkhead isolation"
+    severity: critical
+    related_pattern: circuit_breaker_with_fallback
+
+  - name: "Chaos Without Observability"
+    description: >
+      Running chaos experiments without sufficient monitoring to observe
+      the impact. No metrics, no dashboards, no alerting — the experiment
+      runs and no one can tell what happened.
+    fix: "Implement observability first; define steady-state metrics; measure experiment impact"
+    severity: high
+    related_pattern: chaos_experimentation
+
+checklist:
+  - id: RES-01
+    category: reliability
+    description: "All remote calls wrapped in circuit breakers"
+    severity: high
+    verified_by: circuit_breaker_with_fallback
+
+  - id: RES-02
+    category: reliability
+    description: "Retry configured with exponential backoff and jitter"
+    severity: high
+    verified_by: retry_with_backoff
+
+  - id: RES-03
+    category: reliability
+    description: "Timeouts set on all remote calls"
+    severity: critical
+    verified_by: circuit_breaker_with_fallback
+
+  - id: RES-04
+    category: reliability
+    description: "Fallbacks implemented for critical user paths"
+    severity: high
+    verified_by: circuit_breaker_with_fallback
+
+  - id: RES-05
+    category: reliability
+    description: "Thread/connection pools isolated per downstream service"
+    severity: high
+    verified_by: bulkhead_isolation
+
+  - id: RES-06
+    category: reliability
+    description: "Circuit breaker state changes monitored and alerted"
+    severity: high
+    verified_by: circuit_breaker_with_fallback
+
+  - id: RES-07
+    category: reliability
+    description: "Only idempotent operations retried (or idempotency keys used)"
+    severity: critical
+    verified_by: retry_with_backoff
+
+  - id: RES-08
+    category: reliability
+    description: "Chaos experiments validate resilience in non-production"
+    severity: medium
+    verified_by: chaos_experimentation
+
+  - id: RES-09
+    category: reliability
+    description: "Graceful degradation modes defined and tested"
+    severity: high
+    verified_by: circuit_breaker_with_fallback
+
+  - id: RES-10
+    category: reliability
+    description: "Timeout budget defined for multi-service request chains"
+    severity: high
+    verified_by: circuit_breaker_with_fallback

@@ -6,8 +6,8 @@ This project has three testable components:
 
 | Component | Tool | Test Type |
 |-----------|------|-----------|
-| Cookbook entries (33 YAML) | `tools/validate.py` | Schema + semantic validation |
-| MCP server (TypeScript) | `npx tsc --noEmit` | Type checking (compile-time correctness) |
+| Cookbook entries (43 YAML) | `tools/validate.py` | Schema + semantic validation |
+| MCP server (TypeScript) | `npm test` | 30 unit tests (loader, evaluator, tools) |
 | Prompt composer (Python) | Manual smoke test | Functional output verification |
 
 ## 1. Cookbook Entry Validation (Primary)
@@ -34,8 +34,8 @@ python3 tools/validate.py
 ### Expected Results
 
 ```
-Entries validated: 33
-Passed: 33
+Entries validated: 43
+Passed: 43
 Failed: 0
 ✓ All entries valid. (0 warnings)
 ```
@@ -45,16 +45,20 @@ Failed: 0
 1. Read the error message — it shows file path and specific check that failed
 2. Fix the YAML entry
 3. Re-run `python3 tools/validate.py`
-4. Repeat until 33/33 pass
+4. Repeat until 43/43 pass
 
-## 2. MCP Server Type Checking
+## 2. MCP Server Test Suite
 
 ```bash
 cd mcp-server
-npx tsc --noEmit
+npm test
 ```
 
-**Expected**: No output (clean compile). Any TypeScript errors will be printed with file/line.
+**Expected**: 30 tests pass (evaluator: 6, loader: 7, tools: 17). Output:
+```
+Results: 30 passed, 0 failed, 30 total
+✓ All tests passed.
+```
 
 ## 3. Prompt Composer Smoke Test
 
@@ -74,7 +78,7 @@ python3 prompts/compose.py --format generic --categories foundational --output /
 ### Verify outputs
 
 ```bash
-# Should be ~59KB with all 33 standards
+# Should be ~80KB+ with all 43 standards
 wc -c /tmp/test-copilot.md
 
 # Should contain all 5 category headers
@@ -83,7 +87,7 @@ grep -c "^# " /tmp/test-copilot.md
 # Single standard should be much smaller
 wc -c /tmp/test-claude.md
 
-# Category filter should have 8 entries (foundational has 8)
+# Category filter should have 11 entries (foundational has 11)
 grep -c "^## " /tmp/test-foundational.md
 ```
 
@@ -91,9 +95,10 @@ grep -c "^## " /tmp/test-foundational.md
 
 | Gate | Criteria | Status |
 |------|----------|--------|
-| All entries validate | 33/33 pass, 0 errors | ✅ |
+| All entries validate | 43/43 pass, 0 errors | ✅ |
 | No XREF warnings | 0 warnings | ✅ |
 | MCP server compiles | `tsc --noEmit` clean | ✅ |
+| MCP server tests | 30/30 pass | ✅ |
 | compose.py generates output | All 4 formats work | ✅ |
 | ≥3 patterns per entry | Checked by validate.py | ✅ |
 | ≥3 anti-patterns per entry | Checked by validate.py | ✅ |

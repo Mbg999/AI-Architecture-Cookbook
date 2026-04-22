@@ -6,16 +6,16 @@ const REPO_ROOT = resolve(import.meta.dirname, "../..");
 const loader = new CookbookLoader(REPO_ROOT);
 
 export default {
-  "loads all 33 domains": async () => {
+  "loads all 43 domains": async () => {
     const domains = loader.getAllDomains();
-    assert.equal(domains.length, 33, `Expected 33 domains, got ${domains.length}`);
+    assert.equal(domains.length, 43, `Expected 43 domains, got ${domains.length}`);
   },
 
   "getIndex returns valid structure": async () => {
     const idx = loader.getIndex();
     assert.equal(idx.schema_version, 1);
     assert.equal(idx.categories.length, 5);
-    assert.equal(idx.total_entries, 33);
+    assert.equal(idx.total_entries, 43);
     assert.ok(Object.keys(idx.tag_index).length >= 50, "Expected ≥50 tags in tag_index");
   },
 
@@ -41,7 +41,7 @@ export default {
 
   "searchByCategory finds foundational": async () => {
     const results = loader.searchByCategory(["foundational"]);
-    assert.equal(results.length, 8, `Expected 8 foundational entries, got ${results.length}`);
+    assert.equal(results.length, 11, `Expected 11 foundational entries, got ${results.length}`);
   },
 
   "searchByQuery finds api entries": async () => {

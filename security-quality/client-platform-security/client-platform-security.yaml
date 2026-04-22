@@ -1,0 +1,794 @@
+# =============================================================================
+# AI Architecture Cookbook — Client Platform Security
+# Schema: v3 | Domain: client-platform-security
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: client-platform-security
+  version: "1.0.0"
+  last_updated: "2026-04-22"
+  description: >
+    Client-side security hardening for web, mobile (iOS/Android), and desktop
+    applications. Covers SSL/TLS configuration, certificate pinning, root/jailbreak
+    detection, secure local storage, code obfuscation, anti-tampering, and
+    platform-specific security controls.
+
+  tags:
+    - security
+    - client-security
+    - certificate-pinning
+    - root-detection
+    - jailbreak
+    - csp
+    - cors
+    - mobile-security
+    - desktop-security
+    - web-security
+    - anti-tampering
+
+  categories:
+    - security-quality
+
+  prerequisites:
+    - encryption
+    - authentication
+
+  related_standards:
+    - id: encryption
+      relationship: complementary
+      context: "Client-side encryption depends on proper key storage and TLS configuration"
+    - id: authentication
+      relationship: complementary
+      context: "Authentication tokens must be stored securely on client platforms"
+    - id: input-validation
+      relationship: complementary
+      context: "Client-side validation is defense-in-depth; server validation is authoritative"
+    - id: api-design
+      relationship: complementary
+      context: "API transport security is configured at the client and enforced by the server"
+
+context_inputs:
+  - name: platform
+    type: enum
+    description: "Target client platform"
+    required: true
+    default: web
+    enum_values:
+      - web
+      - mobile_ios
+      - mobile_android
+      - desktop_electron
+      - desktop_native
+      - cross_platform
+
+  - name: data_sensitivity
+    type: enum
+    description: "Sensitivity of data handled on the client"
+    required: true
+    default: confidential
+    enum_values:
+      - public
+      - internal
+      - confidential
+      - restricted
+
+  - name: threat_model
+    type: enum
+    description: "Expected adversary capability level"
+    required: true
+    default: standard
+    enum_values:
+      - basic
+      - standard
+      - advanced
+      - nation_state
+
+  - name: distribution_model
+    type: enum
+    description: "How the application is distributed to users"
+    required: true
+    default: app_store
+    enum_values:
+      - app_store
+      - enterprise_sideload
+      - web_browser
+      - direct_download
+      - managed_device
+
+  - name: offline_capability
+    type: boolean
+    description: "Whether the application must function offline with local data"
+    required: false
+    default: false
+
+decision_tree:
+  - id: mobile_high_security
+    priority: 1
+    if:
+      - platform in [mobile_ios, mobile_android, cross_platform]
+      - data_sensitivity in [restricted, confidential]
+      - threat_model in [advanced, nation_state]
+    then:
+      pattern: mobile_defense_in_depth
+      standards:
+        - "OWASP MASVS L2"
+        - "NIST SP 800-163"
+      notes: >
+        High-value mobile apps require defense-in-depth: certificate pinning,
+        root/jailbreak detection, binary protection, runtime integrity checks,
+        and secure enclave storage. Combine all mobile hardening layers.
+
+  - id: mobile_standard_security
+    priority: 2
+    if:
+      - platform in [mobile_ios, mobile_android, cross_platform]
+      - data_sensitivity in [confidential, internal]
+    then:
+      pattern: mobile_app_hardening
+      standards:
+        - "OWASP MASVS L1"
+      notes: >
+        Standard mobile apps need certificate pinning, secure storage,
+        and root/jailbreak detection. Binary protection recommended
+        but not mandatory for internal-sensitivity data.
+
+  - id: web_application_security
+    priority: 3
+    if:
+      - platform == web
+      - data_sensitivity in [confidential, restricted]
+    then:
+      pattern: web_browser_hardening
+      standards:
+        - "OWASP ASVS v4"
+        - "CSP Level 3"
+      notes: >
+        Web apps handling sensitive data require strict CSP, CORS, SRI,
+        secure cookie attributes, and XSS/CSRF mitigation. Subresource
+        integrity and iframe sandboxing prevent supply chain attacks.
+
+  - id: web_standard_security
+    priority: 4
+    if:
+      - platform == web
+    then:
+      pattern: web_browser_hardening
+      standards:
+        - "OWASP ASVS v4"
+      notes: >
+        All web applications benefit from CSP, secure cookies, and
+        XSS/CSRF protection regardless of data sensitivity.
+
+  - id: desktop_security
+    priority: 5
+    if:
+      - platform in [desktop_electron, desktop_native]
+      - data_sensitivity in [confidential, restricted]
+    then:
+      pattern: desktop_app_hardening
+      standards:
+        - "CIS Desktop Benchmarks"
+      notes: >
+        Desktop apps require code signing, secure auto-update, IPC
+        hardening, and memory protection. Electron apps need additional
+        node integration restrictions and context isolation.
+
+  - id: desktop_standard
+    priority: 6
+    if:
+      - platform in [desktop_electron, desktop_native]
+    then:
+      pattern: desktop_app_hardening
+      notes: >
+        Basic desktop hardening: code signing, secure update channel,
+        and minimal privilege execution.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: critical
+  fallback:
+    pattern: web_browser_hardening
+    description: "Web hardening covers the most common client platform with well-understood controls"
+
+patterns:
+  - id: web_browser_hardening
+    name: "Web Browser Security Hardening"
+    description: >
+      Comprehensive browser-side security using HTTP security headers,
+      Content Security Policy, CORS restrictions, Subresource Integrity,
+      secure cookie attributes, and XSS/CSRF mitigation to create defense
+      layers within the browser execution environment.
+    use_when:
+      - "Any web application serving HTML/JS to browsers"
+      - "Single-page applications (SPAs) calling APIs"
+      - "Progressive web applications (PWAs)"
+      - "Web views embedded in mobile or desktop apps"
+    avoid_when:
+      - "Pure API services with no browser-facing content"
+    tradeoffs:
+      pros:
+        - "No app store review required — deploy instantly"
+        - "Headers are declarative and easy to audit"
+        - "CSP blocks entire classes of injection attacks"
+        - "SRI prevents CDN compromise from affecting the app"
+      cons:
+        - "CSP can break legitimate functionality if too strict"
+        - "Third-party scripts may not support strict CSP"
+        - "CORS misconfiguration is a common vulnerability"
+        - "Cannot prevent browser extension tampering"
+    implementation:
+      guidelines:
+        - "Deploy strict Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.example.com; frame-ancestors 'none'"
+        - "Set X-Content-Type-Options: nosniff on all responses"
+        - "Set X-Frame-Options: DENY (or SAMEORIGIN for intentional framing)"
+        - "Enable Strict-Transport-Security: max-age=31536000; includeSubDomains; preload"
+        - "Configure CORS: whitelist specific origins, never use Access-Control-Allow-Origin: *  for credentialed requests"
+        - "Add Subresource Integrity (SRI) hashes to all third-party script and stylesheet tags"
+        - "Set cookie attributes: Secure; HttpOnly; SameSite=Strict (or Lax); Path=/; Domain limited"
+        - "Implement CSRF tokens (synchronizer pattern or double-submit cookie) for state-changing requests"
+        - "Use Permissions-Policy to restrict browser features: camera, microphone, geolocation"
+        - "Sanitize all user-generated content server-side before rendering"
+      common_errors:
+        - error: "Using unsafe-inline or unsafe-eval in CSP script-src"
+          impact: "Defeats purpose of CSP; allows inline script injection (XSS)"
+          fix: "Use nonce-based CSP (script-src 'nonce-{random}') or hash-based CSP"
+        - error: "Setting Access-Control-Allow-Origin: * with credentials"
+          impact: "Any origin can make authenticated requests to the API"
+          fix: "Whitelist specific origins; reflect only allowed origins from a trusted list"
+        - error: "Missing SameSite attribute on cookies"
+          impact: "Cookies sent on cross-site requests enabling CSRF attacks"
+          fix: "Set SameSite=Strict for session cookies; SameSite=Lax as minimum"
+    maturity:
+      level: standard
+    standards:
+      - name: "OWASP ASVS v4 (V14: Configuration)"
+        type: standard
+        role: "Application security verification standard"
+        status: recommended
+        reference: "https://owasp.org/www-project-application-security-verification-standard/"
+      - name: "CSP Level 3 (W3C)"
+        type: standard
+        role: "Content Security Policy specification"
+        status: recommended
+        reference: "https://www.w3.org/TR/CSP3/"
+
+  - id: mobile_app_hardening
+    name: "Mobile Application Hardening"
+    description: >
+      Secure mobile applications through certificate pinning, secure key
+      storage using platform keystores, root/jailbreak detection, and
+      binary integrity checks. Provides a layered defense model for
+      iOS and Android applications.
+    use_when:
+      - "Mobile apps handling user credentials or tokens"
+      - "Apps processing financial or health data"
+      - "Apps that must resist man-in-the-middle attacks"
+      - "Enterprise apps distributed outside managed MDM"
+    avoid_when:
+      - "Content-only apps with no sensitive data (e.g., news readers)"
+      - "Cost/complexity outweighs risk for low-sensitivity apps"
+    tradeoffs:
+      pros:
+        - "Certificate pinning prevents MitM even with compromised CA"
+        - "Secure enclave/keystore protects keys from OS-level extraction"
+        - "Root detection warns against compromised device environments"
+        - "Binary protection raises the bar for reverse engineering"
+      cons:
+        - "Certificate pinning requires careful rotation planning"
+        - "Root detection has false positives (developer devices, custom ROMs)"
+        - "Hardening is defense-in-depth — determined attackers can bypass"
+        - "Adds development and maintenance complexity"
+    implementation:
+      guidelines:
+        - "Implement certificate pinning against the leaf or intermediate CA public key (not full certificate)"
+        - "Include backup pins for certificate rotation — pin current + next expected key"
+        - "Store authentication tokens in iOS Keychain (kSecAttrAccessibleWhenUnlockedThisDeviceOnly) or Android Keystore"
+        - "Detect rooted/jailbroken devices: check for su binary, Cydia, Magisk, test sandbox integrity"
+        - "On root detection: warn user, disable sensitive features, or refuse to run based on risk tolerance"
+        - "Enable App Transport Security (iOS) or Network Security Config (Android) to enforce TLS"
+        - "Disable WebView JavaScript when not needed; restrict URL schemes in WebViews"
+        - "Validate deep link URLs against a whitelist before processing"
+        - "Implement anti-debugging checks in release builds"
+        - "Use app attestation APIs: iOS DeviceCheck/App Attest, Android Play Integrity API"
+      common_errors:
+        - error: "Pinning the full certificate instead of the public key"
+          impact: "Pin breaks on every certificate renewal forcing emergency app updates"
+          fix: "Pin the Subject Public Key Info (SPKI) hash; it survives cert renewal"
+        - error: "No backup pins — only pinning current certificate"
+          impact: "If certificate is rotated, all existing app installs fail to connect"
+          fix: "Pin current + next expected key; have emergency pin removal mechanism"
+        - error: "Storing tokens in SharedPreferences/UserDefaults (plaintext)"
+          impact: "Tokens readable on rooted devices or via backup extraction"
+          fix: "Use Android Keystore or iOS Keychain with appropriate access controls"
+        - error: "Root detection that only checks one indicator"
+          impact: "Modern root tools (Magisk) hide individual indicators"
+          fix: "Use multiple detection methods: su binary, build tags, test-keys, sandbox escape, SafetyNet/Play Integrity"
+    maturity:
+      level: standard
+    standards:
+      - name: "OWASP MASVS (Mobile Application Security Verification Standard)"
+        type: standard
+        role: "Comprehensive mobile app security baseline"
+        status: recommended
+        reference: "https://mas.owasp.org/MASVS/"
+      - name: "NIST SP 800-163 Rev 1 (Vetting Mobile Applications)"
+        type: standard
+        role: "Guidelines for vetting the security of mobile applications"
+        status: recommended
+
+  - id: mobile_defense_in_depth
+    name: "Mobile Defense-in-Depth (High-Security)"
+    description: >
+      Maximum protection for mobile apps handling restricted data. Combines
+      all mobile hardening controls with runtime application self-protection,
+      code obfuscation, anti-tampering, and hardware-backed attestation.
+      Designed for financial, healthcare, and government applications.
+    use_when:
+      - "Banking, payments, and financial trading apps"
+      - "Healthcare apps handling PHI (protected health information)"
+      - "Government or classified information apps"
+      - "Apps requiring MASVS L2 or equivalent compliance"
+    avoid_when:
+      - "Standard business apps — cost exceeds risk reduction"
+      - "Rapid prototyping or MVP phase"
+    tradeoffs:
+      pros:
+        - "Strongest mobile security posture available"
+        - "Meets regulatory requirements (PCI DSS, HIPAA, government)"
+        - "Multi-layer defense — no single bypass defeats all controls"
+        - "Hardware attestation proves device and app integrity"
+      cons:
+        - "Significant development and maintenance cost"
+        - "Performance overhead from runtime checks"
+        - "Aggressive root detection may reject legitimate users"
+        - "Obfuscation complicates crash reporting and debugging"
+    implementation:
+      guidelines:
+        - "Apply all mobile_app_hardening guidelines as the foundation"
+        - "Implement code obfuscation: ProGuard/R8 (Android), bitcode + Swift symbol stripping (iOS)"
+        - "Add runtime integrity checks: verify app signature, detect debugger, detect instrumentation frameworks (Frida, Xposed)"
+        - "Use hardware-backed key attestation to verify key material is in secure hardware"
+        - "Implement app attestation: iOS App Attest with assertion validation, Android Key Attestation + Play Integrity"
+        - "Enable binary integrity verification: checksum critical code sections at runtime"
+        - "Implement secure screen capture prevention for sensitive views"
+        - "Use memory protection: clear sensitive data from memory after use, avoid string constants for secrets"
+        - "Implement jailbreak/root detection with graceful degradation — disable sensitive features rather than hard block"
+        - "Perform server-side attestation validation — never trust client-only checks"
+      common_errors:
+        - error: "Client-only root detection without server-side validation"
+          impact: "Attacker patches out detection in the binary"
+          fix: "Send attestation result to server; validate server-side before granting access"
+        - error: "Obfuscation without integrity verification"
+          impact: "Attacker deobfuscates and patches the binary"
+          fix: "Combine obfuscation with runtime checksum verification of critical code paths"
+        - error: "Hard-blocking rooted devices instead of degrading gracefully"
+          impact: "Alienates power users and developers; support tickets increase"
+          fix: "Warn users; disable high-risk features (payments); allow read-only access"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "OWASP MASVS L2 + R"
+        type: standard
+        role: "Defense-in-depth plus resilience requirements"
+        status: recommended
+        reference: "https://mas.owasp.org/MASVS/"
+      - name: "PCI Mobile Payment Acceptance Security Guidelines"
+        type: standard
+        role: "Security requirements for mobile payment applications"
+        status: recommended
+
+  - id: desktop_app_hardening
+    name: "Desktop Application Hardening"
+    description: >
+      Security controls for desktop applications including code signing,
+      secure auto-update mechanisms, IPC hardening, memory protection, and
+      Electron-specific isolation. Addresses the unique threat model of
+      locally-installed software with full OS access.
+    use_when:
+      - "Native desktop applications (Windows, macOS, Linux)"
+      - "Electron or other web-runtime desktop apps"
+      - "Applications handling sensitive local data"
+      - "Enterprise software with privileged operations"
+    avoid_when:
+      - "Thin clients that delegate all processing to the server"
+    tradeoffs:
+      pros:
+        - "Code signing proves publisher identity and detects tampering"
+        - "Secure updates prevent supply chain attacks via update channel"
+        - "IPC hardening prevents privilege escalation from other processes"
+        - "OS-level protections (ASLR, DEP) are available on all modern platforms"
+      cons:
+        - "Code signing requires certificate management and cost"
+        - "Update mechanisms are complex to implement securely"
+        - "Electron apps inherit web vulnerabilities plus node.js risks"
+        - "Platform-specific implementation differences increase maintenance"
+    implementation:
+      guidelines:
+        - "Sign all binaries and installers with EV code signing certificates (Windows), Developer ID (macOS), GPG (Linux)"
+        - "Implement secure auto-update: HTTPS-only channel, signature verification of update packages, rollback capability"
+        - "Electron: enable contextIsolation, disable nodeIntegration, use preload scripts for IPC, enable sandbox"
+        - "Electron: set webPreferences — contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true"
+        - "Restrict IPC channels: validate all messages, use allowlisted channel names, never pass unsanitized data to shell commands"
+        - "Implement memory protection: clear sensitive data after use, use secure memory allocation for keys"
+        - "Run with minimal OS privileges — never require admin/root unless absolutely necessary"
+        - "Enable platform protections: ASLR, DEP/NX, stack canaries, code integrity guard"
+        - "Implement anti-debugging for release builds handling sensitive data"
+        - "Use OS credential stores: Windows Credential Manager, macOS Keychain, Linux Secret Service API"
+      common_errors:
+        - error: "Electron app with nodeIntegration enabled"
+          impact: "XSS in renderer process gains full Node.js access — arbitrary code execution"
+          fix: "Set nodeIntegration: false, contextIsolation: true, use preload scripts"
+        - error: "Auto-update over HTTP without signature verification"
+          impact: "Man-in-the-middle can inject malicious update"
+          fix: "HTTPS-only update channel with cryptographic signature verification"
+        - error: "Running desktop app as admin/root by default"
+          impact: "Any vulnerability escalates to full system compromise"
+          fix: "Run with standard user privileges; use OS elevation prompts (UAC, pkexec) only when needed"
+    maturity:
+      level: standard
+    standards:
+      - name: "Electron Security Guidelines"
+        type: reference
+        role: "Official security best practices for Electron applications"
+        status: recommended
+        reference: "https://www.electronjs.org/docs/latest/tutorial/security"
+      - name: "Microsoft SDL (Security Development Lifecycle)"
+        type: standard
+        role: "Secure development practices for Windows applications"
+        status: recommended
+
+examples:
+  - id: web_csp_example
+    title: "Content Security Policy — Strict CSP for SPA"
+    context: "Configuring a strict Content Security Policy for a single-page application"
+    correct: |
+      # HTTP Response Headers for SPA
+      Content-Security-Policy:
+        default-src 'self';
+        script-src 'self' 'nonce-{server_generated_random}';
+        style-src 'self' 'nonce-{server_generated_random}';
+        img-src 'self' data: https://cdn.example.com;
+        connect-src 'self' https://api.example.com;
+        font-src 'self' https://fonts.example.com;
+        frame-ancestors 'none';
+        base-uri 'self';
+        form-action 'self';
+        upgrade-insecure-requests;
+
+      X-Content-Type-Options: nosniff
+      X-Frame-Options: DENY
+      Referrer-Policy: strict-origin-when-cross-origin
+      Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+      Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+
+      # In HTML, scripts use nonce
+      <script nonce="{server_generated_random}" src="/app.js"></script>
+    incorrect: |
+      # WRONG: Overly permissive CSP defeats its purpose
+      Content-Security-Policy: default-src *; script-src * 'unsafe-inline' 'unsafe-eval';
+
+      # No X-Content-Type-Options — browser may MIME-sniff responses
+      # No X-Frame-Options — app can be framed (clickjacking)
+      # No HSTS — users can be downgraded to HTTP
+      # No Referrer-Policy — full URL leaked in Referer header
+      # No Permissions-Policy — all browser features accessible
+    explanation: >
+      The correct CSP restricts script execution to same-origin with nonces,
+      blocking inline script injection. Frame-ancestors 'none' prevents
+      clickjacking. The incorrect version allows any source with unsafe-inline
+      and unsafe-eval, providing no protection against XSS.
+
+  - id: mobile_cert_pinning_example
+    title: "Certificate Pinning — Public Key Pinning on Mobile"
+    context: "Implementing SPKI hash-based certificate pinning with backup pins"
+    correct: |
+      # Android — Network Security Config (res/xml/network_security_config.xml)
+      <network-security-config>
+        <domain-config>
+          <domain includeSubdomains="true">api.example.com</domain>
+          <pin-set expiration="2027-01-01">
+            <!-- Current certificate SPKI hash -->
+            <pin digest="SHA-256">base64_hash_of_current_cert_spki</pin>
+            <!-- Backup pin for certificate rotation -->
+            <pin digest="SHA-256">base64_hash_of_next_cert_spki</pin>
+          </pin-set>
+        </domain-config>
+      </network-security-config>
+
+      # iOS — TrustKit configuration (Info.plist or runtime)
+      trust_kit_config = {
+        "api.example.com": {
+          "pinned_spki_hashes": [
+            "current_cert_spki_base64_hash",
+            "backup_cert_spki_base64_hash"
+          ],
+          "enforce_pinning": true,
+          "report_uri": "https://report.example.com/pin-failure",
+          "expiration_date": "2027-01-01"
+        }
+      }
+
+      # Include pin expiration to prevent permanent lockout
+      # Always have ≥2 pins (current + backup)
+    incorrect: |
+      # WRONG: Pinning full certificate instead of SPKI
+      pinned_cert = load_certificate("api.example.com.cer")
+      # This breaks on EVERY certificate renewal!
+
+      # WRONG: Only one pin, no backup
+      pin_set = ["single_hash_no_backup"]
+      # If cert rotates, ALL users are locked out
+
+      # WRONG: Disabling certificate validation as a "fix"
+      ssl_context.verify_mode = VERIFY_NONE  # Defeats ALL TLS security
+    explanation: >
+      SPKI-based pinning survives certificate renewal because the public key
+      typically stays the same. Backup pins prevent lockout during rotation.
+      Pinning the full certificate forces emergency app updates on every renewal.
+      Disabling verification is never acceptable.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Certificate pinning on mobile apps — SPKI hash-based with backup pins"
+      - "TLS 1.2+ enforced on all client platforms"
+      - "HSTS on all web endpoints with preload"
+      - "Network Security Config (Android) or App Transport Security (iOS) enforced"
+  data_protection:
+    requirements:
+      - "Sensitive data stored in platform keystore: iOS Keychain, Android Keystore, OS credential manager"
+      - "No sensitive data in plaintext SharedPreferences, UserDefaults, or localStorage"
+      - "Clear sensitive data from memory after use"
+      - "Disable pasteboard for sensitive input fields"
+  access_control:
+    requirements:
+      - "Root/jailbreak detection with server-side validation"
+      - "App attestation: iOS App Attest, Android Play Integrity"
+      - "Biometric authentication for sensitive operations where available"
+  input_output:
+    requirements:
+      - "Content Security Policy on all web responses"
+      - "Input sanitization on both client and server (server is authoritative)"
+      - "Deep link URL validation against whitelist"
+      - "WebView URL scheme restrictions"
+  secrets:
+    requirements:
+      - "No hardcoded secrets, API keys, or certificates in client code"
+      - "Use build-time environment injection for configuration endpoints"
+      - "Obfuscate sensitive string constants in mobile binaries"
+  monitoring:
+    requirements:
+      - "Report certificate pin failures to a monitoring endpoint"
+      - "Log root/jailbreak detection events server-side"
+      - "Monitor for unusual client behavior (automated scraping, emulator use)"
+      - "App crash analytics with symbolication (without exposing source)"
+
+compliance:
+  standards:
+    - name: "OWASP MASVS (Mobile Application Security Verification Standard)"
+      relevance: "Comprehensive mobile security requirements framework"
+      reference: "https://mas.owasp.org/MASVS/"
+    - name: "OWASP ASVS v4 (Application Security Verification Standard)"
+      relevance: "Web application security verification requirements"
+      reference: "https://owasp.org/www-project-application-security-verification-standard/"
+    - name: "NIST SP 800-163 Rev 1"
+      relevance: "Vetting the security of mobile applications"
+    - name: "CWE-295: Improper Certificate Validation"
+      relevance: "Common weakness for TLS implementation errors"
+      reference: "https://cwe.mitre.org/data/definitions/295.html"
+
+  requirements_mapping:
+    - control: transport_security
+      description: "All client-server communication over TLS 1.2+ with proper certificate validation"
+      maps_to:
+        - "OWASP MASVS NETWORK-1"
+        - "OWASP ASVS V9"
+    - control: secure_storage
+      description: "Sensitive data stored using platform-provided secure storage mechanisms"
+      maps_to:
+        - "OWASP MASVS STORAGE-1"
+        - "OWASP MASVS STORAGE-2"
+    - control: binary_protection
+      description: "App binary protected against reverse engineering and tampering"
+      maps_to:
+        - "OWASP MASVS RESILIENCE-1"
+        - "OWASP MASVS RESILIENCE-2"
+
+prompt_recipes:
+  - id: client_security_greenfield
+    scenario: greenfield
+    description: "Design client-platform security for a new application"
+    prompt: |
+      Design the client-side security architecture for a new application.
+
+      Context:
+      - Platform: [web/mobile_ios/mobile_android/desktop/cross_platform]
+      - Data sensitivity: [public/internal/confidential/restricted]
+      - Threat model: [basic/standard/advanced/nation_state]
+      - Distribution: [app_store/enterprise/web_browser/direct_download]
+
+      Requirements:
+      - Transport security (TLS, pinning if mobile)
+      - Secure local storage strategy
+      - Authentication token protection
+      - Platform-specific hardening controls
+      - No hardcoded secrets in client code
+
+  - id: client_security_audit
+    scenario: audit
+    description: "Audit client application security posture"
+    prompt: |
+      Audit the client application security implementation:
+
+      Web:
+      1. Is CSP configured? Are unsafe-inline/unsafe-eval avoided?
+      2. Are cookies set with Secure, HttpOnly, SameSite?
+      3. Is HSTS enabled with appropriate max-age?
+      4. Is CORS properly restricted?
+      5. Is SRI used for third-party resources?
+
+      Mobile:
+      6. Is certificate pinning implemented (SPKI-based)?
+      7. Are tokens stored in Keychain/Keystore?
+      8. Is root/jailbreak detection active?
+      9. Is the binary obfuscated?
+      10. Is app attestation (Play Integrity/App Attest) used?
+
+      Desktop:
+      11. Are binaries code-signed?
+      12. Is auto-update using HTTPS with signature verification?
+      13. Is nodeIntegration disabled (Electron)?
+      14. Are IPC channels validated?
+
+      For each: report compliant/non-compliant with remediation steps.
+
+  - id: client_security_cert_rotation
+    scenario: operations
+    description: "Plan certificate rotation with pinning in place"
+    prompt: |
+      Plan a certificate rotation for a mobile app with certificate pinning.
+
+      Steps:
+      1. Generate new certificate with new key pair
+      2. Compute SPKI hash of new certificate's public key
+      3. Release app update with both old and new SPKI pins
+      4. Wait for adoption (monitor app version distribution)
+      5. Deploy new certificate on server
+      6. Release next app update removing old pin
+      7. Verify pin validation succeeds with new certificate
+      8. Document rotation in runbook for next cycle
+
+  - id: client_security_incident
+    scenario: security
+    description: "Respond to a compromised client certificate or root CA"
+    prompt: |
+      Respond to a certificate compromise incident for a mobile application.
+
+      Immediate:
+      1. Revoke the compromised certificate
+      2. Issue new certificate from different CA if root CA compromised
+      3. Deploy new certificate to servers
+      4. Emergency app release with updated pins (if leaf compromised)
+      5. If backup pin matches new cert — no app update needed
+
+      Investigation:
+      6. Determine scope of compromise (which endpoints, duration)
+      7. Check for unauthorized API access during exposure window
+      8. Review certificate issuance logs
+      9. Update pin rotation schedule based on lessons learned
+
+anti_patterns:
+  - name: "Disabling Certificate Validation"
+    description: >
+      Setting SSL/TLS verification to false or accepting all certificates to
+      bypass certificate errors during development, then shipping that code
+      to production. Completely defeats transport security — any attacker on
+      the network can intercept all traffic.
+    fix: "Never disable verification; use proper certificates in all environments; use Charles Proxy or mitmproxy for debugging with explicit trust"
+    severity: critical
+    related_pattern: mobile_app_hardening
+
+  - name: "Tokens in localStorage (Web)"
+    description: >
+      Storing authentication tokens (JWT, session tokens) in browser
+      localStorage. Any XSS vulnerability gives the attacker full access
+      to the token because localStorage is accessible from any script on
+      the same origin.
+    fix: "Use HttpOnly, Secure, SameSite cookies for session tokens; if using JWTs in SPAs, use in-memory storage with silent refresh"
+    severity: high
+    related_pattern: web_browser_hardening
+
+  - name: "Secrets in Client Bundle"
+    description: >
+      Embedding API keys, encryption keys, or other secrets directly in
+      the client-side code (JavaScript bundles, mobile APK/IPA, Electron
+      asar). Client code is always extractable by the user — secrets in
+      client bundles are not secret.
+    fix: "Use server-side proxy for API keys; use OAuth tokens issued at runtime; deliver secrets via authenticated API calls, not build-time embedding"
+    severity: critical
+    related_pattern: web_browser_hardening
+
+  - name: "Client-Only Security Checks"
+    description: >
+      Implementing security controls (authorization, input validation,
+      root detection, feature gating) only on the client side without
+      server-side enforcement. Client code can always be modified or
+      bypassed by the user.
+    fix: "Enforce all security decisions server-side; use client checks only as UX improvements and defense-in-depth"
+    severity: high
+    related_pattern: mobile_defense_in_depth
+
+checklist:
+  - id: CPS-01
+    category: security
+    description: "TLS 1.2+ enforced on all client connections"
+    severity: critical
+    verified_by: web_browser_hardening
+
+  - id: CPS-02
+    category: security
+    description: "Content Security Policy configured without unsafe-inline or unsafe-eval"
+    severity: critical
+    verified_by: web_browser_hardening
+
+  - id: CPS-03
+    category: security
+    description: "Cookies set with Secure, HttpOnly, SameSite attributes"
+    severity: high
+    verified_by: web_browser_hardening
+
+  - id: CPS-04
+    category: security
+    description: "Certificate pinning implemented on mobile apps (SPKI-based with backup pins)"
+    severity: high
+    verified_by: mobile_app_hardening
+
+  - id: CPS-05
+    category: security
+    description: "Authentication tokens stored in platform secure storage (Keychain/Keystore)"
+    severity: critical
+    verified_by: mobile_app_hardening
+
+  - id: CPS-06
+    category: security
+    description: "Root/jailbreak detection active with server-side validation"
+    severity: high
+    verified_by: mobile_defense_in_depth
+
+  - id: CPS-07
+    category: security
+    description: "No hardcoded secrets in client code"
+    severity: critical
+    verified_by: web_browser_hardening
+
+  - id: CPS-08
+    category: security
+    description: "Desktop binaries code-signed with trusted certificates"
+    severity: high
+    verified_by: desktop_app_hardening
+
+  - id: CPS-09
+    category: security
+    description: "Auto-update uses HTTPS with cryptographic signature verification"
+    severity: high
+    verified_by: desktop_app_hardening
+
+  - id: CPS-10
+    category: security
+    description: "Electron apps: contextIsolation enabled, nodeIntegration disabled"
+    severity: critical
+    verified_by: desktop_app_hardening
+
+  - id: CPS-11
+    category: security
+    description: "App attestation configured (Play Integrity / App Attest)"
+    severity: high
+    verified_by: mobile_defense_in_depth
+
+  - id: CPS-12
+    category: security
+    description: "CORS restricted to specific allowed origins — no wildcard with credentials"
+    severity: critical
+    verified_by: web_browser_hardening

@@ -4,31 +4,33 @@
 
 | Component | Tool | Status | Notes |
 |-----------|------|--------|-------|
-| Cookbook entries (33 YAML) | `tools/validate.py` | ✅ Pass | 33/33, 0 errors, 0 warnings |
-| MCP server (TypeScript) | `tsc --noEmit` | ✅ Pass | Clean compile, 0 errors |
-| MCP server (npm build) | `npm run build` | ✅ Pass | Artifacts in `mcp-server/dist/` |
+| Cookbook entries (43 YAML) | `tools/validate.py` | ✅ Pass | 43/43, 0 errors, 0 warnings |
+| MCP server (TypeScript) | `npm run build` | ✅ Pass | Clean compile, 0 errors |
+| MCP server tests | `npm test` | ✅ Pass | 30/30 tests pass |
 | Prompt composer (Python) | `prompts/compose.py` | ✅ Pass | All 4 formats generate successfully |
 
 ## Test Execution Summary
 
 ### Unit Tests — Entry Validation
-- **Total Entries**: 33
-- **Passed**: 33
+- **Total Entries**: 43
+- **Passed**: 43
 - **Failed**: 0
 - **Warnings**: 0
 - **Status**: ✅ Pass
 
-### Unit Tests — MCP Server Type Check
-- **Compiler**: `tsc --noEmit`
-- **Errors**: 0
+### Unit Tests — MCP Server
+- **Test Suite**: `npm test` (tsx test/runner.ts)
+- **Total Tests**: 30
+- **Passed**: 30
+- **Failed**: 0
 - **Status**: ✅ Pass
 
 ### Integration Tests
 
 | Scenario | Result | Details |
 |----------|--------|---------|
-| MCP Loader — all entries | ✅ Pass | 33 domains, 5 categories, 200 tags loaded |
-| MCP Query + Search | ✅ Pass | `query_standard(authentication)` → v2.0.0; `searchByTags([security])` → 4 results; `searchByQuery(api)` → 4 results |
+| MCP Loader — all entries | ✅ Pass | 43 domains, 5 categories loaded |
+| MCP Query + Search | ✅ Pass | `query_standard(authentication)` → v2.0.0; `searchByTags([security])` → ≥4 results |
 | Decision Tree Evaluation | ✅ Pass | `recommend_pattern(auth, {web, login})` → `federated_authentication` (node: `login_requires_oidc`); checklist: 6 critical, 8 high, 14 total |
 | Compose Pipeline (4 formats) | ✅ Pass | copilot: 59,097 bytes; claude: 59,130 bytes; cursor: 58,956 bytes; generic: 58,924 bytes — all 132 sections |
 | Index Consistency | ✅ Pass | All 33 entry paths in `index.yaml` resolve to files on disk |
@@ -46,7 +48,7 @@
 
 | Gate | Criteria | Result |
 |------|----------|--------|
-| Schema validation | 33/33 entries pass JSON Schema | ✅ |
+| Schema validation | 43/43 entries pass JSON Schema | ✅ |
 | Semantic validation | 0 errors, 0 warnings | ✅ |
 | Pattern completeness | ≥3 patterns per entry | ✅ |
 | Anti-pattern completeness | ≥3 anti-patterns per entry | ✅ |
@@ -54,7 +56,7 @@
 | Prompt recipe completeness | ≥4 recipes per entry | ✅ |
 | Cross-reference integrity | All prerequisites + related_standards resolve | ✅ |
 | MCP server compiles | TypeScript clean compile | ✅ |
-| MCP loader works | All 33 entries load via CookbookLoader | ✅ |
+| MCP loader works | All 43 entries load via CookbookLoader | ✅ |
 | Decision tree evaluator | Returns valid recommendations | ✅ |
 | Prompt composer | All 4 formats generate valid output | ✅ |
 | Index consistency | Root index paths match filesystem | ✅ |
@@ -73,7 +75,7 @@
 
 | Category | Count | Details |
 |----------|-------|---------|
-| Cookbook entries | 33 | 5 categories, all validated |
+| Cookbook entries | 43 | 5 categories, all validated |
 | Distribution channels | 4 | MCP server, Skills, Prompt composer, Raw YAML |
 | MCP tools | 5 | query, search, checklist, decision-tree, recommend |
 | Compose formats | 4 | copilot, claude, cursor, generic |

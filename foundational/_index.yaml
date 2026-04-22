@@ -68,3 +68,27 @@ entries:
     prerequisites: []
     pattern_count: 4
     anti_pattern_count: 4
+
+  - domain: authorization
+    version: "1.0.0"
+    description: "Authorization patterns: RBAC, ABAC, ReBAC, policy-as-code, and resource-level access control"
+    tags: ["security", "authorization", "rbac", "abac", "rebac", "policy-as-code", "access-control"]
+    prerequisites: ["authentication"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: session-management
+    version: "1.0.0"
+    description: "Session management: server-side sessions, JWT with refresh rotation, BFF pattern, session hardening"
+    tags: ["security", "session", "jwt", "token", "cookie", "session-fixation", "csrf"]
+    prerequisites: ["authentication"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: secrets-management
+    version: "1.0.0"
+    description: "Secrets management: vault services, environment injection, zero-trust access, automatic rotation"
+    tags: ["security", "secrets", "vault", "credentials", "api-keys", "rotation", "kms"]
+    prerequisites: ["encryption", "authentication"]
+    pattern_count: 4
+    anti_pattern_count: 3
