@@ -6,7 +6,7 @@ Distribution packaging (4 channels), governance docs, CI pipeline. All 33 cookbo
 ## Steps
 
 - [x] **Step 1**: Create root `index.yaml` — master catalog of all 33 entries with tag_index
-- [x] **Step 2**: Create `skills/SKILL.md` — mega-skill for AI assistants
+- [x] **Step 2**: Create `skills/ai-architecture-cookbook.md` — mega-skill for AI assistants
 - [x] **Step 3**: Create MCP server — `mcp-server/` (TypeScript, 5 tools)
   - `package.json`, `tsconfig.json`
   - `src/server.ts` — entry point
@@ -30,7 +30,7 @@ Distribution packaging (4 channels), governance docs, CI pipeline. All 33 cookbo
 
 ## Quality Criteria
 - index.yaml lists all 33 entries with correct paths and tags
-- SKILL.md is self-contained and references all domains
+- ai-architecture-cookbook.md is self-contained and references all domains
 - MCP server compiles and exports 5 tools
 - compose.py generates valid instruction files
 - CI workflow runs validate.py on PRs

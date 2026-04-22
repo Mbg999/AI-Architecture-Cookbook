@@ -143,7 +143,7 @@ X) Other (please describe after [Answer]: tag below)
 ## Question 11
 How should this cookbook be consumed by AI assistants?
 
-A) As a Skills package (like the `.agents/skills/` pattern — individual SKILL.md files per topic)
+A) As a Skills package (like the `.agents/skills/` pattern — individual ai-architecture-cookbook.md files per topic)
 B) As an MCP server (Model Context Protocol — tools the AI can call to query standards)
 C) As prompt/instruction files (`.github/copilot-instructions.md`, `CLAUDE.md`, `.cursorrules`, etc.)
 D) As a raw reference repo (AI assistants clone/read the YAML files directly)

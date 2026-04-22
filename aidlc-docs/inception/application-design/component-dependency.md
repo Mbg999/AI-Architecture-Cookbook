@@ -36,7 +36,7 @@
     |         v    v               v
     |  +------------------+  +------------------+
     |  |  C4: MCP Server  |  |  C5: Skills      |
-    |  |  5 tools (TS)    |  |  SKILL.md        |
+    |  |  5 tools (TS)    |  |  ai-architecture-cookbook.md        |
     |  +------------------+  +------------------+
     |
     |         validates
@@ -65,7 +65,7 @@ Based on dependency analysis, components must be built in this order:
 3. **C2: Index System** — Depends on C1. `index.yaml` and `_index.yaml` files generated after entries exist.
 4. **C7: Validation System** — Depends on C1 + C3. JSON Schema + semantic validator.
 5. **C4: MCP Server** — Depends on C1 + C2. TypeScript server reading YAML files and index.
-6. **C5: Skills Package** — Depends on C1 + C2. SKILL.md referencing entries via index.
+6. **C5: Skills Package** — Depends on C1 + C2. ai-architecture-cookbook.md referencing entries via index.
 7. **C6: Prompt System** — Depends on C1. Module generation from YAML entries + compose tool.
 8. **C8: Governance** — Depends on C7. CONTRIBUTING.md, CI workflow using validation.
 

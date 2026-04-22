@@ -167,7 +167,7 @@
 
 **Deliverables**:
 - `mcp-server/` — TypeScript MCP server with 5 tools
-- `skills/SKILL.md` — Mega-skill for AI assistants
+- `skills/ai-architecture-cookbook.md` — Mega-skill for AI assistants
 - `prompts/modules/*.md` — 33 instruction modules
 - `prompts/compose.py` — Composition tool
 - `.github/copilot-instructions.md` — Pre-built (generated via compose.py)

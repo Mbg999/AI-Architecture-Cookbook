@@ -41,7 +41,7 @@ This is a knowledge repository, not a traditional service-oriented system. "Serv
 **Access Patterns**:
 1. **MCP path**: AI calls `search_standards()` tool → gets metadata → calls `query_standard()` for full content
 2. **File path**: AI reads `index.yaml` → identifies domain → reads `{category}/{domain}/{domain}.yaml`
-3. **Skills path**: AI loads `SKILL.md` → follows instructions to locate relevant YAML
+3. **Skills path**: AI loads `ai-architecture-cookbook.md` → follows instructions to locate relevant YAML
 
 ---
 
@@ -65,7 +65,7 @@ This is a knowledge repository, not a traditional service-oriented system. "Serv
 **Purpose**: Deliver architectural guidance in the format each AI assistant expects.
 
 **Operations**:
-- **Skills**: Load `SKILL.md` → AI reads entry YAMLs as needed
+- **Skills**: Load `ai-architecture-cookbook.md` → AI reads entry YAMLs as needed
 - **Prompt files**: Load pre-built `.github/copilot-instructions.md`, `CLAUDE.md`, or `.cursorrules`
 - **Custom composition**: Run `compose.py` to build instruction files with selected standards
 

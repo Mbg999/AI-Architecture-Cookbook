@@ -63,9 +63,9 @@ X) Other (please describe after [Answer]: tag below)
 ## Question 4
 How should Skills be structured for AI assistant consumption?
 
-A) One mega-skill — single SKILL.md that references all YAMLs
-B) One skill per domain — `skills/authentication/SKILL.md`, `skills/api-design/SKILL.md`, etc.
-C) One skill per category — `skills/foundational/SKILL.md` covering all 7 foundational standards
+A) One mega-skill — single ai-architecture-cookbook.md that references all YAMLs
+B) One skill per domain — `skills/authentication/ai-architecture-cookbook.md`, `skills/api-design/ai-architecture-cookbook.md`, etc.
+C) One skill per category — `skills/foundational/ai-architecture-cookbook.md` covering all 7 foundational standards
 D) Hybrid — one "router" skill that helps AI pick the right domain, plus individual domain skills
 X) Other (please describe after [Answer]: tag below)
 

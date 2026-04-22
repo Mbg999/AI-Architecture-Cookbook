@@ -8,7 +8,7 @@
 | C2 | Index System | Content/Metadata | Global `index.yaml` + per-category `_index.yaml` for discovery | `index.yaml`, `{category}/_index.yaml` |
 | C3 | Schema System | Schema | Canonical YAML template + formal JSON Schema | `base-template.yaml`, `tools/schema.json` |
 | C4 | MCP Server | Application | TypeScript MCP server exposing 5 tools for AI assistant consumption | `mcp-server/` |
-| C5 | Skills Package | Distribution | Single mega-skill file referencing all cookbook entries | `skills/SKILL.md` |
+| C5 | Skills Package | Distribution | Single mega-skill file referencing all cookbook entries | `skills/ai-architecture-cookbook.md` |
 | C6 | Prompt System | Distribution/Tooling | Modular per-standard instruction modules + composition tool | `prompts/modules/`, `prompts/compose.py` |
 | C7 | Validation System | Tooling | JSON Schema structural validation + Python semantic validation | `tools/schema.json`, `tools/validate.py` |
 | C8 | Governance | Documentation | CONTRIBUTING.md, PR templates, CI workflow | `.github/`, `CONTRIBUTING.md` |
@@ -71,7 +71,7 @@
 
 **Purpose**: Single mega-skill file that AI assistants (GitHub Copilot, Claude, etc.) can load to gain access to all architectural standards.
 
-**Design**: One `SKILL.md` that describes the cookbook, lists all domains, and provides instructions for the AI to load specific YAML entries on demand (Q4=A).
+**Design**: One `ai-architecture-cookbook.md` that describes the cookbook, lists all domains, and provides instructions for the AI to load specific YAML entries on demand (Q4=A).
 
 **Design Rationale**: A mega-skill avoids fragmentation — AI loads one skill, gets a "router" that knows which YAML to fetch. Individual per-domain skills would require users to manually select which standards to enable.
 

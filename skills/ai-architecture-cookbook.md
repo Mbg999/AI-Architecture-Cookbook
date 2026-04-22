@@ -1,5 +1,7 @@
 # AI Architecture Cookbook — Skill
 
+Name: ai-architecture-cookbook
+
 ## Description
 Comprehensive architectural standards and decision frameworks for software development. Provides 33 domain-specific standards covering authentication, API design, error handling, containerization, encryption, testing, and more. Each standard includes context-aware decision trees, implementation patterns, anti-patterns, security hardening, compliance mapping, and verification checklists.
 
@@ -138,3 +140,67 @@ Every YAML entry follows `base-template.yaml` v3 with these sections:
 - `prompt_recipes` — pre-built prompts for common scenarios
 - `anti_patterns` — what to avoid with detection and migration guidance
 - `checklist` — verification items with severity and verification method
+
+## Intent → Tool Mapping (quick reference)
+
+Use this mapping to decide which MCP tool to call based on user intent. Include a short confirmation question if any required `context_inputs` are missing.
+
+| Intent (user asks) | Tool to call | Example input / note |
+|---|---:|---|
+| Get full standard YAML or detailed guidance for a domain | `query_standard` | { "domain": "authentication", "category": "foundational" }
+| Find standards by keyword, tag, or category | `search_standards` | { "query": "OAuth", "tags": ["authentication"] }
+| Get verification checklist items (optionally filter by severity) | `get_checklist` | { "domain": "authentication", "severity": "critical" }
+| Inspect decision tree inputs or full decision tree | `get_decision_tree` | { "domain": "api-design" }
+| Recommend best patterns given project/context | `recommend_pattern` | { "context": { ... }, "domains": ["authentication"] }
+
+### Practical routing rules
+- If user explicitly requests machine-readable content (YAML, JSON) → call `query_standard`.
+- If user asks "what standards cover X" or requests exploration → call `search_standards`.
+- If user asks "how do I verify X is correct" or needs TODOs → call `get_checklist`.
+- If user provides project context and asks for recommendations → call `recommend_pattern` and include `context` object.
+- If user asks about decision criteria or what questions we need to answer → call `get_decision_tree`.
+
+## Few-shot Prompt-Recipes (copy-paste)
+
+These short recipes show natural-language examples and the equivalent direct tool call. Include at least one of these in system/prompts to teach assistants when to call tools.
+
+- Example: full-standard (natural language)
+
+```text
+User: I need the full authentication standard YAML for our security audit.
+Assistant: (calls `query_standard` with { "domain": "authentication", "category": "foundational" })
+```
+
+- Example: full-standard (direct tool)
+
+```json
+tool: query_standard
+input: { "domain": "authentication", "category": "foundational" }
+```
+
+- Example: search standards (natural language)
+
+```text
+User: What standards or patterns mention OAuth or OpenID?
+Assistant: (calls `search_standards` with { "query": "OAuth" })
+```
+
+- Example: checklist retrieval (natural language)
+
+```text
+User: Give me critical checklist items for authentication.
+Assistant: (calls `get_checklist` with { "domain": "authentication", "severity": "critical" })
+```
+
+- Example: recommend pattern (few-shot)
+
+```text
+User: We run an enterprise web+mobile app that needs user login and SSO. Recommend authentication patterns.
+Assistant: (calls `recommend_pattern` with { "context": { "scale": "enterprise", "client_types": ["web","mobile"], "needs_login": true } })
+```
+
+## Integration tips
+- Expose these recipes as `prompt_recipes` inside each YAML standard so assistants can reuse domain-specific phrasing.
+- Add these mappings to `skills/ai-architecture-cookbook.md` (done) and surface them in the README to help users author system messages.
+- Require a one-line confirmation when context is incomplete: e.g., "I can call `recommend_pattern` — do you want me to use scale=enterprise and client_types=[web]?"
+

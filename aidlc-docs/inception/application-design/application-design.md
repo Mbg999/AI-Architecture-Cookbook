@@ -95,7 +95,7 @@ AI-Architecture-Cookbook/
 │       └── versioning.yaml
 │
 ├── skills/                                 # Distribution: Skills package
-│   └── SKILL.md                            # Mega-skill for AI assistants
+│   └── ai-architecture-cookbook.md                            # Mega-skill for AI assistants
 │
 ├── mcp-server/                             # Distribution: MCP server
 │   ├── src/
@@ -177,11 +177,11 @@ AI Assistant                         MCP Server
 ```
 AI Assistant
     |
-    |-- Load skills/SKILL.md
+    |-- Load skills/ai-architecture-cookbook.md
     |   (reads cookbook overview, domain list, instructions)
     |
     |-- User asks about authentication
-    |   SKILL.md says: "Load foundational/authentication/authentication.yaml"
+    |   ai-architecture-cookbook.md says: "Load foundational/authentication/authentication.yaml"
     |
     |-- Read foundational/authentication/authentication.yaml
     |   (full entry with decision tree, patterns, checklist, etc.)
