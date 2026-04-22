@@ -1,0 +1,274 @@
+meta:
+  domain: authentication
+  version: 1.0
+  last_updated: 2026-04-22
+  description: >
+    Advanced authentication and authorization decision framework including
+    modern security hardening, proof-of-possession mechanisms, and compliance mapping.
+
+context_inputs:
+  - name: client_types
+    type: enum
+    description: web | mobile | server | third_party
+
+  - name: needs_login
+    type: boolean
+
+  - name: third_party_access
+    type: boolean
+
+  - name: session_type
+    type: enum
+    description: stateful | stateless
+
+  - name: security_level
+    type: enum
+    description: low | medium | high | critical
+
+  - name: data_sensitivity
+    type: enum
+    description: low | medium | high
+
+  - name: regulatory_required
+    type: boolean
+
+decision_tree:
+  - id: login_requires_oidc
+    if:
+      - needs_login == true
+    then:
+      - pattern: federated_authentication
+      - standards: [OpenID Connect, OAuth 2.0]
+      - notes: Never use OAuth2 alone for authentication
+
+  - id: third_party_requires_oauth
+    if:
+      - third_party_access == true
+    then:
+      - pattern: delegated_authorization
+      - standards: [OAuth 2.0]
+
+  - id: stateless_requires_tokens
+    if:
+      - session_type == stateless
+    then:
+      - pattern: token_based_auth
+
+  - id: high_security_requires_pop
+    if:
+      - security_level in [high, critical]
+      - data_sensitivity == high
+    then:
+      - pattern: sender_constrained_tokens
+      - notes: Prevent token replay and theft
+
+  - id: service_to_service_mtls
+    if:
+      - client_types == server
+      - security_level in [high, critical]
+    then:
+      - pattern: mtls_authentication
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: critical
+  fallback:
+    - OAuth2 Authorization Code + PKCE + short-lived JWT
+
+patterns:
+  - id: federated_authentication
+    name: Federated Authentication
+
+    use_when:
+      - multiple clients
+      - SSO required
+
+    implementation:
+      guidelines:
+        - use Authorization Code Flow
+        - enforce PKCE
+        - validate ID token signature and issuer
+        - verify audience (aud claim)
+
+      common_errors:
+        - using OAuth2 without OIDC
+        - skipping token validation
+
+    standards:
+      - name: OpenID Connect
+        type: protocol
+        role: authentication
+
+      - name: OAuth 2.0
+        type: protocol
+        role: authorization
+
+  - id: token_based_auth
+    name: Token-Based Authentication
+
+    implementation:
+      guidelines:
+        - short-lived access tokens (5–15 min)
+        - refresh token rotation
+        - asymmetric signing (RS256 or ES256)
+        - minimal claims
+
+      common_errors:
+        - long-lived tokens
+        - sensitive data in payload
+
+    standards:
+      - name: JWT
+        type: token_format
+
+  - id: sender_constrained_tokens
+    name: Proof-of-Possession Tokens
+
+    description: >
+      Tokens cryptographically bound to a client to prevent replay attacks.
+
+    use_when:
+      - high security APIs
+      - financial or personal data
+      - zero trust architectures
+
+    tradeoffs:
+      pros:
+        - prevents token theft reuse
+        - strong client binding
+      cons:
+        - implementation complexity
+
+    implementation:
+      options:
+        - DPoP:
+            description: HTTP proof using signed requests
+        - mTLS:
+            description: TLS client certificate binding
+
+      guidelines:
+        - prefer DPoP for public clients
+        - prefer mTLS for backend services
+        - validate proof per request
+
+    standards:
+      - name: DPoP
+        type: oauth_extension
+
+      - name: Mutual TLS
+        type: transport_security
+
+  - id: mtls_authentication
+    name: Mutual TLS Authentication
+
+    use_when:
+      - service-to-service communication
+      - zero trust environments
+
+    implementation:
+      guidelines:
+        - issue client certificates
+        - validate certificate chain
+        - rotate certificates
+
+security_hardening:
+  token_protection:
+    strategies:
+      - type: bearer
+        risk: high
+
+      - type: sender_constrained
+        methods:
+          - DPoP
+          - mTLS
+
+  transport_security:
+    requirements:
+      - TLS 1.2+
+      - HSTS
+      - secure cookies
+
+  key_management:
+    requirements:
+      - JWKS endpoint
+      - key rotation
+      - asymmetric keys
+
+  replay_protection:
+    techniques:
+      - nonce
+      - jti tracking
+      - short TTL
+
+  session_security:
+    requirements:
+      - httpOnly cookies (if stateful)
+      - CSRF protection
+      - sameSite=strict
+
+compliance:
+  standards:
+    - name: ISO/IEC 27001
+      relevance: ISMS
+
+    - name: ISO/IEC 27002
+      relevance: security controls
+
+    - name: NIST SP 800-63
+      relevance: identity assurance
+
+    - name: OWASP ASVS
+      relevance: application security
+
+  requirements_mapping:
+    - control: authentication_strength
+      maps_to:
+        - NIST AAL2
+        - OWASP ASVS 2.x
+
+    - control: session_management
+      maps_to:
+        - OWASP ASVS 3.x
+        - ISO 27002 9.4
+
+prompt_recipes:
+  - id: high_security_api
+    description: High security API authentication
+
+    prompt: |
+      Design an authentication system for a high-security API handling sensitive data.
+
+      Requirements:
+      - Prevent token replay attacks
+      - Stateless architecture
+      - Support web and mobile clients
+
+      Use:
+      - OAuth2 Authorization Code with PKCE
+      - OpenID Connect
+      - Proof-of-Possession (DPoP or mTLS)
+
+      Avoid deprecated or insecure flows.
+
+anti_patterns:
+  - name: OAuth2 without OIDC
+    fix: always include identity layer
+
+  - name: Bearer tokens in high security
+    fix: use sender-constrained tokens
+
+  - name: Long-lived tokens
+    fix: short TTL + rotation
+
+  - name: Implicit flow
+    status: deprecated
+    fix: Authorization Code + PKCE
+
+checklist:
+  - OIDC used for authentication
+  - PKCE enforced
+  - Tokens short-lived
+  - PoP used if high security
+  - HTTPS enforced
+  - Keys rotated
+  - Replay protection implemented

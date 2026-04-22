@@ -2,8 +2,8 @@
 #for AI to recommend architectural patterns based on context and trade-offs.
 #Fill in the sections with relevant information to guide the decision-making process.
 meta:
-  domain: <string> # authentication, api, data, etc.
-  version: 1.0
+  domain: <string>
+  version: 2.0
   last_updated: <date>
   description: <short summary>
 
@@ -15,45 +15,77 @@ context_inputs:
 decision_tree:
   - id: <decision_id>
     if:
-      - <condition based on context_inputs>
+      - <condition>
     then:
-      - pattern: <recommended pattern>
+      - pattern: <pattern_id>
       - standards: [<standard1>, <standard2>]
       - notes: <why>
+
+decision_metadata:
+  confidence: <low|medium|high>
+  risk_if_wrong: <low|medium|high|critical>
+  fallback:
+    - <safe default decision>
 
 patterns:
   - id: <pattern_id>
     name: <pattern name>
     description: <what it is>
+
     use_when:
       - <conditions>
+
     avoid_when:
       - <anti-patterns>
+
     tradeoffs:
       pros:
         - <...>
       cons:
         - <...>
+
     implementation:
       guidelines:
         - <rules>
+
       common_errors:
         - <mistakes>
+
+    maturity:
+      level: <standard|advanced|enterprise>
+
     standards:
       - name: <standard>
         type: <protocol|format|spec>
         role: <what it does>
+        status: <recommended|deprecated|emerging>
+
+security_hardening:
+  <free structure per domain>
+  # example:
+  # token_protection, encryption, network, etc.
+
+compliance:
+  standards:
+    - name: <standard>
+      relevance: <why it matters>
+
+  requirements_mapping:
+    - control: <control_name>
+      maps_to:
+        - <standard_ref>
 
 prompt_recipes:
   - id: <recipe_id>
     description: <what this prompt achieves>
     prompt: |
-      <reusable prompt for AI>
+      <reusable prompt>
 
 anti_patterns:
   - name: <bad practice>
     description: <why it's bad>
     fix: <recommended fix>
+    severity: <low|medium|high|critical>
 
 checklist:
-  - <item to validate architecture>
+  - <validation item>
