@@ -19,6 +19,66 @@ cd mcp-server && npm install && npm run build
 
 Then configure your AI assistant:
 
+Smoke test (quick verification)
+
+After building, run a quick smoke test that spawns the server and calls a couple of tools. From the repository root:
+
+```bash
+cd mcp-server
+# install (if not already)
+npm install
+# build TypeScript
+npm run build
+# run the programmatic stdio smoke client (it spawns the server and calls tools)
+node --input-type=module dist/examples/stdio-client.mjs || node dist/examples/stdio-client.mjs
+```
+
+Expected output: two JSON-like responses printed for `search_standards` and `recommend_pattern`.
+
+Environment and requirements
+
+- Node: >=18 (recommended LTS)
+- npm: latest compatible with Node 18+
+- Python: 3.9+ for the `tools/validate.py` script (optional dev tooling)
+
+Python (recommended venv workflow)
+
+Use a virtual environment for the repository's Python tools and prompts:
+
+```bash
+# create a venv in the repo
+python3 -m venv .venv
+
+# macOS / Linux
+source .venv/bin/activate
+
+# Windows (PowerShell)
+.venv\Scripts\Activate.ps1
+
+# Windows (cmd)
+.venv\Scripts\activate.bat
+
+# Upgrade pip and install dependencies from the repo requirements
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+
+# Or install just the validator deps
+python -m pip install pyyaml jsonschema
+
+# When finished
+deactivate
+```
+
+Notes:
+- `requirements.txt` (repo root) is kept for the Python dev tooling; using `-r requirements.txt` installs all pinned versions.
+- If you prefer `pipx` for isolated CLI tools, install the validator there instead of a venv.
+
+JSON vs natural-language in clients
+
+- Many MCP clients accept either: (A) a natural-language prompt that instructs the assistant to call a tool, or (B) a direct "Call tool" action where you provide the tool name and a JSON input object.
+- If your client exposes a direct tool call UI, paste the JSON object from the examples. If using a chat-style interface, paste the natural-language example.
+
+
 <details>
 <summary><strong>GitHub Copilot (VS Code)</strong></summary>
 
@@ -155,9 +215,80 @@ Consult your client's documentation for the config file location.
 | `get_decision_tree` | Get decision tree and context inputs |
 | `recommend_pattern` | Provide project context, get pattern recommendations |
 
+### Example MCP Prompts
+
+Below are example prompts you can send to an AI assistant connected to the MCP server (for example, Copilot Chat, Claude Code, or Cursor). These prompts instruct the assistant to call the cookbook MCP tools (`query_standard`, `search_standards`, `get_checklist`, `get_decision_tree`, `recommend_pattern`). Adjust the `domain`, `category`, or `context` fields to match your query.
+
+- Get a full standard (YAML):
+
+```text
+Call the tool `query_standard` with input: { "domain": "authentication", "category": "foundational" } and return the YAML content for that standard.
+```
+
+- Search for standards by keyword or tag:
+
+```text
+Call the tool `search_standards` with input: { "query": "OAuth", "tags": ["authentication"] } and summarize the top matches (domain, category, short description).
+```
+
+- Retrieve a checklist filtered by severity:
+
+```text
+Call the tool `get_checklist` with input: { "domain": "authentication", "severity": "critical" } and list the checklist items and their severity.
+```
+
+- Ask for decision-tree inputs or the full decision tree:
+
+```text
+Call the tool `get_decision_tree` with input: { "domain": "api-design" } and return the decision tree nodes and required context inputs.
+```
+
+- Request pattern recommendations for a project context:
+
+```text
+Call the tool `recommend_pattern` with input: { "context": { "scale": "enterprise", "client_types": ["web", "mobile"], "needs_login": true } } and return the top 3 recommended patterns with brief rationale.
+```
+
+These examples are ready to copy-paste into an assistant prompt when the MCP server is connected. The assistant will call the requested MCP tool and return structured results.
+
+#### Calling from specific clients
+
+Below are concise, copy-paste examples tailored to popular MCP clients. First ensure the MCP server is configured and running (see Option 1). Then paste the shown prompt into the client chat or command box.
+
+- GitHub Copilot (VS Code)
+
+  - Ensure you added the server to `.vscode/mcp.json` and started it via **MCP: List Servers**.
+  - In Copilot Chat (Agent mode), paste:
+
+  ```text
+  Call the tool `query_standard` with input: { "domain": "authentication", "category": "foundational" } and return the YAML content.
+  ```
+
+- Claude Code / Claude Desktop
+
+  - After `claude mcp add` (or adding the server in your Claude settings), open a chat and paste:
+
+  ```text
+  Call the tool `search_standards` with input: { "query": "OAuth" } and summarize the top matches (domain, category, short description).
+  ```
+
+- Cursor
+
+  - With the MCP server registered in Cursor, open the assistant and paste:
+
+  ```text
+  Call the tool `get_checklist` with input: { "domain": "authentication", "severity": "critical" } and list checklist items and their severity.
+  ```
+
+- General guidance
+
+  - Use the natural-language prompts above — the MCP-enabled assistant will route the request to the matching tool and return structured text. If your client exposes a direct "Call MCP tool" UI, provide the tool name and the JSON input object shown in the examples.
+
 ### Option 2: Skills / Custom Instructions
 
-Copy `skills/SKILL.md` into your AI assistant's skills directory. The skill instructs the AI to load specific YAML entries on demand.
+Copy `skills/ai-architecture-cookbook.md` into your AI assistant's skills directory. The skill instructs the AI to load specific YAML entries on demand.
+
+Note: this file was previously named `SKILL.md` — it has been consolidated and renamed to `ai-architecture-cookbook.md` in the `skills/` directory to avoid ambiguity.
 
 ### Option 3: Generated Instruction Files
 
@@ -298,6 +429,8 @@ python3 tools/validate.py
 ```
 
 ## Contributing
+
+This repository was created alongside [awslabs/aidlc-workflows](https://github.com/awslabs/aidlc-workflows), an AI-assisted development lifecycle workflow toolkit. Using aidlc-workflows is recommended when adding new standards or making significant contributions — it provides structured inception, requirements analysis, design, and code-generation phases that keep contributions consistent and well-documented.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on adding new standards or improving existing ones.
 
