@@ -447,13 +447,23 @@ Each standard has a decision tree that maps your context to a recommended patter
 
 Example (authentication):
 ```
-IF client_types == web AND needs_login == true
-  THEN → oidc_authorization_code (OAuth2 + PKCE)
+Priority 1: IF client_types == server AND security_level in [high, critical]
+              THEN → mtls_authentication (mutual TLS for service-to-service)
 
-IF client_types == server AND needs_login == false
-  THEN → mtls_authentication (mutual TLS for service-to-service)
+Priority 2: IF security_level in [high, critical] AND data_sensitivity == high
+              THEN → sender_constrained_tokens (DPoP / mTLS PoP)
 
-FALLBACK → oidc_authorization_code
+Priority 3: IF third_party_access == true
+              THEN → delegated_authorization (OAuth2 scoped grants)
+
+Priority 4: IF needs_login == true
+              THEN → federated_authentication (OIDC + OAuth2)
+              ELSE → delegated_authorization (OAuth2 for M2M)
+
+Priority 5: IF session_type == stateless
+              THEN → token_based_auth (JWT)
+
+FALLBACK → federated_authentication
 ```
 
 ## Validation

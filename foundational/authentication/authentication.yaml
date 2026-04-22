@@ -41,7 +41,7 @@ meta:
 context_inputs:
   - name: client_types
     type: enum
-    description: "Type of client that will authenticate"
+    description: "Primary client type that will authenticate. For multi-client systems (e.g., web + mobile), choose the most security-sensitive client type"
     required: true
     default: web
     enum_values:
@@ -110,8 +110,41 @@ context_inputs:
       - massive
 
 decision_tree:
-  - id: login_requires_oidc
+  - id: service_to_service_mtls
     priority: 1
+    if:
+      - client_types == server
+      - security_level in [high, critical]
+    then:
+      pattern: mtls_authentication
+      standards:
+        - Mutual TLS
+      notes: "Machine-to-machine in high-security environments requires certificate-based mutual authentication. Combine with delegated_authorization if third-party access is also required"
+
+  - id: high_security_requires_pop
+    priority: 2
+    if:
+      - security_level in [high, critical]
+      - data_sensitivity == high
+    then:
+      pattern: sender_constrained_tokens
+      standards:
+        - DPoP
+        - Mutual TLS
+      notes: "Prevent token replay and theft via cryptographic sender binding. Layer with federated_authentication for user-facing apps, or delegated_authorization for M2M"
+
+  - id: third_party_requires_oauth
+    priority: 3
+    if:
+      - third_party_access == true
+    then:
+      pattern: delegated_authorization
+      standards:
+        - OAuth 2.0
+      notes: "Third-party access always requires explicit authorization grants with scoped permissions. Combine with federated_authentication when needs_login is true"
+
+  - id: login_requires_oidc
+    priority: 4
     if:
       - needs_login == true
     then:
@@ -124,18 +157,8 @@ decision_tree:
       pattern: delegated_authorization
       notes: "No human login needed — use OAuth2 for machine-to-machine or delegated access"
 
-  - id: third_party_requires_oauth
-    priority: 2
-    if:
-      - third_party_access == true
-    then:
-      pattern: delegated_authorization
-      standards:
-        - OAuth 2.0
-      notes: "Third-party access always requires explicit authorization grants with scoped permissions"
-
   - id: stateless_requires_tokens
-    priority: 3
+    priority: 5
     if:
       - session_type == stateless
     then:
@@ -144,29 +167,6 @@ decision_tree:
         - JWT
         - OAuth 2.0
       notes: "Stateless architectures require self-contained tokens for request authentication"
-
-  - id: high_security_requires_pop
-    priority: 4
-    if:
-      - security_level in [high, critical]
-      - data_sensitivity == high
-    then:
-      pattern: sender_constrained_tokens
-      standards:
-        - DPoP
-        - Mutual TLS
-      notes: "Prevent token replay and theft via cryptographic sender binding"
-
-  - id: service_to_service_mtls
-    priority: 5
-    if:
-      - client_types == server
-      - security_level in [high, critical]
-    then:
-      pattern: mtls_authentication
-      standards:
-        - Mutual TLS
-      notes: "Machine-to-machine in high-security environments requires certificate-based mutual authentication"
 
 decision_metadata:
   confidence: high
@@ -744,6 +744,16 @@ anti_patterns:
     fix: "Use asymmetric signing (RS256 or ES256) with JWKS public key distribution"
     severity: medium
     related_pattern: token_based_auth
+
+  - name: "Resource Owner Password Credentials (ROPC) grant"
+    description: >
+      The ROPC grant type collects user credentials directly in the client application
+      and sends them to the authorization server. This defeats the purpose of OAuth2
+      (delegated authorization without sharing credentials), exposes passwords to the
+      client, and prevents the IdP from enforcing MFA or adaptive authentication.
+    fix: "Use Authorization Code Flow + PKCE. For legacy migration, implement a bridge that wraps ROPC behind an Authorization Code endpoint during transition"
+    severity: critical
+    related_pattern: federated_authentication
 
 checklist:
   - id: AUTH-01
