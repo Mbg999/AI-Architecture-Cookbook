@@ -356,67 +356,67 @@ index.yaml                    → Master catalog (all 43 entries, tag index)
 ## Standards Catalog
 
 ### Foundational (11 standards)
-| Standard | Description |
-|----------|-------------|
-| [authentication](foundational/authentication/) | OIDC, OAuth2, JWT, DPoP, mTLS |
-| [api-design](foundational/api-design/) | REST, GraphQL, gRPC, WebSocket |
-| [error-handling](foundational/error-handling/) | Circuit breakers, retries, fallbacks |
-| [logging-observability](foundational/logging-observability/) | Structured logging, tracing, metrics |
-| [data-persistence](foundational/data-persistence/) | SQL, NoSQL, caching, event stores |
-| [input-validation](foundational/input-validation/) | Validation, sanitization, injection prevention |
-| [messaging-events](foundational/messaging-events/) | Queues, pub/sub, event sourcing, CQRS |
-| [configuration-management](foundational/configuration-management/) | Env vars, secrets, feature flags |
-| [authorization](foundational/authorization/) | RBAC, ABAC, ReBAC, policy-as-code |
-| [session-management](foundational/session-management/) | Server-side sessions, JWT rotation, BFF |
-| [secrets-management](foundational/secrets-management/) | Vault services, rotation, zero-trust access |
+| Standard | Description | description for humans |
+|----------|-------------|-------|
+| [authentication](foundational/authentication/) | OIDC, OAuth2, JWT, DPoP, mTLS | [YAML](foundational/authentication/authentication.yaml) / [README](foundational/authentication/README.md) |
+| [api-design](foundational/api-design/) | REST, GraphQL, gRPC, WebSocket | [YAML](foundational/api-design/api-design.yaml) / [README](foundational/api-design/README.md) |
+| [error-handling](foundational/error-handling/) | Circuit breakers, retries, fallbacks | [YAML](foundational/error-handling/error-handling.yaml) / [README](foundational/error-handling/README.md) |
+| [logging-observability](foundational/logging-observability/) | Structured logging, tracing, metrics | [YAML](foundational/logging-observability/logging-observability.yaml) / [README](foundational/logging-observability/README.md) |
+| [data-persistence](foundational/data-persistence/) | SQL, NoSQL, caching, event stores | [YAML](foundational/data-persistence/data-persistence.yaml) / [README](foundational/data-persistence/README.md) |
+| [input-validation](foundational/input-validation/) | Validation, sanitization, injection prevention | [YAML](foundational/input-validation/input-validation.yaml) / [README](foundational/input-validation/README.md) |
+| [messaging-events](foundational/messaging-events/) | Queues, pub/sub, event sourcing, CQRS | [YAML](foundational/messaging-events/messaging-events.yaml) / [README](foundational/messaging-events/README.md) |
+| [configuration-management](foundational/configuration-management/) | Env vars, secrets, feature flags | [YAML](foundational/configuration-management/configuration-management.yaml) / [README](foundational/configuration-management/README.md) |
+| [authorization](foundational/authorization/) | RBAC, ABAC, ReBAC, policy-as-code | [YAML](foundational/authorization/authorization.yaml) / [README](foundational/authorization/README.md) |
+| [session-management](foundational/session-management/) | Server-side sessions, JWT rotation, BFF | [YAML](foundational/session-management/session-management.yaml) / [README](foundational/session-management/README.md) |
+| [secrets-management](foundational/secrets-management/) | Vault services, rotation, zero-trust access | [YAML](foundational/secrets-management/secrets-management.yaml) / [README](foundational/secrets-management/README.md) |
 
 ### Application Architecture (9 standards)
-| Standard | Description |
-|----------|-------------|
-| [layered-architecture](application-architecture/layered-architecture/) | Clean, hexagonal, onion architecture |
-| [service-architecture](application-architecture/service-architecture/) | Microservices, modular monolith |
-| [domain-driven-design](application-architecture/domain-driven-design/) | Bounded contexts, aggregates |
-| [state-management](application-architecture/state-management/) | Client, server, distributed state |
-| [dependency-injection](application-architecture/dependency-injection/) | DI, IoC, composition root |
-| [repository-pattern](application-architecture/repository-pattern/) | Data access, unit of work |
-| [design-patterns](application-architecture/design-patterns/) | SOLID principles, GoF patterns |
-| [resilience-chaos-engineering](application-architecture/resilience-chaos-engineering/) | Circuit breakers, bulkheads, chaos experiments |
-| [feature-flags](application-architecture/feature-flags/) | Progressive delivery, kill switches, A/B testing |
+| Standard | Description | description for humans |
+|----------|-------------|-------|
+| [layered-architecture](application-architecture/layered-architecture/) | Clean, hexagonal, onion architecture | [YAML](application-architecture/layered-architecture/layered-architecture.yaml) / [README](application-architecture/layered-architecture/README.md) |
+| [service-architecture](application-architecture/service-architecture/) | Microservices, modular monolith | [YAML](application-architecture/service-architecture/service-architecture.yaml) / [README](application-architecture/service-architecture/README.md) |
+| [domain-driven-design](application-architecture/domain-driven-design/) | Bounded contexts, aggregates | [YAML](application-architecture/domain-driven-design/domain-driven-design.yaml) / [README](application-architecture/domain-driven-design/README.md) |
+| [state-management](application-architecture/state-management/) | Client, server, distributed state | [YAML](application-architecture/state-management/state-management.yaml) / [README](application-architecture/state-management/README.md) |
+| [dependency-injection](application-architecture/dependency-injection/) | DI, IoC, composition root | [YAML](application-architecture/dependency-injection/dependency-injection.yaml) / [README](application-architecture/dependency-injection/README.md) |
+| [repository-pattern](application-architecture/repository-pattern/) | Data access, unit of work | [YAML](application-architecture/repository-pattern/repository-pattern.yaml) / [README](application-architecture/repository-pattern/README.md) |
+| [design-patterns](application-architecture/design-patterns/) | SOLID principles, GoF patterns | [YAML](application-architecture/design-patterns/design-patterns.yaml) / [README](application-architecture/design-patterns/README.md) |
+| [resilience-chaos-engineering](application-architecture/resilience-chaos-engineering/) | Circuit breakers, bulkheads, chaos experiments | [YAML](application-architecture/resilience-chaos-engineering/resilience-chaos-engineering.yaml) / [README](application-architecture/resilience-chaos-engineering/README.md) |
+| [feature-flags](application-architecture/feature-flags/) | Progressive delivery, kill switches, A/B testing | [YAML](application-architecture/feature-flags/feature-flags.yaml) / [README](application-architecture/feature-flags/README.md) |
 
 ### Infrastructure (7 standards)
-| Standard | Description |
-|----------|-------------|
-| [containerization](infrastructure/containerization/) | Docker, OCI, runtime security |
-| [orchestration](infrastructure/orchestration/) | Kubernetes, service mesh |
-| [ci-cd](infrastructure/ci-cd/) | Pipelines, release strategies |
-| [infrastructure-as-code](infrastructure/infrastructure-as-code/) | Terraform, Pulumi, Bicep |
-| [cloud-architecture](infrastructure/cloud-architecture/) | Cloud-native, well-architected |
-| [database-migration](infrastructure/database-migration/) | Schema evolution, zero-downtime |
-| [api-gateway-edge-security](infrastructure/api-gateway-edge-security/) | WAF, DDoS protection, zero-trust edge |
+| Standard | Description | description for humans |
+|----------|-------------|-------|
+| [containerization](infrastructure/containerization/) | Docker, OCI, runtime security | [YAML](infrastructure/containerization/containerization.yaml) / [README](infrastructure/containerization/README.md) |
+| [orchestration](infrastructure/orchestration/) | Kubernetes, service mesh | [YAML](infrastructure/orchestration/orchestration.yaml) / [README](infrastructure/orchestration/README.md) |
+| [ci-cd](infrastructure/ci-cd/) | Pipelines, release strategies | [YAML](infrastructure/ci-cd/ci-cd.yaml) / [README](infrastructure/ci-cd/README.md) |
+| [infrastructure-as-code](infrastructure/infrastructure-as-code/) | Terraform, Pulumi, Bicep | [YAML](infrastructure/infrastructure-as-code/infrastructure-as-code.yaml) / [README](infrastructure/infrastructure-as-code/README.md) |
+| [cloud-architecture](infrastructure/cloud-architecture/) | Cloud-native, well-architected | [YAML](infrastructure/cloud-architecture/cloud-architecture.yaml) / [README](infrastructure/cloud-architecture/README.md) |
+| [database-migration](infrastructure/database-migration/) | Schema evolution, zero-downtime | [YAML](infrastructure/database-migration/database-migration.yaml) / [README](infrastructure/database-migration/README.md) |
+| [api-gateway-edge-security](infrastructure/api-gateway-edge-security/) | WAF, DDoS protection, zero-trust edge | [YAML](infrastructure/api-gateway-edge-security/api-gateway-edge-security.yaml) / [README](infrastructure/api-gateway-edge-security/README.md) |
 
 ### Security & Quality (10 standards)
-| Standard | Description |
-|----------|-------------|
-| [encryption](security-quality/encryption/) | TLS, cryptography, key management |
-| [rate-limiting](security-quality/rate-limiting/) | Throttling, abuse prevention |
-| [testing-strategies](security-quality/testing-strategies/) | Test pyramid, TDD, coverage |
-| [code-quality](security-quality/code-quality/) | Linting, static analysis |
-| [performance-optimization](security-quality/performance-optimization/) | Profiling, caching, scaling |
-| [accessibility](security-quality/accessibility/) | WCAG, ARIA, inclusive design |
-| [client-platform-security](security-quality/client-platform-security/) | CSP, cert pinning, root detection, anti-tamper |
-| [secure-sdlc](security-quality/secure-sdlc/) | SAST, DAST, SCA, supply chain, SBOM |
-| [compliance-data-privacy](security-quality/compliance-data-privacy/) | GDPR, CCPA, HIPAA, consent, data retention |
-| [security-monitoring](security-quality/security-monitoring/) | SIEM, anomaly detection, incident response |
+| Standard | Description | description for humans |
+|----------|-------------|-------|
+| [encryption](security-quality/encryption/) | TLS, cryptography, key management | [YAML](security-quality/encryption/encryption.yaml) / [README](security-quality/encryption/README.md) |
+| [rate-limiting](security-quality/rate-limiting/) | Throttling, abuse prevention | [YAML](security-quality/rate-limiting/rate-limiting.yaml) / [README](security-quality/rate-limiting/README.md) |
+| [testing-strategies](security-quality/testing-strategies/) | Test pyramid, TDD, coverage | [YAML](security-quality/testing-strategies/testing-strategies.yaml) / [README](security-quality/testing-strategies/README.md) |
+| [code-quality](security-quality/code-quality/) | Linting, static analysis | [YAML](security-quality/code-quality/code-quality.yaml) / [README](security-quality/code-quality/README.md) |
+| [performance-optimization](security-quality/performance-optimization/) | Profiling, caching, scaling | [YAML](security-quality/performance-optimization/performance-optimization.yaml) / [README](security-quality/performance-optimization/README.md) |
+| [accessibility](security-quality/accessibility/) | WCAG, ARIA, inclusive design | [YAML](security-quality/accessibility/accessibility.yaml) / [README](security-quality/accessibility/README.md) |
+| [client-platform-security](security-quality/client-platform-security/) | CSP, cert pinning, root detection, anti-tamper | [YAML](security-quality/client-platform-security/client-platform-security.yaml) / [README](security-quality/client-platform-security/README.md) |
+| [secure-sdlc](security-quality/secure-sdlc/) | SAST, DAST, SCA, supply chain, SBOM | [YAML](security-quality/secure-sdlc/secure-sdlc.yaml) / [README](security-quality/secure-sdlc/README.md) |
+| [compliance-data-privacy](security-quality/compliance-data-privacy/) | GDPR, CCPA, HIPAA, consent, data retention | [YAML](security-quality/compliance-data-privacy/compliance-data-privacy.yaml) / [README](security-quality/compliance-data-privacy/README.md) |
+| [security-monitoring](security-quality/security-monitoring/) | SIEM, anomaly detection, incident response | [YAML](security-quality/security-monitoring/security-monitoring.yaml) / [README](security-quality/security-monitoring/README.md) |
 
 ### Integration & Data (6 standards)
-| Standard | Description |
-|----------|-------------|
-| [third-party-integration](integration-data/third-party-integration/) | Vendor abstraction, circuit breakers |
-| [webhooks](integration-data/webhooks/) | Delivery guarantees, idempotent processing |
-| [file-storage](integration-data/file-storage/) | Object storage, CDN, presigned URLs |
-| [search](integration-data/search/) | Full-text search, indexing strategies |
-| [data-transformation](integration-data/data-transformation/) | ETL/ELT, streaming pipelines |
-| [versioning](integration-data/versioning/) | API versioning, backward compatibility |
+| Standard | Description | description for humans |
+|----------|-------------|-------|
+| [third-party-integration](integration-data/third-party-integration/) | Vendor abstraction, circuit breakers | [YAML](integration-data/third-party-integration/third-party-integration.yaml) / [README](integration-data/third-party-integration/README.md) |
+| [webhooks](integration-data/webhooks/) | Delivery guarantees, idempotent processing | [YAML](integration-data/webhooks/webhooks.yaml) / [README](integration-data/webhooks/README.md) |
+| [file-storage](integration-data/file-storage/) | Object storage, CDN, presigned URLs | [YAML](integration-data/file-storage/file-storage.yaml) / [README](integration-data/file-storage/README.md) |
+| [search](integration-data/search/) | Full-text search, indexing strategies | [YAML](integration-data/search/search.yaml) / [README](integration-data/search/README.md) |
+| [data-transformation](integration-data/data-transformation/) | ETL/ELT, streaming pipelines | [YAML](integration-data/data-transformation/data-transformation.yaml) / [README](integration-data/data-transformation/README.md) |
+| [versioning](integration-data/versioning/) | API versioning, backward compatibility | [YAML](integration-data/versioning/versioning.yaml) / [README](integration-data/versioning/README.md) |
 
 ## Entry Structure
 
