@@ -1,0 +1,50 @@
+name: Validate Cookbook Entries
+
+on:
+  pull_request:
+    paths:
+      - "foundational/**"
+      - "application-architecture/**"
+      - "infrastructure/**"
+      - "security-quality/**"
+      - "integration-data/**"
+      - "base-template.yaml"
+      - "tools/**"
+  push:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pyyaml jsonschema
+
+      - name: Run validation
+        run: python tools/validate.py
+
+  mcp-server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp-server
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit

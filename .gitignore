@@ -6,6 +6,3 @@ __pycache__/
 *.tmp
 *.bak
 *.swp
-aidlc-rule-details/
-aidlc-docs/
-.github/
