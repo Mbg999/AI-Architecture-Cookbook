@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "ai-architecture-cookbook": {
+      "command": "node",
+      "args": ["./mcp-server/dist/server.js"]
+    }
+  }
+}

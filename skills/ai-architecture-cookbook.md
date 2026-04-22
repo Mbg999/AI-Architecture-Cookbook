@@ -3,7 +3,7 @@
 Name: ai-architecture-cookbook
 
 ## Description
-Comprehensive architectural standards and decision frameworks for software development. Provides 33 domain-specific standards covering authentication, API design, error handling, containerization, encryption, testing, and more. Each standard includes context-aware decision trees, implementation patterns, anti-patterns, security hardening, compliance mapping, and verification checklists.
+Comprehensive architectural standards and decision frameworks for software development. Provides 43 domain-specific standards covering authentication, API design, error handling, containerization, encryption, testing, and more. Each standard includes context-aware decision trees, implementation patterns, anti-patterns, security hardening, compliance mapping, and verification checklists.
 
 ## When to Use
 - When implementing any architectural component (authentication, APIs, persistence, etc.)

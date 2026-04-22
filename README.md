@@ -8,7 +8,39 @@ AI code assistants generate better code when given explicit architectural guidan
 
 ## Quick Start
 
-Choose the integration method that fits your workflow:
+Clone and run the setup script — it builds the MCP server and optionally installs a pre-commit validation hook:
+
+```bash
+# macOS / Linux
+git clone <repo-url> && cd AI-Architecture-Cookbook
+./scripts/setup.sh
+```
+
+```powershell
+# Windows (PowerShell)
+git clone <repo-url>; cd AI-Architecture-Cookbook
+.\scripts\setup.ps1
+```
+
+```cmd
+REM Windows (cmd)
+git clone <repo-url> && cd AI-Architecture-Cookbook
+scripts\setup.bat
+```
+
+Most AI assistants will **auto-discover the MCP server** on open — no manual configuration needed:
+
+| Client | Auto-Discovery File | Custom Instructions |
+|--------|---------------------|---------------------|
+| GitHub Copilot (VS Code) | `.vscode/mcp.json` | `.github/copilot-instructions.md` |
+| Claude Code | `.mcp.json` | `CLAUDE.md` |
+| Cursor | `.cursor/mcp.json` | `.cursorrules` |
+| Windsurf | *(manual — see below)* | `.windsurfrules` |
+| Cline | *(manual — see below)* | *(uses CLAUDE.md format)* |
+
+> **Note**: Windsurf and Cline require manual MCP config — see their setup sections below.
+
+Choose an integration method for more detail:
 
 ### Option 1: MCP Server (richest experience)
 
@@ -426,23 +458,126 @@ FALLBACK → oidc_authorization_code
 
 ## Validation
 
-```bash
-# Validate all entries
-python3 tools/validate.py
+The validator (`tools/validate.py`) checks every YAML entry against the v3 JSON Schema **and** a set of semantic rules to catch structural errors, missing content, broken cross-references, and index inconsistencies.
 
-# Checks performed:
-# - JSON Schema compliance (structure, types, enums)
-# - Cross-reference integrity (prerequisites, related standards)
-# - Completeness (≥3 patterns, ≥3 anti-patterns, ≥1 example, ≥4 recipes)
-# - ID uniqueness and format
-# - Index consistency
+### What it checks
+
+| Check | Description |
+|-------|-------------|
+| **JSON Schema compliance** | Structure, required fields, types, enums, string patterns (kebab-case domain, semver version, etc.) |
+| **Quality gates** | Minimum content thresholds: ≥3 patterns, ≥3 anti-patterns, ≥1 example, ≥4 prompt recipes |
+| **Cross-reference integrity** | `prerequisites` and `related_standards` point to known domains (warnings for future-batch refs) |
+| **Decision tree consistency** | Every `then` / `else` pattern exists in the `patterns` list; condition variables match `context_inputs` |
+| **Fallback consistency** | The `decision_metadata.fallback.pattern` references a defined pattern |
+| **Anti-pattern references** | Each anti-pattern's `related_pattern` exists in `patterns` |
+| **Checklist references** | `verified_by` fields point to a valid pattern or anti-pattern name |
+| **ID uniqueness** | No duplicate checklist IDs; no duplicate decision-tree priorities |
+| **Index consistency** | Every entry in `_index.yaml` has a matching YAML file, and vice versa |
+
+### Usage examples
+
+```bash
+# Validate all 43 entries
+python3 tools/validate.py
 ```
+
+```
+============================================================
+AI Architecture Cookbook — Validation Report
+============================================================
+Entries validated: 43
+Passed: 43
+Failed: 0
+
+✓ All entries valid. (0 warnings)
+```
+
+```bash
+# Validate a single entry
+python3 tools/validate.py foundational/authentication/authentication.yaml
+```
+
+```
+============================================================
+AI Architecture Cookbook — Validation Report
+============================================================
+Entries validated: 1
+Passed: 1
+Failed: 0
+
+WARNINGS (non-blocking):
+
+  foundational/authentication/authentication.yaml:
+  XREF: related_standard 'encryption' not found in known domains (future batch?)
+  XREF: related_standard 'input-validation' not found in known domains (future batch?)
+
+✓ All entries valid. (2 warnings)
+```
+
+> **Note**: Cross-reference warnings are non-blocking — they flag references to domains
+> not present in the validation scope (e.g., when validating a single file whose
+> `related_standards` point to other entries).
+
+```bash
+# Validate an entire category
+python3 tools/validate.py foundational/
+```
+
+When an entry **fails**, the report shows the specific errors:
+
+```
+FAIL foundational/authentication/authentication.yaml:
+  SCHEMA [meta.domain]: 'Auth' does not match '^[a-z][a-z0-9-]*$'
+  QUALITY: 2 patterns (minimum 3)
+  CONSISTENCY: decision_tree node 'rule_1' references pattern 'oauth_basic' not defined in patterns
+```
+
+### Error categories
+
+- **SCHEMA** — JSON Schema violations (wrong types, missing required fields, invalid formats)
+- **QUALITY** — Below minimum content thresholds
+- **XREF** — Cross-reference to an unknown domain (warning)
+- **CONSISTENCY** — Internal reference mismatch (decision tree → patterns, checklist → verified_by, etc.)
+- **INDEX** — Mismatch between `_index.yaml` listings and actual YAML files on disk
 
 ## Contributing
 
 This repository was created alongside [awslabs/aidlc-workflows](https://github.com/awslabs/aidlc-workflows), an AI-assisted development lifecycle workflow toolkit. Using aidlc-workflows is recommended when adding new standards or making significant contributions — it provides structured inception, requirements analysis, design, and code-generation phases that keep contributions consistent and well-documented.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on adding new standards or improving existing ones.
+### Adding a new standard with AI-DLC
+
+The fastest way to contribute a new standard is to let AI-DLC drive the entire process. Open your AI assistant (Copilot Chat, Claude Code, Cursor, etc.) in the repo and paste a prompt like:
+
+```text
+Using AI-DLC, implement a new cookbook standard for "caching-strategies" in the
+foundational category.
+
+Requirements:
+- Cover in-memory, distributed, and CDN caching patterns
+- Include decision tree inputs: data_volatility, read_write_ratio, cache_location,
+  scale, and consistency_requirement
+- Provide at least 4 patterns: local_in_memory, distributed_redis,
+  cdn_edge_caching, and write_through_cache
+- Add anti-patterns for cache stampede, unbounded caches, and stale-while-revalidate misuse
+- Include security hardening for cache poisoning and sensitive data leakage
+- Reference related standards: performance-optimization, data-persistence, api-design
+- Ensure the entry passes `python3 tools/validate.py` with zero errors
+```
+
+AI-DLC will walk through its adaptive workflow:
+
+1. **Workspace Detection** — detects the existing cookbook (brownfield) and scans for reverse-engineering artifacts
+2. **Requirements Analysis** — clarifies scope, quality gates (≥3 patterns, ≥3 anti-patterns, ≥4 recipes, etc.), and cross-references
+3. **Application Design** — designs the YAML structure, decision tree nodes, and pattern details
+4. **Code Generation** — creates `foundational/caching-strategies/caching-strategies.yaml`, updates `foundational/_index.yaml`, and adds the entry to `index.yaml`
+5. **Build & Test** — runs `python3 tools/validate.py` to confirm schema compliance, cross-reference integrity, and index consistency
+
+The result is a fully validated standard ready for pull request — with audit trail and design docs under `aidlc-docs/`.
+
+> **Tip**: You can scope the prompt to any category. For example:
+> `"Using AI-DLC, implement a new standard for 'graph-databases' in the integration-data category."`
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full manual guidelines on adding or improving standards.
 
 ## License
 
