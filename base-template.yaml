@@ -1,0 +1,59 @@
+# Architectural Decision-Making Template, use this to create a structured approach
+#for AI to recommend architectural patterns based on context and trade-offs.
+#Fill in the sections with relevant information to guide the decision-making process.
+meta:
+  domain: <string> # authentication, api, data, etc.
+  version: 1.0
+  last_updated: <date>
+  description: <short summary>
+
+context_inputs:
+  - name: <input_name>
+    type: <string|boolean|enum>
+    description: <what the AI needs to know>
+
+decision_tree:
+  - id: <decision_id>
+    if:
+      - <condition based on context_inputs>
+    then:
+      - pattern: <recommended pattern>
+      - standards: [<standard1>, <standard2>]
+      - notes: <why>
+
+patterns:
+  - id: <pattern_id>
+    name: <pattern name>
+    description: <what it is>
+    use_when:
+      - <conditions>
+    avoid_when:
+      - <anti-patterns>
+    tradeoffs:
+      pros:
+        - <...>
+      cons:
+        - <...>
+    implementation:
+      guidelines:
+        - <rules>
+      common_errors:
+        - <mistakes>
+    standards:
+      - name: <standard>
+        type: <protocol|format|spec>
+        role: <what it does>
+
+prompt_recipes:
+  - id: <recipe_id>
+    description: <what this prompt achieves>
+    prompt: |
+      <reusable prompt for AI>
+
+anti_patterns:
+  - name: <bad practice>
+    description: <why it's bad>
+    fix: <recommended fix>
+
+checklist:
+  - <item to validate architecture>
