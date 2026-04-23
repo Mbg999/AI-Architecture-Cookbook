@@ -77,7 +77,9 @@ server.registerTool(
 
 async function main() {
   const transport = new StdioServerTransport();
+  console.log('Starting MCP server "ai-architecture-cookbook"...');
   await server.connect(transport);
+  console.log('MCP server "ai-architecture-cookbook" is running');
 }
 
 main().catch((err) => {
