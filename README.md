@@ -4,7 +4,22 @@ Strongly opinionated architectural standards for AI code assistants. 43 domain-s
 
 ## Why?
 
-AI code assistants generate better code when given explicit architectural guidance. This cookbook provides machine-readable standards that AI assistants can load and follow — turning "use best practices" into concrete, evaluable decision trees.
+This cookbook makes architectural knowledge explicit and machine-readable so AI assistants can make consistent, auditable architecture decisions.
+
+- **Help models pick the right architecture:** The decision trees and patterns let an assistant evaluate trade-offs (e.g., REST vs GraphQL, monolith vs microservices) against project constraints and recommend concrete architectures.
+- **Lower the barrier for users:** Teams or developers who aren't architecture experts can get practical, contextual guidance automatically — the model encodes the reasoning and rationale so users don't need deep architectural knowledge to get sound recommendations.
+- **Empower smaller or simpler models:** By exposing structured decision inputs and checklists, less-capable models (or tool-driven pipelines) can follow a deterministic process to reach good recommendations without requiring high-end reasoning in a single pass.
+
+Other benefits and possibilities:
+
+- **Automated verification:** Use the `get_checklist` tool to generate verifiable acceptance criteria and CI checks that ensure designs meet security and operational requirements.
+- **Onboarding & documentation:** Generate human-friendly explanations, trade-off summaries, and architecture diagrams from the same canonical standards to speed team ramp-up.
+- **Governance & compliance:** Encode organization policies (naming, encryption, secrets handling) as rules so assistants recommend only compliant options.
+- **Audit trails & reproducibility:** Tool calls and decision-tree inputs create a traceable record of why a recommendation was made, useful for reviews and postmortems.
+- **Training and feedback loops:** Use real project contexts and outcomes to refine standards over time, improving recommendations and reducing false positives.
+- **Tooling integration:** Integrate recommendations into code-review bots, scaffold generators, or CI pipelines to automate safe architecture scaffolding and guardrails.
+
+In short: machine-readable standards turn subjective "best practice" advice into repeatable, verifiable decisions that scale across users, models, and tooling.
 
 ## Quick Start
 
