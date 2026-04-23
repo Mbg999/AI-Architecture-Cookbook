@@ -9,7 +9,7 @@
     "cookbook-mcp": "dist/server.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "dev": "tsx src/server.ts",
     "test": "tsx test/runner.ts"
