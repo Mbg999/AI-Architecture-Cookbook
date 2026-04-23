@@ -61,7 +61,7 @@ Choose an integration method for more detail:
 
 Build first:
 ```bash
-cd mcp-server && npm install && npm run build
+cd mcp-server && npm install && npm run build && npm run start
 ```
 
 Then configure your AI assistant:
