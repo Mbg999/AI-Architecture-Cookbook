@@ -2,6 +2,8 @@
 
 Strongly opinionated architectural standards for AI code assistants. 43 domain-specific decision frameworks covering authentication, API design, containerization, encryption, testing, and more — each with context-aware decision trees, implementation patterns, anti-patterns, security hardening, and verification checklists.
 
+These standards are primarily aimed at enterprise-level architectures and operational scenarios.
+
 ## Why?
 
 This cookbook makes architectural knowledge explicit and machine-readable so AI assistants can make consistent, auditable architecture decisions.
@@ -33,9 +35,15 @@ git clone <repo-url> && cd AI-Architecture-Cookbook
 
 ```powershell
 # Windows (PowerShell)
+
+Get vetted prompt recipes for a domain (human- and machine-ready snippets):
+
 git clone <repo-url>; cd AI-Architecture-Cookbook
 .\scripts\setup.ps1
 ```
+
+You can also request recipes by query or ask for a machine-friendly snippet:
+
 
 ```cmd
 REM Windows (cmd)
@@ -61,7 +69,7 @@ Choose an integration method for more detail:
 
 Build first:
 ```bash
-cd mcp-server && npm install && npm run build && npm run start
+cd mcp-server && npm install && npm run build
 ```
 
 Then configure your AI assistant:
@@ -296,6 +304,18 @@ Call the tool `get_decision_tree` with input: { "domain": "api-design" } and ret
 Call the tool `recommend_pattern` with input: { "context": { "scale": "enterprise", "client_types": ["web", "mobile"], "needs_login": true } } and return the top 3 recommended patterns with brief rationale.
 ```
 
+- Natural-language (chat) example — ask in plain English and let the assistant call the tool for you:
+
+```text
+Recommend the top 3 architecture patterns for an enterprise web+mobile application that requires user login and has real-time features; give a one-line rationale for each.
+```
+
+If your client supports direct tool calls, you can call the natural-language wrapper explicitly:
+
+```text
+Call the tool `recommend_pattern_nl` with input: { "text": "Recommend the top 3 architecture patterns for an enterprise web+mobile application that requires user login and has real-time features." }
+```
+
 These examples are ready to copy-paste into an assistant prompt when the MCP server is connected. The assistant will call the requested MCP tool and return structured results.
 
 #### Calling from specific clients
@@ -368,70 +388,138 @@ index.yaml                    → Master catalog (all 43 entries, tag index)
 {category}/{domain}/{domain}.yaml → Full standard
 ```
 
+## Examples
+
+The repository includes runnable example clients and helper scripts under `mcp-server/examples/`. These demonstrate stdio clients, the HTTP wrapper, natural-language flows, and debug helpers.
+
+### Guided Input for Recommendations
+
+A new interactive example `collect-context.mjs` helps you iteratively collect the minimal high‑impact inputs the cookbook needs to generate reliable recommendations. It uses the `validate_recommendation_context` tool to detect missing fields and asks focused questions until the context is complete, then calls `recommend_pattern`.
+
+Run the guided CLI (build first if needed):
+
+```bash
+cd mcp-server
+npm install
+npm run build
+# then from mcp-server
+node --input-type=module dist/examples/collect-context.mjs || node dist/examples/collect-context.mjs
+```
+
+The interactive flow asks for a project summary and primary goals first (short mode), and can be switched to a more detailed mode via the `guided_recommendation_form` prompt for traffic, SLAs, integrations, budget, and timeline.
+
+Prerequisites
+- Node >= 18
+- Build the server (required for examples that execute `dist/server.js`):
+
+```bash
+cd mcp-server
+npm ci
+npm run build
+```
+
+Run the server (optional if examples spawn it):
+
+```bash
+# in one terminal
+node dist/server.js
+# or for development (no build):
+npm run dev
+```
+
+Run examples (execute from the `mcp-server` directory):
+
+```bash
+# stdio client that auto-spawns the server if needed
+node examples/stdio-client.mjs
+
+# stdio client using the natural-language wrapper
+node examples/stdio-client-nl.mjs
+
+# programmatic natural-language example
+node examples/run-direct-nl.mjs
+
+# demo rich recommendation
+node examples/demo-rich-recommend.mjs
+
+# search query debug
+node examples/search-query-debug.mjs
+
+# HTTP wrapper (starts an HTTP server and forwards requests to the MCP server)
+node examples/http-wrapper.mjs
+# then open the printed URL or use curl, for example:
+curl "http://localhost:61061/?q=authentication"
+```
+
+Notes
+- Some examples wait for the server to print `MCP server running` on stderr before proceeding; allow a few seconds for startup.
+- If you prefer not to build, run `npm run dev` in one terminal and run the example scripts in another.
+- Inspect `mcp-server/examples/` for the full list and behavior of each script.
+
 ## Standards Catalog
 
 ### Foundational (11 standards)
-| Standard | Description | description for humans |
+| Standard | Description | files |
 |----------|-------------|-------|
-| [authentication](foundational/authentication/) | OIDC, OAuth2, JWT, DPoP, mTLS | [README](foundational/authentication/README.md) |
-  | [api-design](foundational/api-design/) | REST, GraphQL, gRPC, WebSocket | [README](foundational/api-design/README.md) |
-  | [error-handling](foundational/error-handling/) | Circuit breakers, retries, fallbacks | [README](foundational/error-handling/README.md) |
-| [logging-observability](foundational/logging-observability/) | Structured logging, tracing, metrics | [README](foundational/logging-observability/README.md) |
-| [data-persistence](foundational/data-persistence/) | SQL, NoSQL, caching, event stores | [README](foundational/data-persistence/README.md) |
-| [input-validation](foundational/input-validation/) | Validation, sanitization, injection prevention | [README](foundational/input-validation/README.md) |
-| [messaging-events](foundational/messaging-events/) | Queues, pub/sub, event sourcing, CQRS | [README](foundational/messaging-events/README.md) |
-| [configuration-management](foundational/configuration-management/) | Env vars, secrets, feature flags | [README](foundational/configuration-management/README.md) |
-| [authorization](foundational/authorization/) | RBAC, ABAC, ReBAC, policy-as-code | [README](foundational/authorization/README.md) |
-| [session-management](foundational/session-management/) | Server-side sessions, JWT rotation, BFF | [README](foundational/session-management/README.md) |
-| [secrets-management](foundational/secrets-management/) | Vault services, rotation, zero-trust access | [README](foundational/secrets-management/README.md) |
+| [authentication](foundational/authentication/) | OIDC, OAuth2, JWT, DPoP, mTLS | [for humans](foundational/authentication/README.md) \| [for Agents](foundational/authentication/authentication.yaml) |
+| [api-design](foundational/api-design/) | REST, GraphQL, gRPC, WebSocket | [for humans](foundational/api-design/README.md) \| [for Agents](foundational/api-design/api-design.yaml) |
+| [error-handling](foundational/error-handling/) | Circuit breakers, retries, fallbacks | [for humans](foundational/error-handling/README.md) \| [for Agents](foundational/error-handling/error-handling.yaml) |
+| [logging-observability](foundational/logging-observability/) | Structured logging, tracing, metrics | [for humans](foundational/logging-observability/README.md) \| [for Agents](foundational/logging-observability/logging-observability.yaml) |
+| [data-persistence](foundational/data-persistence/) | SQL, NoSQL, caching, event stores | [for humans](foundational/data-persistence/README.md) \| [for Agents](foundational/data-persistence/data-persistence.yaml) |
+| [input-validation](foundational/input-validation/) | Validation, sanitization, injection prevention | [for humans](foundational/input-validation/README.md) \| [for Agents](foundational/input-validation/input-validation.yaml) |
+| [messaging-events](foundational/messaging-events/) | Queues, pub/sub, event sourcing, CQRS | [for humans](foundational/messaging-events/README.md) \| [for Agents](foundational/messaging-events/messaging-events.yaml) |
+| [configuration-management](foundational/configuration-management/) | Env vars, secrets, feature flags | [for humans](foundational/configuration-management/README.md) \| [for Agents](foundational/configuration-management/configuration-management.yaml) |
+| [authorization](foundational/authorization/) | RBAC, ABAC, ReBAC, policy-as-code | [for humans](foundational/authorization/README.md) \| [for Agents](foundational/authorization/authorization.yaml) |
+| [session-management](foundational/session-management/) | Server-side sessions, JWT rotation, BFF | [for humans](foundational/session-management/README.md) \| [for Agents](foundational/session-management/session-management.yaml) |
+| [secrets-management](foundational/secrets-management/) | Vault services, rotation, zero-trust access | [for humans](foundational/secrets-management/README.md) \| [for Agents](foundational/secrets-management/secrets-management.yaml) |
 
 ### Application Architecture (9 standards)
-| Standard | Description | description for humans |
+| Standard | Description | files |
 |----------|-------------|-------|
-| [layered-architecture](application-architecture/layered-architecture/) | Clean, hexagonal, onion architecture | [README](application-architecture/layered-architecture/README.md) |
-| [service-architecture](application-architecture/service-architecture/) | Microservices, modular monolith | [README](application-architecture/service-architecture/README.md) |
-| [domain-driven-design](application-architecture/domain-driven-design/) | Bounded contexts, aggregates | [README](application-architecture/domain-driven-design/README.md) |
-| [state-management](application-architecture/state-management/) | Client, server, distributed state | [README](application-architecture/state-management/README.md) |
-| [dependency-injection](application-architecture/dependency-injection/) | DI, IoC, composition root | [README](application-architecture/dependency-injection/README.md) |
-| [repository-pattern](application-architecture/repository-pattern/) | Data access, unit of work | [README](application-architecture/repository-pattern/README.md) |
-| [design-patterns](application-architecture/design-patterns/) | SOLID principles, GoF patterns | [README](application-architecture/design-patterns/README.md) |
-| [resilience-chaos-engineering](application-architecture/resilience-chaos-engineering/) | Circuit breakers, bulkheads, chaos experiments | [README](application-architecture/resilience-chaos-engineering/README.md) |
-| [feature-flags](application-architecture/feature-flags/) | Progressive delivery, kill switches, A/B testing | [README](application-architecture/feature-flags/README.md) |
+| [layered-architecture](application-architecture/layered-architecture/) | Clean, hexagonal, onion architecture | [for humans](application-architecture/layered-architecture/README.md) \| [for Agents](application-architecture/layered-architecture/layered-architecture.yaml) |
+| [service-architecture](application-architecture/service-architecture/) | Microservices, modular monolith | [for humans](application-architecture/service-architecture/README.md) \| [for Agents](application-architecture/service-architecture/service-architecture.yaml) |
+| [domain-driven-design](application-architecture/domain-driven-design/) | Bounded contexts, aggregates | [for humans](application-architecture/domain-driven-design/README.md) \| [for Agents](application-architecture/domain-driven-design/domain-driven-design.yaml) |
+| [state-management](application-architecture/state-management/) | Client, server, distributed state | [for humans](application-architecture/state-management/README.md) \| [for Agents](application-architecture/state-management/state-management.yaml) |
+| [dependency-injection](application-architecture/dependency-injection/) | DI, IoC, composition root | [for humans](application-architecture/dependency-injection/README.md) \| [for Agents](application-architecture/dependency-injection/dependency-injection.yaml) |
+| [repository-pattern](application-architecture/repository-pattern/) | Data access, unit of work | [for humans](application-architecture/repository-pattern/README.md) \| [for Agents](application-architecture/repository-pattern/repository-pattern.yaml) |
+| [design-patterns](application-architecture/design-patterns/) | SOLID principles, GoF patterns | [for humans](application-architecture/design-patterns/README.md) \| [for Agents](application-architecture/design-patterns/design-patterns.yaml) |
+| [resilience-chaos-engineering](application-architecture/resilience-chaos-engineering/) | Circuit breakers, bulkheads, chaos experiments | [for humans](application-architecture/resilience-chaos-engineering/README.md) \| [for Agents](application-architecture/resilience-chaos-engineering/resilience-chaos-engineering.yaml) |
+| [feature-flags](application-architecture/feature-flags/) | Progressive delivery, kill switches, A/B testing | [for humans](application-architecture/feature-flags/README.md) \| [for Agents](application-architecture/feature-flags/feature-flags.yaml) |
 
 ### Infrastructure (7 standards)
-| Standard | Description | description for humans |
+| Standard | Description | files |
 |----------|-------------|-------|
-| [containerization](infrastructure/containerization/) | Docker, OCI, runtime security | [README](infrastructure/containerization/README.md) |
-| [orchestration](infrastructure/orchestration/) | Kubernetes, service mesh | [README](infrastructure/orchestration/README.md) |
-| [ci-cd](infrastructure/ci-cd/) | Pipelines, release strategies | [README](infrastructure/ci-cd/README.md) |
-| [infrastructure-as-code](infrastructure/infrastructure-as-code/) | Terraform, Pulumi, Bicep | [README](infrastructure/infrastructure-as-code/README.md) |
-| [cloud-architecture](infrastructure/cloud-architecture/) | Cloud-native, well-architected | [README](infrastructure/cloud-architecture/README.md) |
-| [database-migration](infrastructure/database-migration/) | Schema evolution, zero-downtime | [README](infrastructure/database-migration/README.md) |
-| [api-gateway-edge-security](infrastructure/api-gateway-edge-security/) | WAF, DDoS protection, zero-trust edge | [README](infrastructure/api-gateway-edge-security/README.md) |
+| [containerization](infrastructure/containerization/) | Docker, OCI, runtime security | [for humans](infrastructure/containerization/README.md) \| [for Agents](infrastructure/containerization/containerization.yaml) |
+| [orchestration](infrastructure/orchestration/) | Kubernetes, service mesh | [for humans](infrastructure/orchestration/README.md) \| [for Agents](infrastructure/orchestration/orchestration.yaml) |
+| [ci-cd](infrastructure/ci-cd/) | Pipelines, release strategies | [for humans](infrastructure/ci-cd/README.md) \| [for Agents](infrastructure/ci-cd/ci-cd.yaml) |
+| [infrastructure-as-code](infrastructure/infrastructure-as-code/) | Terraform, Pulumi, Bicep | [for humans](infrastructure/infrastructure-as-code/README.md) \| [for Agents](infrastructure/infrastructure-as-code/infrastructure-as-code.yaml) |
+| [cloud-architecture](infrastructure/cloud-architecture/) | Cloud-native, well-architected | [for humans](infrastructure/cloud-architecture/README.md) \| [for Agents](infrastructure/cloud-architecture/cloud-architecture.yaml) |
+| [database-migration](infrastructure/database-migration/) | Schema evolution, zero-downtime | [for humans](infrastructure/database-migration/README.md) \| [for Agents](infrastructure/database-migration/database-migration.yaml) |
+| [api-gateway-edge-security](infrastructure/api-gateway-edge-security/) | WAF, DDoS protection, zero-trust edge | [for humans](infrastructure/api-gateway-edge-security/README.md) \| [for Agents](infrastructure/api-gateway-edge-security/api-gateway-edge-security.yaml) |
 
 ### Security & Quality (10 standards)
-| Standard | Description | description for humans |
+| Standard | Description | files |
 |----------|-------------|-------|
-| [encryption](security-quality/encryption/) | TLS, cryptography, key management | [README](security-quality/encryption/README.md) |
-| [rate-limiting](security-quality/rate-limiting/) | Throttling, abuse prevention | [README](security-quality/rate-limiting/README.md) |
-| [testing-strategies](security-quality/testing-strategies/) | Test pyramid, TDD, coverage | [README](security-quality/testing-strategies/README.md) |
-| [code-quality](security-quality/code-quality/) | Linting, static analysis | [README](security-quality/code-quality/README.md) |
-| [performance-optimization](security-quality/performance-optimization/) | Profiling, caching, scaling | [README](security-quality/performance-optimization/README.md) |
-| [accessibility](security-quality/accessibility/) | WCAG, ARIA, inclusive design | [README](security-quality/accessibility/README.md) |
-| [client-platform-security](security-quality/client-platform-security/) | CSP, cert pinning, root detection, anti-tamper | [README](security-quality/client-platform-security/README.md) |
-| [secure-sdlc](security-quality/secure-sdlc/) | SAST, DAST, SCA, supply chain, SBOM | [README](security-quality/secure-sdlc/README.md) |
-| [compliance-data-privacy](security-quality/compliance-data-privacy/) | GDPR, CCPA, HIPAA, consent, data retention | [README](security-quality/compliance-data-privacy/README.md) |
-| [security-monitoring](security-quality/security-monitoring/) | SIEM, anomaly detection, incident response | [README](security-quality/security-monitoring/README.md) |
+| [encryption](security-quality/encryption/) | TLS, cryptography, key management | [for humans](security-quality/encryption/README.md) \| [for Agents](security-quality/encryption/encryption.yaml) |
+| [rate-limiting](security-quality/rate-limiting/) | Throttling, abuse prevention | [for humans](security-quality/rate-limiting/README.md) \| [for Agents](security-quality/rate-limiting/rate-limiting.yaml) |
+| [testing-strategies](security-quality/testing-strategies/) | Test pyramid, TDD, coverage | [for humans](security-quality/testing-strategies/README.md) \| [for Agents](security-quality/testing-strategies/testing-strategies.yaml) |
+| [code-quality](security-quality/code-quality/) | Linting, static analysis | [for humans](security-quality/code-quality/README.md) \| [for Agents](security-quality/code-quality/code-quality.yaml) |
+| [performance-optimization](security-quality/performance-optimization/) | Profiling, caching, scaling | [for humans](security-quality/performance-optimization/README.md) \| [for Agents](security-quality/performance-optimization/performance-optimization.yaml) |
+| [accessibility](security-quality/accessibility/) | WCAG, ARIA, inclusive design | [for humans](security-quality/accessibility/README.md) \| [for Agents](security-quality/accessibility/accessibility.yaml) |
+| [client-platform-security](security-quality/client-platform-security/) | CSP, cert pinning, root detection, anti-tamper | [for humans](security-quality/client-platform-security/README.md) \| [for Agents](security-quality/client-platform-security/client-platform-security.yaml) |
+| [secure-sdlc](security-quality/secure-sdlc/) | SAST, DAST, SCA, supply chain, SBOM | [for humans](security-quality/secure-sdlc/README.md) \| [for Agents](security-quality/secure-sdlc/secure-sdlc.yaml) |
+| [compliance-data-privacy](security-quality/compliance-data-privacy/) | GDPR, CCPA, HIPAA, consent, data retention | [for humans](security-quality/compliance-data-privacy/README.md) \| [for Agents](security-quality/compliance-data-privacy/compliance-data-privacy.yaml) |
+| [security-monitoring](security-quality/security-monitoring/) | SIEM, anomaly detection, incident response | [for humans](security-quality/security-monitoring/README.md) \| [for Agents](security-quality/security-monitoring/security-monitoring.yaml) |
 
 ### Integration & Data (6 standards)
-| Standard | Description | description for humans |
+| Standard | Description | files |
 |----------|-------------|-------|
-| [third-party-integration](integration-data/third-party-integration/) | Vendor abstraction, circuit breakers | [README](integration-data/third-party-integration/README.md) |
-| [webhooks](integration-data/webhooks/) | Delivery guarantees, idempotent processing | [README](integration-data/webhooks/README.md) |
-| [file-storage](integration-data/file-storage/) | Object storage, CDN, presigned URLs | [README](integration-data/file-storage/README.md) |
-| [search](integration-data/search/) | Full-text search, indexing strategies | [README](integration-data/search/README.md) |
-| [data-transformation](integration-data/data-transformation/) | ETL/ELT, streaming pipelines | [README](integration-data/data-transformation/README.md) |
-| [versioning](integration-data/versioning/) | API versioning, backward compatibility | [README](integration-data/versioning/README.md) |
+| [third-party-integration](integration-data/third-party-integration/) | Vendor abstraction, circuit breakers | [for humans](integration-data/third-party-integration/README.md) \| [for Agents](integration-data/third-party-integration/third-party-integration.yaml) |
+| [webhooks](integration-data/webhooks/) | Delivery guarantees, idempotent processing | [for humans](integration-data/webhooks/README.md) \| [for Agents](integration-data/webhooks/webhooks.yaml) |
+| [file-storage](integration-data/file-storage/) | Object storage, CDN, presigned URLs | [for humans](integration-data/file-storage/README.md) \| [for Agents](integration-data/file-storage/file-storage.yaml) |
+| [search](integration-data/search/) | Full-text search, indexing strategies | [for humans](integration-data/search/README.md) \| [for Agents](integration-data/search/search.yaml) |
+| [data-transformation](integration-data/data-transformation/) | ETL/ELT, streaming pipelines | [for humans](integration-data/data-transformation/README.md) \| [for Agents](integration-data/data-transformation/data-transformation.yaml) |
+| [versioning](integration-data/versioning/) | API versioning, backward compatibility | [for humans](integration-data/versioning/README.md) \| [for Agents](integration-data/versioning/versioning.yaml) |
 
 ## Entry Structure
 

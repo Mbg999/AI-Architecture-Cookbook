@@ -104,7 +104,15 @@ export class CookbookLoader {
   private entryCache = new Map<string, CookbookEntry>();
 
   constructor(repoRoot?: string) {
-    this.repoRoot = repoRoot ?? resolve(join(import.meta.dirname, ".."));
+    // Resolve repo root robustly. When running from the compiled `dist/` folder,
+    // `import.meta.dirname` may point to `.../mcp-server/dist`. We want the
+    // repository root (two levels up), or use an explicit `repoRoot` when provided.
+    const metaDir =
+      typeof (import.meta as any).dirname !== "undefined"
+        ? (import.meta as any).dirname
+        : new URL(".", import.meta.url).pathname;
+    const defaultRoot = resolve(join(metaDir, "..", ".."));
+    this.repoRoot = repoRoot ?? defaultRoot;
   }
 
   getIndex(): CookbookIndex {

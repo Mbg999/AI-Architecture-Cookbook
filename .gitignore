@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-test/
 .venv/
 __pycache__/
 *.log

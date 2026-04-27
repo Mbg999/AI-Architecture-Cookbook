@@ -400,6 +400,32 @@
 
 ---
 
+## AI-DLC Review Request
+**Timestamp**: 2026-04-24T12:34:00Z
+**User Input**: "Using AI-DLC, review this project and tell me what is it doing, and if this is well driven or should change anyting"
+**AI Response**: "Started AI-DLC review: plan created, loading AI-DLC rules and skill, reading workspace audit and state, preparing analysis of mcp-server and repository structure."
+**Context**: INCEPTION - Workspace Detection (initial review request)
+
+---
+
+---
+
+## Issue Report - MCP malfunction
+**Timestamp**: 2026-04-23T12:00:00Z
+**User Input**: "Using AI-DLC, My MCP server and system are malfunctioning. I need:
+
+Prompt tools that correctly call the MCP server using natural language.
+
+Tools that provide accurate recommendations, as currently it always returns []
+
+do a cycle to improve the system"
+**AI Response**: "Acknowledged. Performing investigation: search code, reproduce issue, fix loader repoRoot resolution, rebuild, verify recommendations. Next: update examples and validate stdio transport."
+**Context**: DIAGNOSTIC & FIX — MCP server
+
+---
+
+---
+
 ## Cycle 3 — Code Generation
 **Timestamp**: 2026-04-22T18:10:00Z
 **AI Response**: "Created integration hooks for all major AI assistants."

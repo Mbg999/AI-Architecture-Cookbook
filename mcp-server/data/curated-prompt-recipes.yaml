@@ -1,0 +1,1512 @@
+api-design:
+  - id: curated_api_greenfield_v1
+    scenario: greenfield
+    description: Curated API design prompt focusing on versioning and client needs
+    prompt: >
+      Design a public-facing REST API for an application that will serve web and mobile clients. Consider versioning,
+      backward compatibility, authentication, rate-limiting, pagination, filtering, idempotency, and observability.
+      Provide recommended HTTP resource models, URL layout, expected status codes, and recommended headers. Provide a
+      concise one-paragraph rationale and a short example of an OpenAPI path for a core resource.
+  - id: curated_api-design_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for api-design (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in api-design.
+
+      Description: API design decision framework covering REST, GraphQL, gRPC, and WebSocket protocols. Provides
+      context-aware recommendations based on client types, data complexity, performance needs, and team expertise.
+
+      Context placeholders (provide values for the following):
+
+      - client_types (enum, required, default: web_and_mobile) choices: web_only, mobile_only, web_and_mobile,
+      internal_services, third_party, mixed — Primary consumers of the API
+
+      - data_complexity (enum, required, default: moderate) choices: simple, moderate, complex, deeply_nested —
+      Complexity of the data graph clients need to query
+
+      - performance_requirement (enum, required, default: standard) choices: relaxed, standard, low_latency,
+      ultra_low_latency — Latency and throughput requirements
+
+      - real_time_needed (boolean, required) — Does the API need to push real-time updates to clients?
+
+      - team_expertise (enum, default: rest_familiar) choices: rest_familiar, graphql_experienced, grpc_experienced,
+      polyglot — Team familiarity with API paradigms
+
+      - public_api (boolean, required) — Is this a public-facing API for external consumers?
+
+      - contract_strictness (enum, default: moderate) choices: loose, moderate, strict — How strict should the API
+      contract be?
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+search:
+  - id: curated_search_relevance_v1
+    scenario: greenfield
+    description: Curated search prompt to design relevance, index strategy, and ranking
+    prompt: >
+      Design a search system for a product catalog with faceted filters and typo tolerance. Requirements: low latency
+      (<100ms median query), per-user personalization optional, near-realtime index updates, support for multi-field
+      ranking and synonyms, explainability for results, and privacy controls for PII. Outline index schema, ranking
+      signals, query rewriting, and a scaling plan that includes sharding and replica strategies.
+  - id: curated_search_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for search (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in search.
+
+      Description: Search infrastructure patterns including full-text search engines, indexing strategies, query
+      optimization, faceted search, and search relevance tuning. Covers both dedicated search engines and database
+      full-text search capabilities.
+
+      Context placeholders (provide values for the following):
+
+      - search_engine (enum, required, default: dedicated_engine) choices: dedicated_engine, database_fulltext, hybrid —
+      Search engine technology
+
+      - data_volume (enum, required, default: medium) choices: small, medium, large, very_large — Volume of searchable
+      data
+
+      - query_complexity (enum, default: moderate) choices: simple, moderate, complex, ai_powered — Complexity of search
+      queries
+
+      - freshness_requirement (enum, default: near_realtime) choices: realtime, near_realtime, periodic, batch — How
+      quickly new data must be searchable
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+rate-limiting:
+  - id: curated_rate_limiting_tactics
+    scenario: greenfield
+    description: Curated prompt for rate-limiting strategy including client tiers and burst handling
+    prompt: >
+      Design a rate-limiting and throttling strategy for public APIs with free and paid tiers. Requirements: protect
+      backend from spikes, per-user and per-IP limits, burst capacity allowed, graceful status responses, integration
+      with token-based auth and API keys, and telemetry for enforcement. Provide token-bucket configuration per tier, a
+      sliding-window example, and recommended client-facing error messages and Retry-After semantics.
+  - id: curated_rate-limiting_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for rate-limiting (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in rate-limiting.
+
+      Description: Rate limiting, throttling, and abuse prevention for APIs and services. Covers token bucket, sliding
+      window, distributed rate limiting, and quota management strategies.
+
+      Context placeholders (provide values for the following):
+
+      - rate_limit_scope (enum, required, default: per_api_key) choices: per_ip, per_api_key, per_user, per_tenant,
+      global — At what level are rate limits applied?
+
+      - architecture_type (enum, required, default: distributed) choices: single_instance, distributed, edge_gateway —
+      Deployment architecture affecting rate limit strategy
+
+      - traffic_pattern (enum, required, default: steady) choices: steady, bursty, scheduled_spikes, unpredictable —
+      Expected traffic pattern
+
+      - rate_limit_strictness (enum, default: standard) choices: relaxed, standard, strict — How strict must enforcement
+      be?
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+containerization:
+  - id: curated_containerization_baseline
+    scenario: greenfield
+    description: Curated baseline prompt for containerizing microservices
+    prompt: >
+      Provide a containerization baseline for microservices: base image choices, minimal runtime footprint, handling
+      secrets & config, healthchecks, resource limits, multi-arch builds, CI image signing, and image scanning. Provide
+      a sample Dockerfile that follows best practices and recommended runtime flags (capabilities, read-only filesystem,
+      no root), and a short checklist for production readiness.
+  - id: curated_containerization_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for containerization (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in containerization.
+
+      Description: Container image construction, runtime configuration, and security hardening. Covers Dockerfile best
+      practices, multi-stage builds, image scanning, and production-ready container configurations for AI-assisted
+      development.
+
+      Context placeholders (provide values for the following):
+
+      - runtime_language (enum, required, default: node) choices: node, python, java, dotnet, go, rust, ruby, php, multi
+      — Primary language/runtime for the container
+
+      - image_purpose (enum, required, default: api_service) choices: api_service, worker, batch_job, static_site,
+      database, dev_environment — What the container image is used for
+
+      - security_posture (enum, required, default: standard) choices: minimal, standard, hardened, distroless — Security
+      requirements for the container
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+dependency-injection:
+  - id: curated_dependency-injection_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for dependency-injection (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in dependency-injection.
+
+      Description: Dependency injection and inversion of control patterns for building testable, modular applications.
+      Covers constructor injection, composition root, service locator (anti-pattern recognition), and DI container
+      usage.
+
+      Context placeholders (provide values for the following):
+
+      - language_ecosystem (enum, required, default: general) choices: java_kotlin, dotnet, python,
+      typescript_javascript, go, general — Primary programming language — determines DI tooling options
+
+      - application_size (enum, required, default: medium) choices: small, medium, large — Size and complexity of the
+      application
+
+      - testability_priority (enum, required, default: high) choices: low, medium, high — How critical is unit testing
+      with isolated dependencies?
+
+      - framework_opinion (enum, required, default: framework_provided) choices: no_framework, framework_provided,
+      custom_needed — Does the framework provide a built-in DI container?
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+design-patterns:
+  - id: curated_design-patterns_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for design-patterns (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in design-patterns.
+
+      Description: SOLID principles and essential Gang of Four design patterns for AI-assisted development. Focuses on
+      the most impactful patterns for modern software: strategy, observer, factory, decorator, and adapter — with SOLID
+      as the guiding foundation.
+
+      Context placeholders (provide values for the following):
+
+      - design_concern (enum, required, default: behavior_variation) choices: behavior_variation, object_creation,
+      interface_adaptation, cross_cutting_concerns, event_notification, solid_violations — What design problem are you
+      trying to solve?
+
+      - language_paradigm (enum, required, default: object_oriented) choices: object_oriented, functional,
+      multi_paradigm — Primary language paradigm
+
+      - codebase_maturity (enum, required, default: established) choices: greenfield, established, legacy — Maturity of
+      the existing codebase
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+domain-driven-design:
+  - id: curated_domain-driven-design_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for domain-driven-design (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in domain-driven-design.
+
+      Description: Domain-Driven Design strategic and tactical patterns for modeling complex business domains. Covers
+      bounded contexts, aggregates, entities, value objects, domain events, and context mapping.
+
+      Context placeholders (provide values for the following):
+
+      - domain_complexity (enum, required, default: complex) choices: simple, moderate, complex — How complex is the
+      business domain?
+
+      - domain_expert_access (boolean, required, default: true) — Does the team have access to domain experts for
+      modeling sessions?
+
+      - team_ddd_experience (enum, required, default: moderate) choices: none, basic, moderate, expert — Team's
+      experience with DDD concepts
+
+      - existing_codebase (boolean, required) — Is there an existing codebase to refactor?
+
+      - consistency_requirements (enum, required, default: strong_within_aggregate) choices: eventual_everywhere,
+      strong_within_aggregate, strong_across_aggregates — How strong are transactional consistency requirements?
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+feature-flags:
+  - id: curated_feature-flags_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for feature-flags (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in feature-flags.
+
+      Description: Feature flag and progressive delivery patterns for safe deployments, A/B testing, canary releases,
+      and operational toggles. Covers flag lifecycle management, targeting rules, technical debt prevention, and
+      integration with CI/CD pipelines.
+
+      Context placeholders (provide values for the following):
+
+      - deployment_strategy (enum, required, default: progressive) choices: big_bang, blue_green, canary, progressive —
+      Primary deployment and release strategy
+
+      - flag_complexity (enum, required, default: simple_boolean) choices: simple_boolean, user_targeted,
+      percentage_rollout, multi_variant — Complexity of flag targeting and rules
+
+      - team_size (enum, required, default: medium) choices: small, medium, large, enterprise — Size of the engineering
+      organization
+
+      - experimentation_need (enum, required, default: basic) choices: none, basic, advanced, data_driven_product — Need
+      for A/B testing and experimentation
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+layered-architecture:
+  - id: curated_layered-architecture_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for layered-architecture (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in layered-architecture.
+
+      Description: Layered architecture patterns that separate concerns into horizontal or dependency-inverted layers.
+      Covers traditional N-tier, clean architecture, hexagonal (ports & adapters), and onion architecture.
+
+      Context placeholders (provide values for the following):
+
+      - team_size (enum, required, default: medium) choices: small, medium, large — Size of the development team
+      maintaining the codebase
+
+      - domain_complexity (enum, required, default: moderate) choices: simple, moderate, complex — Complexity of
+      business rules and domain logic
+
+      - testability_priority (enum, required, default: high) choices: low, medium, high — How critical is
+      unit-testability of business logic in isolation?
+
+      - framework_coupling_tolerance (enum, required, default: low) choices: low, medium, high — How acceptable is tight
+      coupling to a specific framework?
+
+      - expected_lifespan (enum, required, default: long) choices: short, medium, long — Expected lifespan of the
+      application in years
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+repository-pattern:
+  - id: curated_repository-pattern_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for repository-pattern (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in repository-pattern.
+
+      Description: Repository and data access patterns that abstract persistence from domain logic. Covers generic
+      repository, specification pattern, unit of work, and query object patterns.
+
+      Context placeholders (provide values for the following):
+
+      - domain_complexity (enum, required, default: moderate) choices: simple, moderate, complex — Complexity of the
+      business domain and query requirements
+
+      - query_complexity (enum, required, default: moderate) choices: simple_crud, moderate, complex_queries — How
+      complex are the data query requirements?
+
+      - data_access_technology (enum, required, default: orm) choices: raw_sql, orm, document_store, mixed — Primary
+      data access approach
+
+      - testability_priority (enum, required, default: high) choices: low, medium, high — How critical is testing
+      persistence logic in isolation?
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+resilience-chaos-engineering:
+  - id: curated_resilience-chaos-engineering_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for resilience-chaos-engineering (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in resilience-chaos-engineering.
+
+      Description: Resilience patterns and chaos engineering practices for building systems that withstand and recover
+      from failures. Covers circuit breakers, retries, bulkheads, timeouts, fallbacks, graceful degradation, and chaos
+      experiments to validate resilience in production.
+
+      Context placeholders (provide values for the following):
+
+      - architecture_style (enum, required, default: microservices) choices: monolith, modular_monolith, microservices,
+      serverless — System architecture style
+
+      - availability_target (enum, required, default: high) choices: standard, high, very_high, mission_critical —
+      Target availability SLA
+
+      - failure_blast_radius (enum, required, default: moderate) choices: isolated, moderate, cascading — Impact of a
+      single component failure
+
+      - chaos_maturity (enum, required, default: none) choices: none, gamedays, automated_staging, continuous_production
+      — Current chaos engineering practice maturity
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+service-architecture:
+  - id: curated_service-architecture_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for service-architecture (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in service-architecture.
+
+      Description: Service decomposition strategies — microservices, modular monolith, distributed monolith, and hybrid
+      approaches. Covers when to decompose, how to define service boundaries, and communication patterns.
+
+      Context placeholders (provide values for the following):
+
+      - team_structure (enum, required, default: feature_teams) choices: single_team, feature_teams, platform_teams,
+      autonomous_squads — How are development teams organized?
+
+      - deployment_independence (enum, required, default: medium) choices: low, medium, high — How important is
+      deploying services independently?
+
+      - domain_boundary_clarity (enum, required, default: moderate) choices: unclear, moderate, clear — How well-defined
+      are the business domain boundaries?
+
+      - operational_maturity (enum, required, default: moderate) choices: low, moderate, high — Team's maturity with
+      distributed systems operations (monitoring, tracing, deployments)
+
+      - data_sharing_needs (enum, required, default: moderate) choices: minimal, moderate, extensive — How much data is
+      shared across domain boundaries?
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+state-management:
+  - id: curated_state-management_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for state-management (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in state-management.
+
+      Description: State management patterns for client, server, and distributed systems. Covers server-side session,
+      client-side state, distributed caching, and event-sourced state reconstruction.
+
+      Context placeholders (provide values for the following):
+
+      - application_type (enum, required, default: web_api) choices: web_api, web_spa, mobile, distributed_system,
+      real_time — Primary application delivery type
+
+      - scalability_model (enum, required, default: horizontal) choices: single_instance, vertical, horizontal — How
+      will the application scale?
+
+      - consistency_requirements (enum, required, default: eventual) choices: strong, eventual, session_consistent — How
+      consistent must state be across nodes/requests?
+
+      - state_volume (enum, required, default: moderate) choices: low, moderate, high — Volume and frequency of state
+      changes
+
+      - audit_requirements (boolean, required) — Do you need a full audit trail of every state change?
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+<string>:
+  - id: curated_<string>_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for <string> (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in <string>.
+
+      Description: <short summary>
+
+      Context placeholders (provide values for the following):
+
+      - <input_name> (<string | boolean | enum | integer | float>, required, default: <value | null>) choices: <value> —
+      <what the AI needs to know>
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+authentication:
+  - id: curated_authentication_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for authentication (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in authentication.
+
+      Description: Authentication and authorization decision framework including federated identity, token-based auth,
+      proof-of-possession mechanisms, mTLS, and compliance mapping.
+
+      Context placeholders (provide values for the following):
+
+      - client_types (enum, required, default: web) choices: web, mobile, server, third_party — Primary client type that
+      will authenticate. For multi-client systems (e.g., web + mobile), choose the most security-sensitive client type
+
+      - needs_login (boolean, required, default: true) — Does the system require user login (human identity)?
+
+      - third_party_access (boolean, required) — Do external parties need delegated access to resources?
+
+      - session_type (enum, required, default: stateless) choices: stateful, stateless — How is user session maintained?
+
+      - security_level (enum, required, default: medium) choices: low, medium, high, critical — Required security
+      posture based on data sensitivity and regulatory needs
+
+      - data_sensitivity (enum, required, default: medium) choices: low, medium, high — Sensitivity classification of
+      data being protected
+
+      - regulatory_required (boolean) — Is the system subject to regulatory compliance (HIPAA, PCI-DSS, SOX, etc.)?
+
+      - user_count (enum, default: medium) choices: small, medium, large, massive — Expected number of concurrent
+      authenticated users
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+authorization:
+  - id: curated_authorization_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for authorization (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in authorization.
+
+      Description: Authorization patterns including RBAC, ABAC, ReBAC, and policy-as-code. Covers access control design,
+      permission models, policy engines, least privilege enforcement, and authorization for APIs, data, and UI elements.
+
+      Context placeholders (provide values for the following):
+
+      - authorization_complexity (enum, required, default: role_based) choices: simple_ownership, role_based,
+      attribute_based, relationship_based — Complexity of authorization rules needed
+
+      - multi_tenancy (enum, required, default: none) choices: none, logical_isolation, strict_isolation — Multi-tenant
+      isolation requirements
+
+      - policy_change_frequency (enum, required, default: infrequent) choices: static, infrequent, frequent, dynamic —
+      How often authorization policies change
+
+      - enforcement_points (enum, required, default: api_layer) choices: api_layer, multi_layer, distributed — Where
+      authorization is enforced
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+configuration-management:
+  - id: curated_configuration-management_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for configuration-management (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in configuration-management.
+
+      Description: Configuration management patterns for externalizing configuration, managing secrets, feature flags,
+      and environment-specific settings. Covers the spectrum from static config files to dynamic runtime configuration.
+
+      Context placeholders (provide values for the following):
+
+      - deployment_model (enum, required, default: containers) choices: traditional_servers, containers, serverless,
+      edge — How the application is deployed
+
+      - environment_count (enum, required, default: standard) choices: single, standard, many — Number of environments
+      to manage
+
+      - secret_sensitivity (enum, required, default: high) choices: low, medium, high, critical — Sensitivity level of
+      secrets in the system
+
+      - config_change_frequency (enum, required, default: moderate) choices: rarely, moderate, frequently, real_time —
+      How often configuration changes without code deployment
+
+      - feature_flag_needs (boolean, required, default: true) — Does the system need feature flags for progressive
+      rollout?
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+data-persistence:
+  - id: curated_data-persistence_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for data-persistence (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in data-persistence.
+
+      Description: Data persistence decision framework covering relational databases, document stores, key-value stores,
+      caching layers, and event stores. Provides context-aware recommendations based on data shape, consistency needs,
+      scale, and query patterns.
+
+      Context placeholders (provide values for the following):
+
+      - data_shape (enum, required, default: relational) choices: relational, document, key_value, graph, time_series,
+      mixed — Structure of the primary data model
+
+      - consistency_requirement (enum, required, default: strong) choices: eventual, strong, tunable — Required
+      consistency level
+
+      - read_write_ratio (enum, required, default: read_heavy) choices: read_heavy, write_heavy, balanced, append_only —
+      Predominant workload pattern
+
+      - scale_requirement (enum, required, default: moderate) choices: small, moderate, large, massive — Expected data
+      volume and throughput
+
+      - query_complexity (enum, required, default: moderate) choices: simple_lookups, moderate, complex_joins,
+      full_text_search, aggregations — Complexity of queries needed
+
+      - latency_requirement (enum, default: standard) choices: relaxed, standard, low, ultra_low — Required read latency
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+error-handling:
+  - id: curated_error-handling_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for error-handling (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in error-handling.
+
+      Description: Error handling and resilience decision framework covering circuit breakers, retries, fallbacks,
+      bulkheads, and structured error responses for building fault-tolerant distributed systems.
+
+      Context placeholders (provide values for the following):
+
+      - system_type (enum, required, default: distributed) choices: monolith, distributed, serverless, hybrid —
+      Architecture style of the system
+
+      - failure_tolerance (enum, required, default: high) choices: low, medium, high, critical — How critical is uptime?
+      Determines resilience investment
+
+      - downstream_reliability (enum, required, default: variable) choices: reliable, variable, unreliable — How
+      reliable are downstream dependencies?
+
+      - error_visibility (enum, required, default: both) choices: users_only, developers_only, both — Who sees the
+      errors — end users, developers, or both?
+
+      - idempotent_operations (boolean, required) — Are the operations safe to retry (idempotent)?
+
+      - latency_budget (enum, default: standard) choices: tight, standard, relaxed — Maximum acceptable response time
+      including retries
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+input-validation:
+  - id: curated_input-validation_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for input-validation (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in input-validation.
+
+      Description: Input validation and sanitization decision framework for preventing injection attacks, ensuring data
+      integrity, and maintaining system security at all system boundaries.
+
+      Context placeholders (provide values for the following):
+
+      - input_sources (enum, required, default: external_api) choices: user_forms, external_api, file_uploads, webhooks,
+      internal_api, mixed — Where does untrusted input originate?
+
+      - data_sensitivity (enum, required, default: medium) choices: low, medium, high, critical — Sensitivity of data
+      being processed
+
+      - output_contexts (enum, required, default: api_response) choices: html_page, api_response, database_query,
+      shell_command, file_system, mixed — Where will the validated data be rendered or used?
+
+      - validation_strictness (enum, default: strict) choices: permissive, moderate, strict — How strict should
+      validation be?
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+logging-observability:
+  - id: curated_logging-observability_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for logging-observability (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in logging-observability.
+
+      Description: Structured logging, distributed tracing, metrics collection, and alerting framework for production
+      observability. Covers the three pillars of observability and their integration.
+
+      Context placeholders (provide values for the following):
+
+      - system_type (enum, required, default: distributed) choices: monolith, distributed, serverless, hybrid —
+      Architecture style affecting observability approach
+
+      - traffic_volume (enum, required, default: medium) choices: low, medium, high, massive — Expected log and trace
+      volume
+
+      - compliance_requirements (boolean, required) — Are there regulatory requirements for log retention and auditing?
+
+      - debug_complexity (enum, required, default: moderate) choices: simple, moderate, complex — How difficult is
+      debugging in the current environment?
+
+      - real_time_alerting (boolean, required, default: true) — Does the system need real-time alerting on anomalies?
+
+      - budget_constraints (enum, default: moderate) choices: minimal, moderate, generous — Budget for observability
+      infrastructure
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+messaging-events:
+  - id: curated_messaging-events_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for messaging-events (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in messaging-events.
+
+      Description: Asynchronous messaging and event-driven communication patterns including message queues, pub/sub,
+      event streaming, and choreography. Covers delivery guarantees, ordering, and failure handling.
+
+      Context placeholders (provide values for the following):
+
+      - communication_pattern (enum, required, default: point_to_point) choices: point_to_point, fan_out, streaming,
+      request_reply_async — Primary async communication need
+
+      - delivery_guarantee (enum, required, default: at_least_once) choices: at_most_once, at_least_once, exactly_once —
+      Required message delivery guarantee
+
+      - ordering_requirement (enum, required, default: partial) choices: none, partial, total — Message ordering
+      requirements
+
+      - throughput_requirement (enum, required, default: moderate) choices: low, moderate, high, massive — Expected
+      message throughput
+
+      - consumer_count (enum, required, default: single) choices: single, multiple, dynamic — Number of independent
+      consumers per message
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+secrets-management:
+  - id: curated_secrets-management_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for secrets-management (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in secrets-management.
+
+      Description: Secrets management patterns for securely storing, accessing, and rotating credentials, API keys,
+      certificates, and encryption keys. Covers vault services, environment-based injection, automatic rotation, and
+      zero-trust secret access.
+
+      Context placeholders (provide values for the following):
+
+      - infrastructure (enum, required, default: cloud_managed) choices: on_premises, cloud_managed, multi_cloud, hybrid
+      — Primary infrastructure platform
+
+      - secret_volume (enum, required, default: moderate) choices: few, moderate, many, enterprise_scale — Number and
+      variety of secrets managed
+
+      - rotation_requirement (enum, required, default: periodic) choices: manual, periodic, frequent, zero_standing —
+      How frequently secrets must rotate
+
+      - compliance_level (enum, required, default: standard) choices: basic, standard, regulated,
+      critical_infrastructure — Compliance requirements for secret handling
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+session-management:
+  - id: curated_session-management_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for session-management (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in session-management.
+
+      Description: Session management patterns covering stateful and stateless sessions, token lifecycle, session
+      fixation prevention, idle and absolute timeouts, concurrent session controls, and secure session storage.
+
+      Context placeholders (provide values for the following):
+
+      - session_type (enum, required, default: stateless_token) choices: server_side_session, stateless_token, hybrid —
+      Primary session mechanism
+
+      - client_type (enum, required, default: web_browser) choices: web_browser, mobile_app, spa, api_consumer — Primary
+      client consuming sessions
+
+      - security_sensitivity (enum, required, default: standard) choices: low, standard, high, critical — Security
+      sensitivity of the application
+
+      - scale_requirements (enum, required, default: moderate) choices: single_server, moderate, high_scale,
+      global_distributed — Scale and distribution requirements
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+api-gateway-edge-security:
+  - id: curated_api-gateway-edge-security_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for api-gateway-edge-security (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in api-gateway-edge-security.
+
+      Description: API gateway and edge security patterns covering request routing, rate limiting, authentication
+      offloading, WAF integration, DDoS protection, API versioning at the edge, request/response transformation, and
+      zero-trust network architecture.
+
+      Context placeholders (provide values for the following):
+
+      - traffic_pattern (enum, required, default: moderate_steady) choices: low_internal, moderate_steady,
+      high_variable, extreme_public — Expected traffic pattern and scale
+
+      - api_consumers (enum, required, default: mixed) choices: internal_only, partner_apis, public_apis, mixed — Who
+      consumes the APIs
+
+      - security_posture (enum, required, default: standard) choices: basic, standard, hardened, zero_trust — Required
+      edge security level
+
+      - deployment_topology (enum, required, default: cloud_native) choices: single_region, multi_region, cloud_native,
+      hybrid — Infrastructure deployment model
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+ci-cd:
+  - id: curated_ci-cd_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for ci-cd (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in ci-cd.
+
+      Description: Continuous integration and delivery pipelines, artifact management, and release strategies. Covers
+      pipeline design, build caching, deployment patterns (blue-green, canary, rolling), and release governance.
+
+      Context placeholders (provide values for the following):
+
+      - deployment_strategy (enum, required, default: rolling_update) choices: rolling_update, blue_green, canary,
+      recreate, feature_flags — How releases are deployed to production
+
+      - pipeline_platform (enum, required, default: github_actions) choices: github_actions, gitlab_ci, azure_devops,
+      jenkins, circleci, platform_agnostic — CI/CD platform in use
+
+      - release_cadence (enum, required, default: continuous) choices: continuous, daily, weekly, release_train — How
+      frequently releases are deployed
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+cloud-architecture:
+  - id: curated_cloud-architecture_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for cloud-architecture (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in cloud-architecture.
+
+      Description: Cloud-native design patterns, well-architected principles, multi-cloud strategies, and managed
+      service selection. Covers the architectural decisions that determine how workloads run in cloud environments.
+
+      Context placeholders (provide values for the following):
+
+      - cloud_strategy (enum, required, default: single_cloud) choices: single_cloud, multi_cloud, hybrid,
+      cloud_agnostic — Cloud adoption strategy
+
+      - workload_profile (enum, required, default: request_driven) choices: request_driven, event_driven,
+      batch_processing, data_intensive, mixed — Primary workload characteristics
+
+      - operational_maturity (enum, required, default: intermediate) choices: beginner, intermediate, advanced, expert —
+      Team's cloud operational maturity
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+database-migration:
+  - id: curated_database-migration_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for database-migration (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in database-migration.
+
+      Description: Schema evolution, data migration strategies, and zero-downtime database changes. Covers migration
+      tooling, expand-contract pattern, backward- compatible changes, and rollback strategies for production databases.
+
+      Context placeholders (provide values for the following):
+
+      - downtime_tolerance (enum, required, default: zero_downtime) choices: zero_downtime, maintenance_window,
+      brief_acceptable — How much downtime is acceptable during schema changes
+
+      - migration_tool (enum, required, default: tool_agnostic) choices: flyway, liquibase, alembic, prisma, knex,
+      django_migrations, ef_core, tool_agnostic — Database migration tool in use
+
+      - database_type (enum, required, default: relational) choices: relational, document, graph, key_value, multi_model
+      — Type of database being migrated
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+infrastructure-as-code:
+  - id: curated_infrastructure-as-code_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for infrastructure-as-code (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in infrastructure-as-code.
+
+      Description: Declarative infrastructure provisioning, state management, and drift detection. Covers Terraform,
+      Pulumi, Bicep, CloudFormation, and general IaC patterns for reproducible, auditable infrastructure.
+
+      Context placeholders (provide values for the following):
+
+      - iac_tool (enum, required, default: terraform) choices: terraform, pulumi, bicep, cloudformation, cdk,
+      crossplane, tool_agnostic — Primary IaC tool or framework
+
+      - cloud_provider (enum, required, default: multi_cloud) choices: aws, azure, gcp, multi_cloud, on_premises —
+      Target cloud provider
+
+      - team_structure (enum, required, default: platform_team) choices: platform_team, embedded_in_dev,
+      centralized_ops, self_service — How infrastructure is managed
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+orchestration:
+  - id: curated_orchestration_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for orchestration (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in orchestration.
+
+      Description: Container orchestration platforms, service mesh, and workload management. Covers Kubernetes patterns,
+      service discovery, scaling strategies, and production-grade deployment topologies.
+
+      Context placeholders (provide values for the following):
+
+      - workload_type (enum, required, default: stateless_services) choices: stateless_services, stateful_services,
+      batch_jobs, event_driven, mixed — Primary workload type being orchestrated
+
+      - scale_requirements (enum, required, default: medium) choices: small, medium, large, hyperscale — Expected scale
+      of the orchestrated workloads
+
+      - deployment_target (enum, required, default: managed_cloud) choices: managed_cloud, self_managed, hybrid, edge —
+      Where the orchestration platform runs
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+data-transformation:
+  - id: curated_data-transformation_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for data-transformation (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in data-transformation.
+
+      Description: Data transformation patterns including ETL/ELT pipelines, schema evolution, data mapping, validation,
+      and format conversion. Covers both batch and streaming data transformation for integration, migration, and
+      analytics use cases.
+
+      Context placeholders (provide values for the following):
+
+      - pipeline_type (enum, required, default: batch_etl) choices: batch_etl, batch_elt, streaming, micro_batch — Type
+      of data transformation pipeline
+
+      - data_volume (enum, required, default: medium) choices: small, medium, large, very_large — Volume of data being
+      transformed
+
+      - transformation_complexity (enum, default: moderate) choices: simple, moderate, complex, ml_enriched — Complexity
+      of transformation logic
+
+      - freshness_requirement (enum, default: daily) choices: realtime, hourly, daily, weekly — How fresh the
+      transformed data must be
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+file-storage:
+  - id: curated_file-storage_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for file-storage (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in file-storage.
+
+      Description: File and object storage patterns including upload handling, CDN integration, access control,
+      lifecycle management, and secure presigned URLs. Covers both cloud object storage and structured file management.
+
+      Context placeholders (provide values for the following):
+
+      - storage_type (enum, required, default: object_storage) choices: object_storage, block_storage, file_system,
+      database_blob — Type of file storage needed
+
+      - access_pattern (enum, required, default: public_read) choices: public_read, authenticated_read, private,
+      write_once_read_many — How files are primarily accessed
+
+      - file_size (enum, default: medium) choices: small, medium, large, very_large — Typical file size range
+
+      - compliance_needs (enum, default: standard) choices: standard, retention_required, immutable, gdpr_deletable —
+      Regulatory requirements for stored files
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+third-party-integration:
+  - id: curated_third-party-integration_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for third-party-integration (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in third-party-integration.
+
+      Description: Patterns for integrating with external APIs and third-party services. Covers vendor abstraction,
+      resilience (circuit breakers, retries, bulkheads), contract management, and graceful degradation when dependencies
+      fail.
+
+      Context placeholders (provide values for the following):
+
+      - integration_criticality (enum, required, default: important) choices: critical, important, nice_to_have — How
+      critical is the third-party service to your application
+
+      - integration_pattern (enum, required, default: synchronous_api) choices: synchronous_api, asynchronous_messaging,
+      batch_import, event_driven — Primary integration pattern
+
+      - vendor_lock_in_tolerance (enum, default: low) choices: none, low, medium, high — Tolerance for vendor-specific
+      coupling
+
+      - failure_tolerance (enum, default: degrade_gracefully) choices: fail_fast, degrade_gracefully, queue_and_retry,
+      use_cached_data — How the system should behave when the integration fails
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+versioning:
+  - id: curated_versioning_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for versioning (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in versioning.
+
+      Description: API versioning strategies, backward compatibility enforcement, deprecation policies, and migration
+      planning. Covers URL-based, header-based, and content-negotiation versioning with lifecycle management for
+      evolving APIs.
+
+      Context placeholders (provide values for the following):
+
+      - api_type (enum, required, default: rest) choices: rest, graphql, grpc, event_schema — Type of API being
+      versioned
+
+      - consumer_count (enum, required, default: multiple_internal) choices: single_internal, multiple_internal,
+      external_partners, public — Number and type of API consumers
+
+      - change_frequency (enum, default: moderate) choices: rare, moderate, frequent — How often the API changes
+
+      - breaking_change_tolerance (enum, default: low) choices: none, low, moderate, high — Consumer tolerance for
+      breaking changes
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+webhooks:
+  - id: curated_webhooks_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for webhooks (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in webhooks.
+
+      Description: Webhook design patterns for both producing and consuming event notifications over HTTP. Covers
+      delivery guarantees, signature verification, idempotent processing, retry policies, and security hardening for
+      webhook endpoints.
+
+      Context placeholders (provide values for the following):
+
+      - webhook_role (enum, required, default: consumer) choices: producer, consumer, both — Are you producing or
+      consuming webhooks
+
+      - delivery_guarantee (enum, required, default: at_least_once) choices: best_effort, at_least_once, exactly_once —
+      Required delivery guarantee level
+
+      - volume (enum, default: moderate) choices: low, moderate, high, burst — Expected webhook volume
+
+      - security_requirement (enum, default: hmac_signature) choices: none, shared_secret, hmac_signature, mutual_tls —
+      Security level for webhook verification
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+accessibility:
+  - id: curated_accessibility_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for accessibility (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in accessibility.
+
+      Description: Accessibility standards, inclusive design, and assistive technology compatibility. Covers WCAG
+      compliance, ARIA patterns, keyboard navigation, and automated accessibility testing.
+
+      Context placeholders (provide values for the following):
+
+      - application_type (enum, required, default: web_app) choices: web_app, mobile_app, desktop_app, embedded_ui —
+      Type of user-facing application
+
+      - compliance_level (enum, required, default: aa) choices: a, aa, aaa — Target WCAG conformance level
+
+      - user_base (enum, default: general_public) choices: general_public, enterprise, government, education, healthcare
+      — Primary user base characteristics
+
+      - framework (enum, default: react) choices: react, angular, vue, svelte, native_mobile, vanilla — UI framework
+      being used
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+client-platform-security:
+  - id: curated_client-platform-security_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for client-platform-security (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in client-platform-security.
+
+      Description: Client-side security hardening for web, mobile (iOS/Android), and desktop applications. Covers
+      SSL/TLS configuration, certificate pinning, root/jailbreak detection, secure local storage, code obfuscation,
+      anti-tampering, and platform-specific security controls.
+
+      Context placeholders (provide values for the following):
+
+      - platform (enum, required, default: web) choices: web, mobile_ios, mobile_android, desktop_electron,
+      desktop_native, cross_platform — Target client platform
+
+      - data_sensitivity (enum, required, default: confidential) choices: public, internal, confidential, restricted —
+      Sensitivity of data handled on the client
+
+      - threat_model (enum, required, default: standard) choices: basic, standard, advanced, nation_state — Expected
+      adversary capability level
+
+      - distribution_model (enum, required, default: app_store) choices: app_store, enterprise_sideload, web_browser,
+      direct_download, managed_device — How the application is distributed to users
+
+      - offline_capability (boolean) — Whether the application must function offline with local data
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+code-quality:
+  - id: curated_code-quality_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for code-quality (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in code-quality.
+
+      Description: Code quality standards, linting, static analysis, and maintainability practices. Covers automated
+      code quality enforcement, code review standards, and architectural fitness functions.
+
+      Context placeholders (provide values for the following):
+
+      - language_ecosystem (enum, required, default: typescript) choices: typescript, python, java, csharp, go, rust,
+      ruby, kotlin, multi_language — Primary programming language ecosystem
+
+      - codebase_maturity (enum, required, default: active) choices: greenfield, active, legacy, migration — Age and
+      maturity of the codebase
+
+      - team_experience (enum, default: mixed) choices: junior, mixed, senior — Average team experience level
+
+      - quality_priority (enum, default: balanced) choices: speed_first, balanced, quality_first — Primary quality focus
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+compliance-data-privacy:
+  - id: curated_compliance-data-privacy_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for compliance-data-privacy (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in compliance-data-privacy.
+
+      Description: Data privacy and regulatory compliance patterns covering GDPR, CCPA, HIPAA, and SOC 2. Includes PII
+      handling, consent management, data retention and deletion, data residency, audit trails, and privacy-by-design
+      architecture.
+
+      Context placeholders (provide values for the following):
+
+      - regulation (enum, required, default: gdpr) choices: gdpr, ccpa, hipaa, soc2, pci_dss, multi_regulation — Primary
+      regulatory framework to comply with
+
+      - pii_volume (enum, required, default: moderate) choices: minimal, moderate, extensive, sensitive_special_category
+      — Volume and variety of personally identifiable information processed
+
+      - data_residency (enum, required, default: single_region) choices: no_restriction, single_region,
+      multi_region_restricted, sovereign — Geographic constraints on data storage
+
+      - user_base_geography (enum, required, default: single_country) choices: single_country, single_continent, global,
+      mixed_jurisdictions — Geographic distribution of users/data subjects
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+encryption:
+  - id: curated_encryption_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for encryption (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in encryption.
+
+      Description: Data encryption at rest and in transit, key management lifecycle, and cryptographic best practices.
+      Covers TLS configuration, symmetric/asymmetric encryption, envelope encryption, and secrets rotation.
+
+      Context placeholders (provide values for the following):
+
+      - data_classification (enum, required, default: confidential) choices: public, internal, confidential, restricted
+      — Sensitivity level of the data to protect
+
+      - encryption_scope (enum, required, default: transit_and_rest) choices: transit_only, rest_only, transit_and_rest,
+      end_to_end — Where encryption is applied
+
+      - key_management_model (enum, required, default: managed_service) choices: self_managed, managed_service,
+      hsm_backed, hybrid — How encryption keys are managed
+
+      - compliance_regime (enum, default: general) choices: general, pci_dss, hipaa, gdpr, fedramp — Regulatory
+      requirements affecting encryption
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+performance-optimization:
+  - id: curated_performance-optimization_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for performance-optimization (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in performance-optimization.
+
+      Description: Performance profiling, optimization patterns, caching strategies, and scalability. Covers the
+      measure-first approach to performance, common optimization patterns, and when to apply them.
+
+      Context placeholders (provide values for the following):
+
+      - performance_concern (enum, required, default: latency) choices: latency, throughput, memory, startup_time,
+      database, network — Primary performance area of concern
+
+      - application_tier (enum, required, default: backend) choices: frontend, backend, database, network, full_stack —
+      Which tier has the performance issue
+
+      - optimization_stage (enum, required, default: investigating) choices: designing, investigating, optimizing,
+      validating — Where you are in the optimization process
+
+      - scale_requirements (enum, default: moderate) choices: low, moderate, high, extreme — Expected scale of the
+      system
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+secure-sdlc:
+  - id: curated_secure-sdlc_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for secure-sdlc (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in secure-sdlc.
+
+      Description: Secure Software Development Lifecycle integrating SAST, DAST, SCA, and supply chain security into
+      CI/CD pipelines. Covers dependency scanning, SBOM generation, signed artifacts, threat modeling, and security
+      gates.
+
+      Context placeholders (provide values for the following):
+
+      - sdlc_maturity (enum, required, default: developing) choices: initial, developing, mature, optimizing — Current
+      security maturity of the development process
+
+      - deployment_frequency (enum, required, default: daily) choices: monthly, weekly, daily, continuous — How often
+      code is deployed to production
+
+      - supply_chain_risk (enum, required, default: standard) choices: low, standard, high, critical — Risk level from
+      third-party dependencies and build tools
+
+      - regulatory_requirements (enum, default: general) choices: general, soc2, pci_dss, hipaa, fedramp — External
+      compliance requirements affecting SDLC
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+security-monitoring:
+  - id: curated_security-monitoring_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for security-monitoring (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in security-monitoring.
+
+      Description: Security monitoring and threat detection patterns for detecting anomalous access, failed login
+      attempts, privilege escalation, and suspicious activity. Covers SIEM integration, runtime application
+      self-protection (RASP), honeypots, alerting strategies, and incident response automation.
+
+      Context placeholders (provide values for the following):
+
+      - threat_model (enum, required, default: standard_web_app) choices: internal_tool, standard_web_app,
+      financial_service, critical_infrastructure — Primary threat profile for the application
+
+      - monitoring_maturity (enum, required, default: basic) choices: none, basic, intermediate, advanced — Current
+      security monitoring capability level
+
+      - incident_response_capability (enum, required, default: manual) choices: manual, semi_automated, fully_automated
+      — Ability to respond to detected security events
+
+      - data_sensitivity (enum, required, default: confidential) choices: public, internal, confidential, restricted —
+      Sensitivity of data the application handles
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.
+testing-strategies:
+  - id: curated_testing-strategies_auto_v1
+    scenario: greenfield
+    description: Auto-generated curated prompt for testing-strategies (synthesized from domain metadata).
+    prompt: >-
+      You are an expert in testing-strategies.
+
+      Description: Testing pyramids, strategies, and patterns for comprehensive quality assurance. Covers unit testing,
+      integration testing, end-to-end testing, contract testing, and test architecture decisions for AI-assisted
+      development.
+
+      Context placeholders (provide values for the following):
+
+      - application_type (enum, required, default: api_service) choices: api_service, web_frontend, mobile, library,
+      cli_tool, data_pipeline, microservices — Type of application under test
+
+      - test_maturity (enum, required, default: developing) choices: none, developing, established, advanced — Current
+      testing maturity of the project
+
+      - team_size (enum, default: small) choices: solo, small, medium, large — Size of the development team
+
+      - deployment_frequency (enum, default: daily) choices: weekly, daily, multiple_daily, continuous — How often code
+      is deployed to production
+
+      Task: Based on the description and context values, provide:
+
+      - Top recommended architectural patterns and a one-paragraph rationale.
+
+      - Key tradeoffs (pros/cons).
+
+      - A short implementation checklist (3–6 items).
+
+      - A brief example snippet or configuration as an illustration.

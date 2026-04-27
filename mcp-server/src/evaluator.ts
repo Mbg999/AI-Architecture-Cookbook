@@ -12,6 +12,11 @@ export interface Recommendation {
   matched_node: string;
   rationale: string;
   checklist_summary: { critical: number; high: number; total: number };
+  // Additional explanatory fields
+  one_line_rationale?: string;
+  tradeoffs?: { pros: string[]; cons: string[] };
+  mvp?: "MVP" | "defer" | "unknown";
+  implementation_guidelines?: string[];
 }
 
 const OPS: Record<string, (left: unknown, right: unknown) => boolean> = {
@@ -114,6 +119,42 @@ export function buildRecommendation(
   const result = evaluateDecisionTree(entry, ctx);
   const pattern = entry.patterns.find((p) => p.id === result.pattern);
   const checklist = entry.checklist ?? [];
+  // Extract richer explanatory fields from the matching pattern, if available
+  const patternData: any = pattern ?? {};
+
+  const oneLineRationale =
+    (Array.isArray(patternData.use_when) && patternData.use_when.length)
+      ? String(patternData.use_when[0])
+      : (typeof patternData.description === "string"
+          ? String(patternData.description).split("\n")[0].trim()
+          : "");
+
+  const tradeoffs = {
+    pros: Array.isArray(patternData.tradeoffs?.pros)
+      ? patternData.tradeoffs.pros.map(String)
+      : [],
+    cons: Array.isArray(patternData.tradeoffs?.cons)
+      ? patternData.tradeoffs.cons.map(String)
+      : [],
+  };
+
+  const implementationGuidelines = Array.isArray(patternData.implementation?.guidelines)
+    ? patternData.implementation.guidelines.map(String)
+    : [];
+
+  // Heuristic: decide if a pattern should be considered for MVP vs deferred
+  let mvp: "MVP" | "defer" | "unknown" = "unknown";
+  const maturity = (patternData.maturity && patternData.maturity.level)
+    ? String(patternData.maturity.level).toLowerCase()
+    : "";
+  const userCount = (ctx as any).user_count || (ctx as any).userCount || "";
+  const scale = (ctx as any).scale || "";
+  if (maturity === "standard" || maturity === "best_practice" || maturity === "standard") {
+    mvp = "MVP";
+  } else if (maturity === "enterprise") {
+    if (userCount === "massive" || scale === "enterprise") mvp = "MVP";
+    else mvp = "defer";
+  }
 
   return {
     domain: entry.meta.domain,
@@ -129,5 +170,9 @@ export function buildRecommendation(
       high: checklist.filter((c) => c.severity === "high").length,
       total: checklist.length,
     },
+    one_line_rationale: oneLineRationale || undefined,
+    tradeoffs: (tradeoffs.pros.length || tradeoffs.cons.length) ? tradeoffs : undefined,
+    implementation_guidelines: implementationGuidelines.length ? implementationGuidelines : undefined,
+    mvp,
   };
 }

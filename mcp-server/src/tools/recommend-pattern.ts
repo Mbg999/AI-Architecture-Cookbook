@@ -10,6 +10,11 @@ export const recommendPatternSchema = z.object({
     .array(z.string())
     .optional()
     .describe("Limit recommendation to specific domains (default: all)"),
+  format: z
+    .enum(["human", "machine", "short"]) 
+    .optional()
+    .describe("Preferred output format for prompts and snippets"),
+  include_trace: z.boolean().optional().describe("If true, include decision tree trace details"),
 });
 
 export function recommendPattern(
@@ -61,5 +66,11 @@ export function recommendPattern(
     }),
     unmatched_domains: unmatchedDomains,
     fallbacks_used: fallbacksUsed,
+    // tooling-friendly invocation snippets
+    tool_invocation_snippet: {
+      machine: { name: "recommend_pattern", input: { context: args.context, domains: args.domains } },
+      human: `Call the tool recommend_pattern with input: ${JSON.stringify({ context: args.context, domains: args.domains }, null, 2)}`,
+    },
+    // optional traces will be attached by callers when requested
   };
 }

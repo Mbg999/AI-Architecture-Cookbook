@@ -12,7 +12,8 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "dev": "tsx src/server.ts",
-    "test": "tsx test/runner.ts"
+    "test": "tsx test/runner.ts",
+    "test:tsc": "tsc -p tsconfig.test.json"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
