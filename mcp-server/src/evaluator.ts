@@ -147,8 +147,8 @@ export function buildRecommendation(
   const maturity = (patternData.maturity && patternData.maturity.level)
     ? String(patternData.maturity.level).toLowerCase()
     : "";
-  const userCount = (ctx as any).user_count || (ctx as any).userCount || "";
-  const scale = (ctx as any).scale || "";
+  const userCount = String(ctx["user_count"] ?? ctx["userCount"] ?? "");
+  const scale = String(ctx["scale"] ?? "");
   if (maturity === "standard" || maturity === "best_practice" || maturity === "standard") {
     mvp = "MVP";
   } else if (maturity === "enterprise") {

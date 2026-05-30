@@ -42,7 +42,7 @@ export function promptRecipes(loader: CookbookLoader, args: z.infer<typeof promp
     for (const n of inputs) defaultContext[n] = `<<${n}>>`;
 
     const recipes = entry.prompt_recipes || [];
-    const curated = (CURATED_RECIPES[entry.meta.domain] || []) as any[];
+    const curated = CURATED_RECIPES[entry.meta.domain] || [];
 
     // curated first, then authored
     for (const r of curated) {
@@ -94,7 +94,7 @@ export function promptRecipes(loader: CookbookLoader, args: z.infer<typeof promp
     for (const h of hits) {
       const entry = loader.getEntry(h.domain);
       if (!entry) continue;
-      const curated = (CURATED_RECIPES[entry.meta.domain] || []) as any[];
+      const curated = CURATED_RECIPES[entry.meta.domain] || [];
       const recipes = entry.prompt_recipes || [];
       if (curated.length) {
         for (const r of curated) results.push({ domain: entry.meta.domain, id: r.id, title: r.description || r.id, recipe: r });
@@ -114,7 +114,7 @@ export function promptRecipes(loader: CookbookLoader, args: z.infer<typeof promp
   for (const e of top) {
     const entry = loader.getEntry(e.domain);
     if (!entry) continue;
-    const curated = (CURATED_RECIPES[entry.meta.domain] || []) as any[];
+    const curated = CURATED_RECIPES[entry.meta.domain] || [];
     const recipes = entry.prompt_recipes || [];
     if (curated.length) {
       for (const r of curated) results.push({ domain: entry.meta.domain, id: r.id, title: r.description || r.id, recipe: r });

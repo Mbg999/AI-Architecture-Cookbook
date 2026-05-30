@@ -144,9 +144,9 @@ server.registerTool(
   async (args) => {
     console.error('TOOL_INVOKED: recommend_pattern', JSON.stringify(args));
     try {
-      const res = recommendPattern(loader, args as any);
-      // attach decision traces if requested
-      if ((args as any).include_trace) {
+      const res = recommendPattern(loader, args);
+      const enriched = res as typeof res & { decision_traces?: Record<string, unknown> };
+      if (args.include_trace) {
         const traces: Record<string, unknown> = {};
         for (const r of res.recommendations) {
           try {
@@ -158,13 +158,13 @@ server.registerTool(
             // ignore
           }
         }
-        (res as any).decision_traces = traces;
+        enriched.decision_traces = traces;
       }
 
       console.error('TOOL_COMPLETE: recommend_pattern');
       return {
         content: [
-          { type: "text", text: JSON.stringify(res, null, 2) },
+          { type: "text", text: JSON.stringify(enriched, null, 2) },
         ],
       };
     } catch (e) {
@@ -185,7 +185,7 @@ server.registerTool(
   async (args) => {
     console.error('TOOL_INVOKED: prompt_recipes', JSON.stringify(args));
     try {
-      const res = promptRecipes(loader, args as any);
+      const res = promptRecipes(loader, args);
       console.error('TOOL_COMPLETE: prompt_recipes');
       return { content: [{ type: 'text', text: JSON.stringify(res, null, 2) }] };
     } catch (e) {
@@ -250,7 +250,7 @@ server.registerTool(
   async (args) => {
     console.error('TOOL_INVOKED: recommend_workflow', JSON.stringify(args));
     try {
-      const res = recommendWorkflow(loader, args as any);
+      const res = recommendWorkflow(loader, args);
       console.error('TOOL_COMPLETE: recommend_workflow');
       return { content: [{ type: 'text', text: safeStringify(res) }] };
     } catch (e) {
@@ -431,22 +431,22 @@ async function main() {
   // Wrap the transport onmessage handler to log raw incoming messages for debugging.
   // We capture the existing handler (set by server.connect) and forward to it after logging.
   try {
-    const anyTransport: any = transport as any;
-    const originalOnMessage = anyTransport.onmessage;
-    anyTransport.onmessage = (msg: unknown) => {
+  const debugTransport = transport as unknown as { onmessage?: (msg: unknown) => void };
+  const originalOnMessage = debugTransport.onmessage;
+  debugTransport.onmessage = (msg: unknown) => {
+    try {
+      console.error('RAW_INCOMING_MESSAGE:', JSON.stringify(msg));
+    } catch (e) {
+      console.error('RAW_INCOMING_MESSAGE: <unserializable>');
+    }
+    if (typeof originalOnMessage === 'function') {
       try {
-        console.error('RAW_INCOMING_MESSAGE:', JSON.stringify(msg));
+        originalOnMessage(msg);
       } catch (e) {
-        console.error('RAW_INCOMING_MESSAGE: <unserializable>');
+        console.error('Error forwarding message to original handler', e);
       }
-      if (typeof originalOnMessage === 'function') {
-        try {
-          originalOnMessage(msg);
-        } catch (e) {
-          console.error('Error forwarding message to original handler', e);
-        }
-      }
-    };
+    }
+  };
   } catch (e) {
     console.error('Failed to wrap transport.onmessage for debugging', e);
   }
