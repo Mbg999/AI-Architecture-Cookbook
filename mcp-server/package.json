@@ -9,7 +9,7 @@
     "cookbook-mcp": "dist/server.js"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "build": "rimraf dist && tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "dev": "tsx src/server.ts",
     "test": "tsx test/runner.ts",
@@ -23,6 +23,7 @@
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.19.17",
+    "rimraf": "^6.0.1",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"
   },

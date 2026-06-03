@@ -5,6 +5,12 @@ import { validateRecommendationContext } from './collect-recommendation-context.
 import { getChecklist } from './get-checklist.js';
 import { promptRecipes } from './prompt-recipes.js';
 
+type PatternResult = ReturnType<typeof recommendPattern> & {
+  decision_traces?: Record<string, unknown>;
+  checklists?: Record<string, unknown>;
+  scaffold?: Record<string, unknown>;
+};
+
 export const recommendWorkflowSchema = z.object({
   context: z.record(z.unknown()).optional(),
   mode: z.enum(['quick', 'audit', 'scaffold']).default('quick'),
@@ -16,7 +22,6 @@ export const recommendWorkflowSchema = z.object({
 export function recommendWorkflow(loader: CookbookLoader, args: z.infer<typeof recommendWorkflowSchema>) {
   const inputContext = args.context || {};
 
-  // Validate & normalize the context
   const validation = validateRecommendationContext(inputContext as unknown);
   if (!validation.valid) {
     return {
@@ -29,10 +34,8 @@ export function recommendWorkflow(loader: CookbookLoader, args: z.infer<typeof r
 
   const normalizedContext = validation.normalizedContext as Record<string, unknown>;
 
-  // Core recommendation
-  const rec = recommendPattern(loader, { context: normalizedContext, domains: args.domains });
+  const rec = recommendPattern(loader, { context: normalizedContext, domains: args.domains }) as PatternResult;
 
-  // Attach traces when requested or in audit mode
   if (args.include_trace || args.mode === 'audit') {
     const traces: Record<string, unknown> = {};
     for (const r of rec.recommendations) {
@@ -45,10 +48,9 @@ export function recommendWorkflow(loader: CookbookLoader, args: z.infer<typeof r
         // ignore
       }
     }
-    (rec as any).decision_traces = traces;
+    rec.decision_traces = traces;
   }
 
-  // Attach checklists when requested or in audit mode
   if (args.include_checklist || args.mode === 'audit') {
     const checklists: Record<string, unknown> = {};
     for (const r of rec.recommendations) {
@@ -59,10 +61,9 @@ export function recommendWorkflow(loader: CookbookLoader, args: z.infer<typeof r
         // ignore
       }
     }
-    (rec as any).checklists = checklists;
+    rec.checklists = checklists;
   }
 
-  // Provide scaffold recipes in scaffold mode
   if (args.mode === 'scaffold') {
     const scaffolds: Record<string, unknown> = {};
     for (const r of rec.recommendations) {
@@ -73,7 +74,7 @@ export function recommendWorkflow(loader: CookbookLoader, args: z.infer<typeof r
         // ignore
       }
     }
-    (rec as any).scaffold = scaffolds;
+    rec.scaffold = scaffolds;
   }
 
   return {

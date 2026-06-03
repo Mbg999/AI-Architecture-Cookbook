@@ -51,12 +51,12 @@ SKIP_FILES = {"_index.yaml", "base-template.yaml"}
 # Helpers
 # ---------------------------------------------------------------------------
 def load_schema() -> dict:
-    with open(SCHEMA_PATH) as f:
+    with open(SCHEMA_PATH, encoding="utf-8") as f:
         return json.load(f)
 
 
 def load_yaml(path: Path) -> dict:
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
     # PyYAML parses dates as datetime.date — convert to string for schema validation
     return _convert_dates(data) if data else data
@@ -286,6 +286,9 @@ def validate_index(cat_dir: Path, entry_domains: set[str]) -> list[str]:
 # Main
 # ---------------------------------------------------------------------------
 def main() -> int:
+    # Ensure Unicode output works on Windows (fixes encoding crash)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     target = sys.argv[1] if len(sys.argv) > 1 else None
     schema = load_schema()
     entries = find_entries(target)

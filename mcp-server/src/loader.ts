@@ -1,5 +1,6 @@
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 
 export interface EntryMeta {
@@ -107,10 +108,7 @@ export class CookbookLoader {
     // Resolve repo root robustly. When running from the compiled `dist/` folder,
     // `import.meta.dirname` may point to `.../mcp-server/dist`. We want the
     // repository root (two levels up), or use an explicit `repoRoot` when provided.
-    const metaDir =
-      typeof (import.meta as any).dirname !== "undefined"
-        ? (import.meta as any).dirname
-        : new URL(".", import.meta.url).pathname;
+    const metaDir = dirname(fileURLToPath(import.meta.url));
     const defaultRoot = resolve(join(metaDir, "..", ".."));
     this.repoRoot = repoRoot ?? defaultRoot;
   }

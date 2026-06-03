@@ -66,7 +66,7 @@ export function recommendPatternNl(loader: CookbookLoader, args: z.infer<typeof 
   }
 
   const tokens = tokenize(text);
-  const _args: any = { context: {} };
+  const _args: { context: Record<string, unknown>; domains?: string[] } = { context: {} };
 
   // scale detection
   if (/\benterprise\b/.test(text) || /\blarge\b/.test(text)) _args.context.scale = "enterprise";
@@ -210,7 +210,7 @@ export function recommendPatternNl(loader: CookbookLoader, args: z.infer<typeof 
   const topMatch = text.match(/top\s+(\d+)/);
   if (topMatch && typeof args.top !== 'number') top = Number(topMatch[1]);
 
-  const result = recommendPattern(loader, _args as any);
+  const result = recommendPattern(loader, _args);
   const recs = result.recommendations || [];
 
   // Rerank recommendations by combining pattern confidence with domainScore boosts
@@ -219,7 +219,7 @@ export function recommendPatternNl(loader: CookbookLoader, args: z.infer<typeof 
 
   const scored = recs.map((r) => {
     const domainBoost = domainScores.get(r.domain) || 0;
-    const conf = Number((r.confidence ?? 0) as any) || 0;
+    const conf = Number(r.confidence ?? 0) || 0;
     const score = conf + domainBoost / (maxDomainScore * 2);
     return { rec: r, score };
   });
@@ -232,10 +232,10 @@ export function recommendPatternNl(loader: CookbookLoader, args: z.infer<typeof 
     pattern: r.pattern_name,
     confidence: r.confidence,
     rationale: r.rationale,
-    one_line_rationale: (r as any).one_line_rationale,
-    tradeoffs: (r as any).tradeoffs,
-    mvp: (r as any).mvp,
-    implementation_guidelines: (r as any).implementation_guidelines,
+    one_line_rationale: r.one_line_rationale,
+    tradeoffs: r.tradeoffs,
+    mvp: r.mvp,
+    implementation_guidelines: r.implementation_guidelines,
   }));
 
   // optional decision traces
