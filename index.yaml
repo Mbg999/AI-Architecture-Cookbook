@@ -6,7 +6,7 @@
 schema_version: 1
 name: AI Architecture Cookbook
 description: Architectural standards and decision frameworks for AI code assistants
-total_entries: 43
+total_entries: 48
 categories:
 - id: foundational
   name: Foundational Standards
@@ -175,8 +175,27 @@ categories:
   name: Application Architecture
   description: Structural and design patterns for applications
   path: application-architecture/
-  entry_count: 9
+  entry_count: 10
   entries:
+  - domain: ai-agent-architecture
+    path: application-architecture/ai-agent-architecture/ai-agent-architecture.yaml
+    version: 1.0.0
+    description: AI agent architecture patterns covering agent loops, tool use via function calling or MCP, memory management,
+      planning strategies, and multi-agent orchestration.
+    tags:
+    - ai
+    - agent
+    - function-calling
+    - tool-use
+    - mcp
+    - memory
+    - planning
+    - multi-agent
+    prerequisites:
+    - llm-integration
+    - state-management
+    - messaging-events
+    - api-design
   - domain: dependency-injection
     path: application-architecture/dependency-injection/dependency-injection.yaml
     version: 1.0.0
@@ -310,7 +329,7 @@ categories:
   name: Infrastructure & Deployment
   description: Container, orchestration, CI/CD, and cloud patterns
   path: infrastructure/
-  entry_count: 7
+  entry_count: 8
   entries:
   - domain: ci-cd
     path: infrastructure/ci-cd/ci-cd.yaml
@@ -412,6 +431,24 @@ categories:
     - api-design
     - authentication
     - rate-limiting
+  - domain: model-serving-inference
+    path: infrastructure/model-serving-inference/model-serving-inference.yaml
+    version: 1.0.0
+    description: "Model serving and inference: batch vs real-time, serving platforms, quantization, GPU optimization, edge deployment"
+    tags:
+    - model-serving
+    - inference
+    - quantization
+    - gpu
+    - triton
+    - vllm
+    - tgi
+    - mlops
+    prerequisites:
+    - containerization
+    - orchestration
+    - cloud-architecture
+    - performance-optimization
 - id: security-quality
   name: Security & Quality
   description: Security hardening, testing, and quality assurance
@@ -569,7 +606,7 @@ categories:
   name: Integration & Data
   description: External integrations, data pipelines, and versioning
   path: integration-data/
-  entry_count: 6
+  entry_count: 9
   entries:
   - domain: data-transformation
     path: integration-data/data-transformation/data-transformation.yaml
@@ -605,6 +642,45 @@ categories:
     - authentication
     - encryption
     - input-validation
+  - domain: llm-integration
+    path: integration-data/llm-integration/llm-integration.yaml
+    version: 1.0.0
+    description: LLM integration patterns covering managed API usage, self-hosted inference, prompt engineering, cost control,
+      guardrails, caching, cascading fallbacks, and token budget management.
+    tags:
+    - llm
+    - ai
+    - model-integration
+    - prompt-engineering
+    - inference
+    - guardrails
+    - cost-optimization
+    - caching
+    prerequisites:
+    - api-design
+    - rate-limiting
+    - secrets-management
+    - error-handling
+    - logging-observability
+  - domain: rag-architecture
+    path: integration-data/rag-architecture/rag-architecture.yaml
+    version: 1.0.0
+    description: Retrieval-Augmented Generation (RAG) architectural patterns covering vector databases, embeddings, chunking
+      strategies, re-ranking, hybrid search, grounding, and retrieval evaluation.
+    tags:
+    - rag
+    - retrieval-augmented-generation
+    - vector-search
+    - embeddings
+    - llm
+    - ai
+    - grounding
+    - hybrid-search
+    prerequisites:
+    - search
+    - data-persistence
+    - data-transformation
+    - performance-optimization
   - domain: search
     path: integration-data/search/search.yaml
     version: 1.0.0
@@ -635,6 +711,23 @@ categories:
     prerequisites:
     - error-handling
     - logging-observability
+  - domain: vector-databases
+    path: integration-data/vector-databases/vector-databases.yaml
+    version: 1.0.0
+    description: Vector database selection and architecture patterns covering index types (HNSW, IVF, PQ), embedding dimensions,
+      sharding, hybrid search, multi-tenancy, and provider comparison.
+    tags:
+    - vector-database
+    - embeddings
+    - vector-search
+    - hnsw
+    - ivf
+    - vector-index
+    - hybrid-search
+    prerequisites:
+    - data-persistence
+    - search
+    - performance-optimization
   - domain: versioning
     path: integration-data/versioning/versioning.yaml
     version: 1.0.0
@@ -676,6 +769,12 @@ tag_index:
   - accessibility
   aggregate:
   - domain-driven-design
+  agent:
+  - ai-agent-architecture
+  ai:
+  - rag-architecture
+  - llm-integration
+  - ai-agent-architecture
   alerting:
   - logging-observability
   api:
@@ -719,6 +818,7 @@ tag_index:
   caching:
   - data-persistence
   - performance-optimization
+  - llm-integration
   callbacks:
   - webhooks
   cdn:
@@ -749,6 +849,8 @@ tag_index:
   - containerization
   contract-testing:
   - testing-strategies
+  cost-optimization:
+  - llm-integration
   cqrs:
   - state-management
   creational:
@@ -800,6 +902,9 @@ tag_index:
   - search
   elt:
   - data-transformation
+  embeddings:
+  - rag-architecture
+  - vector-databases
   encryption:
   - encryption
   environment:
@@ -840,6 +945,8 @@ tag_index:
   - database-migration
   full-text-search:
   - search
+  function-calling:
+  - ai-agent-architecture
   gcp:
   - cloud-architecture
   github-actions:
@@ -848,17 +955,28 @@ tag_index:
   - ci-cd
   gof:
   - design-patterns
+  gpu:
+  - model-serving-inference
   graphql:
   - api-design
+  grounding:
+  - rag-architecture
   grpc:
   - api-design
+  guardrails:
+  - llm-integration
   helm:
   - orchestration
   hexagonal:
   - layered-architecture
+  hnsw:
+  - vector-databases
   http:
   - api-design
   - webhooks
+  hybrid-search:
+  - rag-architecture
+  - vector-databases
   iac:
   - infrastructure-as-code
   identity:
@@ -869,6 +987,9 @@ tag_index:
   - accessibility
   indexing:
   - search
+  inference:
+  - llm-integration
+  - model-serving-inference
   infrastructure:
   - infrastructure-as-code
   injection:
@@ -882,6 +1003,8 @@ tag_index:
   - testing-strategies
   ioc:
   - dependency-injection
+  ivf:
+  - vector-databases
   key-management:
   - encryption
   kubernetes:
@@ -894,10 +1017,17 @@ tag_index:
   - code-quality
   liquibase:
   - database-migration
+  llm:
+  - rag-architecture
+  - llm-integration
   logging:
   - logging-observability
   maintainability:
   - code-quality
+  mcp:
+  - ai-agent-architecture
+  memory:
+  - ai-agent-architecture
   messaging:
   - messaging-events
   metrics:
@@ -907,6 +1037,12 @@ tag_index:
   migration:
   - database-migration
   - versioning
+  mlops:
+  - model-serving-inference
+  model-integration:
+  - llm-integration
+  model-serving:
+  - model-serving-inference
   modular:
   - service-architecture
   modularity:
@@ -918,6 +1054,8 @@ tag_index:
   - service-architecture
   multi-cloud:
   - cloud-architecture
+  multi-agent:
+  - ai-agent-architecture
   nosql:
   - data-persistence
   oauth:
@@ -946,24 +1084,32 @@ tag_index:
   - repository-pattern
   pipelines:
   - ci-cd
+  planning:
+  - ai-agent-architecture
   ports-adapters:
   - layered-architecture
   presigned-url:
   - file-storage
   profiling:
   - performance-optimization
+  prompt-engineering:
+  - llm-integration
   pub-sub:
   - messaging-events
   pulumi:
   - infrastructure-as-code
   quality:
   - testing-strategies
+  quantization:
+  - model-serving-inference
   query-object:
   - repository-pattern
   queue:
   - messaging-events
   quotas:
   - rate-limiting
+  rag:
+  - rag-architecture
   rate-limiting:
   - rate-limiting
   - api-gateway-edge-security
@@ -984,6 +1130,8 @@ tag_index:
   - resilience-chaos-engineering
   rest:
   - api-design
+  retrieval-augmented-generation:
+  - rag-architecture
   retry:
   - error-handling
   - resilience-chaos-engineering
@@ -1064,6 +1212,8 @@ tag_index:
   - dependency-injection
   testing:
   - testing-strategies
+  tgi:
+  - model-serving-inference
   third-party:
   - third-party-integration
   throttling:
@@ -1074,8 +1224,12 @@ tag_index:
   tokens:
   - authentication
   - session-management
+  tool-use:
+  - ai-agent-architecture
   tracing:
   - logging-observability
+  triton:
+  - model-serving-inference
   twelve-factor:
   - configuration-management
   ubiquitous-language:
@@ -1088,10 +1242,19 @@ tag_index:
   - file-storage
   validation:
   - input-validation
+  vector-database:
+  - vector-databases
+  vector-index:
+  - vector-databases
+  vector-search:
+  - rag-architecture
+  - vector-databases
   vendor-abstraction:
   - third-party-integration
   versioning:
   - versioning
+  vllm:
+  - model-serving-inference
   wcag:
   - accessibility
   webhooks:

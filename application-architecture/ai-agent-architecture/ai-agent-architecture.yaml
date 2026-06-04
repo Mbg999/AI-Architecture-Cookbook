@@ -1,0 +1,956 @@
+# =============================================================================
+# AI Architecture Cookbook — AI Agent Architecture
+# Schema: v3 | Domain: ai-agent-architecture
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: ai-agent-architecture
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    AI agent architecture patterns covering agent loops, tool use via
+    function calling or MCP, memory management (short-term, long-term,
+    working), planning strategies (reactive, single-step, multi-step,
+    hierarchical), and multi-agent orchestration (supervisor, worker,
+    swarm). Provides context-aware recommendations for building reliable,
+    observable AI agents.
+
+  tags:
+    - ai
+    - agent
+    - function-calling
+    - tool-use
+    - mcp
+    - memory
+    - planning
+    - multi-agent
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - id: llm-integration
+      reason: "Agents rely on LLMs for reasoning, tool selection, and planning"
+    - id: state-management
+      reason: "Agent memory and conversation state require state management"
+    - id: messaging-events
+      reason: "Multi-agent communication uses async messaging patterns"
+    - id: api-design
+      reason: "Agent tools are API wrappers that follow API design patterns"
+
+  related_standards:
+    - id: error-handling
+      relationship: complementary
+      context: "Agents need error handling for tool failures, loops, and timeouts"
+    - id: logging-observability
+      relationship: complementary
+      context: "Agent decision traces and tool calls are critical observability signals"
+    - id: rag-architecture
+      relationship: complementary
+      context: "RAG provides long-term memory and knowledge retrieval for agents"
+
+context_inputs:
+  - name: agent_complexity
+    type: enum
+    description: "How complex the agent's reasoning and orchestration needs to be"
+    required: true
+    default: simple
+    enum_values:
+      - simple
+      - intermediate
+      - advanced
+
+  - name: tool_count
+    type: enum
+    description: "Number of tools available to the agent"
+    required: true
+    default: few
+    enum_values:
+      - few
+      - moderate
+      - many
+
+  - name: memory_requirement
+    type: enum
+    description: "What kind of memory the agent needs"
+    required: false
+    default: stateless
+    enum_values:
+      - stateless
+      - conversational
+      - persistent
+
+  - name: planning_strategy
+    type: enum
+    description: "How the agent plans its actions"
+    required: false
+    default: reactive
+    enum_values:
+      - reactive
+      - single_step
+      - multi_step
+      - hierarchical
+
+  - name: human_in_loop
+    type: boolean
+    description: "Whether human approval is required before executing actions"
+    required: false
+    default: false
+
+  - name: max_iterations
+    type: integer
+    description: "Maximum number of agent loop iterations before forced termination"
+    required: false
+    default: 10
+
+decision_tree:
+  - id: multi_agent_complex
+    priority: 1
+    if:
+      - agent_complexity == advanced
+    then:
+      pattern: multi_agent_orchestration
+      notes: >
+        Advanced complexity requires multiple specialized agents working
+        together. Use supervisor/worker or swarm pattern with async
+        messaging between agents.
+    else:
+      pattern: simple_reactive_agent
+      notes: "Start with a single agent and scale up complexity as needed"
+
+  - id: planning_required
+    priority: 2
+    if:
+      - planning_strategy in [multi_step, hierarchical]
+    then:
+      pattern: planning_agent
+      notes: >
+        Multi-step and hierarchical planning require the agent to
+        decompose tasks, create plans, and execute steps sequentially
+        or in dependency order.
+
+  - id: human_approval
+    priority: 3
+    if:
+      - human_in_loop == true
+    then:
+      pattern: human_in_the_loop
+      notes: >
+        When humans must approve actions, implement pause points
+        before tool execution with approval requests and timeout
+        for auto-continue or auto-reject.
+
+  - id: many_tools
+    priority: 4
+    if:
+      - tool_count in [moderate, many]
+    then:
+      pattern: tool_using_agent
+      notes: >
+        With many tools, the agent needs structured tool selection,
+        tool descriptions, and conflict resolution. Use ReAct pattern.
+
+decision_metadata:
+  confidence: medium
+  risk_if_wrong: critical
+  fallback:
+    pattern: simple_reactive_agent
+    description: "A simple reactive agent with basic function calling is the safe default"
+
+patterns:
+  - id: simple_reactive_agent
+    name: "Simple Reactive Agent"
+    description: >
+      A stateless agent that responds to a single user request by selecting
+      and calling tools in a single turn. No planning, no memory beyond the
+      current context window, and no multi-step reasoning. Suitable for
+      simple automation tasks that map directly to tool calls.
+    use_when:
+      - "Single-turn request-response patterns"
+      - "Few tools with simple, distinct behaviors"
+      - "No need for conversation history or state"
+      - "Starting point before adding complexity"
+    avoid_when:
+      - "Multi-step tasks requiring planning"
+      - "Tasks requiring memory across conversations"
+      - "Complex tool orchestration with dependencies"
+      - "Tasks that may need more than 2-3 tool calls"
+    tradeoffs:
+      pros:
+        - "Simple to implement and debug"
+        - "Low latency (single LLM call + tool execution)"
+        - "No state management overhead"
+        - "Predictable behavior"
+      cons:
+        - "No multi-step reasoning or planning"
+        - "Cannot handle complex task decomposition"
+        - "No memory across conversations"
+        - "Limited to what fits in a single context window"
+    implementation:
+      guidelines:
+        - "Define tool schemas clearly with descriptions for the LLM"
+        - "Set max_tokens and temperature appropriate for tool selection"
+        - "Validate tool call arguments before execution"
+        - "Return structured errors when tools fail"
+        - "Log every tool call: input, output, duration"
+        - "Implement timeout for tool execution"
+        - "Return results in a format the LLM can summarize"
+      common_errors:
+        - error: "Tool descriptions too vague"
+          impact: "Agent calls wrong tool for the task"
+          fix: "Write explicit, unambiguous tool descriptions with example inputs"
+        - error: "No tool argument validation"
+          impact: "Invalid arguments cause tool crashes or data corruption"
+          fix: "Validate all tool arguments before executing the tool"
+        - error: "Agent loops without iteration limit"
+          impact: "Infinite loop calling tools, burning tokens and API costs"
+          fix: "Set max_iterations (default 10); force-stop with explanation"
+    maturity:
+      level: standard
+    standards:
+      - name: "OpenAI Function Calling"
+        type: spec
+        role: "Standard API for tool definitions and LLM tool selection"
+        status: recommended
+      - name: "Anthropic Tool Use"
+        type: spec
+        role: "Tool use API for Claude models"
+        status: recommended
+
+  - id: tool_using_agent
+    name: "Tool-Using Agent with ReAct Pattern"
+    description: >
+      An agent that follows the ReAct (Reasoning + Acting) pattern: it
+      iteratively reasons about the user's request, decides which tool to
+      call, executes it, observes the result, and continues until the task
+      is complete. Supports multiple tools, intermediate reasoning, and
+      adaptive behavior based on tool results.
+    use_when:
+      - "Tasks requiring 3-10 sequential tool calls"
+      - "Tools have dependencies (tool A output is input to tool B)"
+      - "Need to adapt tool selection based on intermediate results"
+      - "Building assistant-like experiences with multi-step reasoning"
+    avoid_when:
+      - "Single-turn tasks (simple reactive agent is simpler)"
+      - "Tasks requiring persistent memory across sessions"
+      - "Very high throughput where iteration cost is prohibitive"
+    tradeoffs:
+      pros:
+        - "Can handle multi-step tasks with reasoning between steps"
+        - "Adapts tool selection based on intermediate results"
+        - "Transparent reasoning trace (useful for debugging)"
+        - "Well-understood pattern with mature library support"
+      cons:
+        - "Higher latency (multiple LLM calls per request)"
+        - "Higher cost (tokens per reasoning step)"
+        - "Can still loop or get stuck without proper guardrails"
+        - "Complexity of managing iteration state"
+    implementation:
+      guidelines:
+        - "Implement the ReAct loop: Thought → Action → Observation → repeat"
+        - "Set max_iterations (10-25 depending on task complexity)"
+        - "Include previous tool results in the conversation context"
+        - "Categorize tools by domain for easier selection"
+        - "Implement tool conflict resolution (two tools can do the same thing)"
+        - "Log the full ReAct trace for debugging and observability"
+        - "Handle tool failures: retry, ask user, or skip and continue"
+        - "Implement early stopping: agent should stop when task is complete"
+      common_errors:
+        - error: "No early stopping condition"
+          impact: "Agent keeps calling tools even after task is done"
+          fix: "Include stop signal in the prompt; check for task completion"
+        - error: "Context window overflow from long ReAct traces"
+          impact: "Agent loses early reasoning context as it iterates"
+          fix: "Summarize or compress intermediate steps; use sliding window"
+        - error: "Hallucinated tool calls"
+          impact: "Agent invokes a tool that doesn't exist"
+          fix: "Validate tool names against registered tools before execution"
+    maturity:
+      level: advanced
+    standards:
+      - name: "LangChain Agent"
+        type: framework
+        role: "ReAct agent framework with tool integration"
+        status: recommended
+      - name: "OpenAI Assistants API"
+        type: tool
+        role: "Managed agent API with code interpreter, retrieval, and function calling"
+        status: recommended
+      - name: "ReAct Pattern"
+        type: pattern
+        role: "Reasoning + Acting iterative loop"
+        status: recommended
+
+  - id: planning_agent
+    name: "Planning Agent with Task Decomposition"
+    description: >
+      Before executing any tools, the agent creates a plan by decomposing
+      the user's request into sub-tasks, ordering them by dependency, and
+      then executing them. Supports dynamic replanning when intermediate
+      results change the plan. Suitable for complex tasks with many
+      interdependent steps.
+    use_when:
+      - "Complex tasks requiring 10+ steps"
+      - "Tasks with clear dependency chains (step B depends on step A)"
+      - "Tasks spanning multiple domains or data sources"
+      - "Need predictable execution order with verification"
+    avoid_when:
+      - "Simple tasks where planning overhead isn't justified"
+      - "Tasks requiring real-time responsiveness"
+      - "Tasks where user may change requirements mid-execution"
+    tradeoffs:
+      pros:
+        - "Predictable execution order with dependency resolution"
+        - "Better at handling long, multi-step tasks than reactive agents"
+        - "Can parallelize independent sub-tasks"
+        - "Provides a clear plan that users can review before execution"
+      cons:
+        - "Planning step adds latency before any execution begins"
+        - "Plan quality depends on the LLM's planning ability"
+        - "Dynamic replanning adds complexity and cost"
+        - "Overkill for tasks with fewer than 5 steps"
+    implementation:
+      guidelines:
+        - "Generate plan with: task description, dependencies, tool assignment, success criteria"
+        - "Validate plan before execution (check dependency graph for cycles)"
+        - "Execute plan step by step, verifying each step's output"
+        - "Implement replanning: if a step fails, regenerate the plan from that point"
+        - "Parallelize independent sub-tasks where possible"
+        - "Present the plan to the user for approval before execution"
+        - "Track plan progress: completed, in-progress, failed, blocked"
+        - "Log plan and execution trace for debugging"
+      common_errors:
+        - error: "Cyclic dependencies in plan"
+          impact: "Agent gets stuck in a loop of dependent sub-tasks"
+          fix: "Validate the dependency graph for cycles before execution"
+        - error: "Plan too granular or too coarse"
+          impact: "Too many steps waste tokens; too few miss dependencies"
+          fix: "Guide the LLM to plan at the right granularity (e.g., 5-15 steps)"
+        - error: "No replanning capability"
+          impact: "First plan failure makes the entire task fail"
+          fix: "Implement replanning: regenerate plan from the failure point"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Plan-and-Execute Pattern"
+        type: pattern
+        role: "Separation of planning from execution"
+        status: recommended
+      - name: "Tree-of-Thoughts (ToT)"
+        type: pattern
+        role: "Tree-based planning with backtracking"
+        status: emerging
+
+  - id: human_in_the_loop
+    name: "Human-in-the-Loop Agent"
+    description: >
+      An agent that pauses before executing potentially impactful tools
+      (e.g., sending email, updating a database, making a payment) and
+      asks for human approval. The approval request includes what the
+      agent intends to do, why, and what the expected outcome is. Supports
+      timeout-based auto-continue or auto-reject for non-critical tasks.
+    use_when:
+      - "Tools that modify data, send communications, or spend money"
+      - "Regulatory or compliance requirements for human oversight"
+      - "High-risk actions where mistakes are costly"
+      - "Onboarding phase — build trust before granting autonomy"
+    avoid_when:
+      - "Read-only tools (search, lookup, calculation)"
+      - "High-throughput automation where human review is a bottleneck"
+      - "Trusted, well-tested scenarios with low risk"
+    tradeoffs:
+      pros:
+        - "Prevents costly or dangerous actions without oversight"
+        - "Builds user trust in the agent"
+        - "Provides an audit trail with human approval timestamps"
+        - "Can be relaxed over time as trust is established"
+      cons:
+        - "Slows down execution — user must respond to approval requests"
+        - "User fatigue from too many approval requests"
+        - "Requires async infrastructure (approval request, waiting, callback)"
+        - "Timeout handling adds complexity"
+    implementation:
+      guidelines:
+        - "Tag tools by risk level: low (auto), medium (notify), high (approve), critical (deny)"
+        - "Pause agent execution before high-risk tool calls"
+        - "Send approval request with: tool, arguments, expected outcome, risk assessment"
+        - "Implement timeout: auto-reject after N seconds for high risk, auto-accept for low risk"
+        - "Log all human approvals and rejections for audit"
+        - "Allow users to override tool risk levels per session"
+        - "Implement batch approval for repetitive safe patterns"
+      common_errors:
+        - error: "Asking for approval on every tool call"
+          impact: "User gets annoyed and stops using the agent"
+          fix: "Only pause for medium/high risk tools; batch low-risk approvals"
+        - error: "No timeout on approval requests"
+          impact: "Agent hangs forever waiting for user response"
+          fix: "Set timeout per risk level; auto-reject on timeout"
+        - error: "User approves without understanding the risk"
+          impact: "Approval becomes meaningless — users click approve reflexively"
+          fix: "Show clear, non-technical descriptions of what the tool will do"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "CrewAI Human Input"
+        type: framework
+        role: "Built-in human input for agent approval"
+        status: recommended
+      - name: "AutoGen Human-in-the-Loop"
+        type: pattern
+        role: "Human interruption and approval in multi-agent conversations"
+        status: recommended
+
+  - id: multi_agent_orchestration
+    name: "Multi-Agent Orchestration"
+    description: >
+      Multiple specialized agents collaborate to solve complex tasks.
+      Uses a supervisor agent that delegates to worker agents, or a
+      swarm pattern where agents communicate directly. Each agent has
+      a specific role, tools, and knowledge. Communication happens via
+      structured messages or a shared blackboard.
+    use_when:
+      - "Tasks span multiple domains (research + code + data analysis)"
+      - "Single agent context window is insufficient"
+      - "Need specialized expertise in different areas"
+      - "Building complex workflows with clear role separation"
+    avoid_when:
+      - "Tasks a single agent can handle"
+      - "Simple automation (overhead of multi-agent isn't justified)"
+      - "High-throughput systems where latency matters"
+    tradeoffs:
+      pros:
+        - "Each agent can be optimized for its specific role"
+        - "Better at complex tasks than any single agent"
+        - "Natural separation of concerns (research agent vs code agent)"
+        - "Can use different models per agent (cheap model for simple tasks)"
+      cons:
+        - "Complex orchestration logic (communication, coordination)"
+        - "Higher latency and cost from multiple agent rounds"
+        - "Debugging is harder — errors propagate between agents"
+        - "Risk of agent loops between agents"
+    implementation:
+      guidelines:
+        - "Supervisor pattern: one agent delegates to specialized workers"
+        - "Swarm pattern: agents communicate directly via structured messages"
+        - "Define clear agent roles: what each agent can and cannot do"
+        - "Set max delegation depth to prevent infinite agent chains"
+        - "Implement shared context (blackboard) for agents to read/write"
+        - "Log all inter-agent messages for debugging"
+        - "Use async messaging for agent communication (queue-based)"
+        - "Assign different LLM models to agents based on task complexity"
+      common_errors:
+        - error: "Agents arguing or contradicting each other"
+          impact: "No progress — agents keep debating instead of producing output"
+          fix: "Supervisor has final authority; implement voting or tie-breaking"
+        - error: "Infinite delegation loops"
+          impact: "Agent A delegates to B, who delegates back to A, ad infinitum"
+          fix: "Set max delegation depth; supervisor must detect cycles"
+        - error: "No shared context consistency"
+          impact: "Each agent has a different version of the task state"
+          fix: "Use a shared blackboard or event store for single source of truth"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "CrewAI"
+        type: framework
+        role: "Multi-agent orchestration framework with role-based agents"
+        status: recommended
+      - name: "AutoGen"
+        type: framework
+        role: "Microsoft multi-agent conversation framework"
+        status: recommended
+      - name: "LangGraph"
+        type: framework
+        role: "Stateful multi-agent workflow orchestration"
+        status: recommended
+
+examples:
+  - id: agent_react_loop
+    title: "ReAct Agent Loop with Tool Use"
+    context: "Building a research assistant that searches, reads, and summarizes"
+    correct: |
+      # ReAct Agent Loop — Correct Implementation
+
+      class ReActAgent:
+          def __init__(self, tools: list[Tool], max_iterations: int = 15):
+              self.tools = {t.name: t for t in tools}
+              self.max_iterations = max_iterations
+              self.trace = []
+
+          async def run(self, user_request: str) -> str:
+              messages = [{"role": "user", "content": user_request}]
+              iteration = 0
+              tool_descriptions = self._format_tool_descriptions()
+
+              while iteration < self.max_iterations:
+                  iteration += 1
+
+                  # 1. REASON — LLM decides what to do next
+                  response = await self.llm.chat(messages, tools=tool_descriptions)
+                  messages.append({"role": "assistant", "content": response.content})
+
+                  # 2. ACT or FINISH
+                  if response.tool_call is None:
+                      return response.content  # Task complete
+
+                  # 3. VALIDATE tool call
+                  tool_name = response.tool_call.function.name
+                  arguments = json.loads(response.tool_call.function.arguments)
+                  if tool_name not in self.tools:
+                      messages.append({
+                          "role": "tool",
+                          "content": f"Error: tool '{tool_name}' not found",
+                          "tool_call_id": response.tool_call.id,
+                      })
+                      continue
+
+                  # 4. EXECUTE tool with timeout
+                  try:
+                      result = await asyncio.wait_for(
+                          self.tools[tool_name].execute(**arguments),
+                          timeout=30,
+                      )
+                  except TimeoutError:
+                      result = "Error: tool execution timed out"
+                  except Exception as e:
+                      result = f"Error: {str(e)}"
+
+                  # 5. OBSERVE — Feed result back to LLM
+                  messages.append({
+                      "role": "tool",
+                      "content": str(result),
+                      "tool_call_id": response.tool_call.id,
+                  })
+                  self.trace.append({
+                      "iteration": iteration,
+                      "thought": response.content,
+                      "tool": tool_name,
+                      "arguments": arguments,
+                      "result": result,
+                  })
+
+              # Force-stop after max iterations
+              return await self.llm.chat(messages + [
+                  {"role": "user", "content": "Summarize what you've done so far."}
+              ])
+
+          def _format_tool_descriptions(self):
+              return [{
+                  "type": "function",
+                  "function": {
+                      "name": t.name,
+                      "description": t.description,
+                      "parameters": t.parameters,
+                  }
+              } for t in self.tools.values()]
+
+      # Usage
+      agent = ReActAgent(tools=[search_web, read_url, summarize_text])
+      result = await agent.run("Research the latest AI agent frameworks and compare them")
+    incorrect: |
+      # WRONG: Basic agent without iteration control or error handling
+
+      class BadAgent:
+          def __init__(self):
+              self.tools = {}  # No tool registry, no validation
+
+          async def run(self, request):
+              messages = [{"role": "user", "content": request}]
+
+              while True:  # NO MAX ITERATIONS — infinite loop risk
+                  response = openai.chat.completions.create(
+                      model="gpt-4",
+                      messages=messages,
+                  )
+                  msg = response.choices[0].message
+
+                  if not msg.tool_calls:
+                      break  # Assume done
+
+                  for call in msg.tool_calls:
+                      # No tool name validation — hallucinated tools crash
+                      result = eval(call.function.arguments)  # SECURITY RISK — eval!
+                      messages.append({
+                          "role": "tool",
+                          "content": str(result),
+                      })
+
+              return messages[-1]["content"]
+
+          # Problems:
+          # 1. No max_iterations — infinite loop risk
+          # 2. No tool registry — hallucinated tools crash
+          # 3. Uses eval() — code injection vulnerability
+          # 4. No error handling — exceptions crash the agent
+          # 5. No timeout — tool can hang forever
+          # 6. No logging — can't debug what happened
+    explanation: >
+      The correct example implements the ReAct pattern with: iteration
+      limit, tool registry with validation, timeout on tool execution,
+      structured error handling, and full logging trace. The incorrect
+      example has infinite loops, no validation, eval() injection risk,
+      and no error handling.
+
+  - id: multi_agent_supervisor
+    title: "Supervisor/Worker Multi-Agent Pattern"
+    context: "Building a document analysis system with specialized agents"
+    correct: |
+      # Supervisor/Worker Multi-Agent System
+
+      class SupervisorAgent:
+          """Delegates work to specialized agents and synthesizes results."""
+
+          async def run(self, task: str) -> str:
+              plan = await self.create_plan(task)
+              results = {}
+
+              for step in plan.steps:
+                  agent = self.get_agent(step.assigned_role)
+                  result = await agent.execute(step)
+                  results[step.id] = result
+
+              return await self.synthesize(plan, results)
+
+          async def create_plan(self, task: str) -> Plan:
+              prompt = f"""
+              Decompose this task into sub-tasks and assign each to an agent role.
+
+              Available agents:
+              - researcher: searches and gathers information
+              - analyst: processes data and creates charts
+              - writer: produces final report text
+
+              Task: {task}
+
+              Return plan with: step_id, assigned_role, description, dependencies.
+              """
+              response = await self.llm.complete(prompt)
+              return Plan.parse(response)
+
+      class WorkerAgent:
+          """Specialized agent that executes a specific type of task."""
+
+          def __init__(self, role: str, tools: list[Tool]):
+              self.role = role
+              self.tools = tools
+              self.max_iterations = 10
+
+          async def execute(self, step: Step) -> StepResult:
+              result = await ReActAgent(self.tools, self.max_iterations).run(
+                  step.description
+              )
+              return StepResult(step_id=step.id, output=result)
+
+      # Multi-agent communication via structured messages
+      supervisor = SupervisorAgent()
+      result = await supervisor.run(
+          "Analyze Q3 financial report: gather data, create charts, write summary"
+      )
+    incorrect: |
+      # WRONG: Unstructured multi-agent with no coordination
+
+      class BadMultiAgent:
+          """Agents talk directly with no supervisor or structure."""
+
+          async def run_all(self, task):
+              researcher = ResearchAgent()
+              analyst = AnalystAgent()
+
+              # No plan — agents work independently without coordination
+              research_result = await researcher.run(task)
+              analysis_result = await analyst.run(task)
+
+              # No synthesis — two disconnected outputs
+              return f"Research: {research_result}\nAnalysis: {analysis_result}"
+
+          # Problems:
+          # 1. No planning — agents don't know about each other's work
+          # 2. No dependency handling — analyst doesn't wait for researcher
+          # 3. No shared context — agents have different data
+          # 4. No supervisor to synthesize results
+          # 5. Each agent duplicates work (both may search the same sources)
+    explanation: >
+      The supervisor/worker pattern provides clear role separation, plan
+      generation, dependency resolution, and result synthesis. The incorrect
+      example runs agents in isolation with no coordination or shared context.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All agent-to-tool communication over TLS"
+      - "Inter-agent messaging encrypted in transit"
+  data_protection:
+    requirements:
+      - "Agent memory and conversation state encrypted at rest"
+      - "Tool input/output data classified and protected based on data sensitivity"
+      - "PII redacted from agent traces before logging"
+  access_control:
+    requirements:
+      - "Tools authenticated and authorized per agent role"
+      - "Human approval gates for sensitive tool executions"
+      - "Agent identity verified for inter-agent communication"
+  input_output:
+    requirements:
+      - "Tool arguments validated against schema before execution"
+      - "Agent output sanitized — prevent prompt injection from tool results"
+      - "No eval() or dynamic code execution in tool calls"
+  secrets:
+    requirements:
+      - "Tool API keys and credentials stored in secrets manager"
+      - "Agent authentication tokens rotated regularly"
+  monitoring:
+    requirements:
+      - "Full agent trace logged: thoughts, tool calls, results, iterations"
+      - "Agent loop detection (excessive iterations or repetitive behavior)"
+      - "Human approval events logged for audit"
+      - "Cost per agent run tracked (tokens + tool execution costs)"
+
+compliance:
+  standards:
+    - name: "GDPR"
+      relevance: "Agent memory stores personal data — must support deletion and access requests"
+    - name: "SOC 2"
+      relevance: "Agent decision traces and human approval logs are audit artifacts"
+    - name: "NIST AI RMF"
+      relevance: "AI agents should follow risk management practices for autonomous systems"
+
+  requirements_mapping:
+    - control: agent_safety
+      description: "Agents must have iteration limits, timeout, and human override"
+      maps_to:
+        - "NIST AI RMF safe AI practices"
+    - control: audit_trace
+      description: "Every agent decision and tool call logged for audit"
+      maps_to:
+        - "SOC 2 audit controls"
+    - control: memory_privacy
+      description: "Agent memory stores must respect data retention and deletion policies"
+      maps_to:
+        - "GDPR right to erasure"
+    - control: tool_access_control
+      description: "Tool execution must be authorized per agent role"
+      maps_to:
+        - "Principle of least privilege"
+
+prompt_recipes:
+  - id: agent_greenfield
+    scenario: greenfield
+    description: "Design an AI agent architecture from scratch"
+    prompt: |
+      Design an AI agent for {task}.
+
+      Context:
+      - Agent complexity: [simple/intermediate/advanced]
+      - Number of tools: [few/moderate/many]
+      - Memory requirement: [stateless/conversational/persistent]
+      - Planning strategy: [reactive/single_step/multi_step/hierarchical]
+      - Human in the loop: [yes/no]
+
+      Architecture:
+      1. Agent type: reactive, tool-using, planning, or multi-agent?
+      2. Tool design: tool definitions, schemas, and descriptions
+      3. Memory strategy: context window, conversation history, or persistent store?
+      4. Loop control: max iterations, early stopping, timeout
+      5. Error handling: retry, fallback, graceful degradation
+      6. Observability: trace logging, cost tracking, performance monitoring
+      7. Safety: input/output guardrails, human approval gates
+
+  - id: agent_optimization
+    scenario: performance
+    description: "Optimize agent performance and cost"
+    prompt: |
+      Optimize the agent for {application}.
+
+      Performance:
+      1. Profile average iterations per request
+      2. Reduce iterations by improving tool descriptions
+      3. Cache frequent tool results
+      4. Parallelize independent tool calls
+      5. Use cheaper models for simple reasoning steps
+
+      Cost:
+      1. Track tokens per agent run (prompt + completion per iteration)
+      2. Identify and eliminate unnecessary tool calls
+      3. Compress conversation history to reduce prompt size
+      4. Set per-agent budget limits
+      5. Cascade: use cheap model for initial passes, expensive model for final
+
+  - id: agent_audit
+    scenario: audit
+    description: "Audit agent system for safety, reliability, and cost"
+    prompt: |
+      Audit the agent system for {application}.
+
+      Safety:
+      1. Is there a max iteration limit per run?
+      2. Are high-risk tools gated by human approval?
+      3. Are tool arguments validated before execution?
+      4. Is there a kill switch to stop runaway agents?
+      5. Are agent decisions logged with full trace?
+
+      Reliability:
+      1. Are tool failures handled gracefully (retry, skip, ask user)?
+      2. Is there a circuit breaker for failing tools?
+      3. Are timeouts configured for tool execution?
+      4. Is conversation history managed to prevent context overflow?
+      5. Is there a fallback when the LLM is unavailable?
+
+      Cost:
+      1. Is token usage tracked per agent run?
+      2. Are there per-user or per-feature agent budgets?
+      3. Are expensive tools used only when necessary?
+      4. Is there a cost alert for anomalous agent behavior?
+
+  - id: agent_migration
+    scenario: migration
+    description: "Migrate from single-agent to multi-agent architecture"
+    prompt: |
+      Migrate {application} from single-agent to multi-agent architecture.
+
+      Steps:
+      1. Audit current agent: what roles does it play? What tools does it use?
+      2. Identify natural role boundaries (research, analysis, action)
+      3. Design agent roles and responsibilities
+      4. Choose orchestration: supervisor/worker or swarm pattern
+      5. Implement inter-agent messaging protocol
+      6. Decompose current tools into per-agent tool sets
+      7. Implement shared context (blackboard or event store)
+      8. Add supervisor agent with delegation logic
+      9. Run shadow mode: both architectures in parallel
+      10. Gradually shift traffic to multi-agent system
+
+anti_patterns:
+  - name: "Infinite Agent Loop"
+    description: >
+      Agent with no iteration limit keeps calling tools indefinitely,
+      burning tokens and never completing. Can happen when the agent
+      is stuck in a cycle or the task is ambiguous.
+    fix: "Set max_iterations (10-25); implement early stopping detection; force-stop with summary after limit"
+    severity: critical
+    related_pattern: tool_using_agent
+
+  - name: "Agent as God Object"
+    description: >
+      A single agent that does everything — searches, writes code, sends
+      emails, modifies databases, makes payments. Creates a monolithic,
+      hard-to-secure system where one mistake can cause maximum damage.
+    fix: "Separate agents by role; each agent has limited tools and permissions; use supervisor pattern"
+    severity: high
+    related_pattern: multi_agent_orchestration
+
+  - name: "No Human Override"
+    description: >
+      Autonomous agent with no kill switch or human override. When the
+      agent malfunctions, there's no way to stop it from continuing to
+      call tools, spend money, or modify data.
+    fix: "Implement kill switch (API endpoint); human approval for high-risk actions; rate limit agent actions"
+    severity: critical
+    related_pattern: human_in_the_loop
+
+  - name: "Revealing System Prompt in Tool Output"
+    description: >
+      Tool outputs include system prompt fragments or agent instructions,
+      which the LLM then treats as new instructions (prompt injection).
+    fix: "Filter tool outputs; strip any content that looks like system instructions before feeding to LLM"
+    severity: high
+    related_pattern: tool_using_agent
+
+  - name: "Too Many Tools Per Agent"
+    description: >
+      Giving an agent 50+ tools. The LLM struggles to select the right
+      tool from a large list, increasing latency, cost, and error rate.
+    fix: "Keep tool count per agent under 20; group related tools; use multi-agent with fewer tools per agent"
+    severity: medium
+    related_pattern: tool_using_agent
+
+checklist:
+  - id: AG-01
+    category: reliability
+    description: "Max iteration limit configured (default 10-25)"
+    severity: critical
+    verified_by: tool_using_agent
+
+  - id: AG-02
+    category: reliability
+    description: "Tool execution timeout configured (default 30s)"
+    severity: critical
+    verified_by: tool_using_agent
+
+  - id: AG-03
+    category: reliability
+    description: "Tool arguments validated against schema before execution"
+    severity: high
+    verified_by: tool_using_agent
+
+  - id: AG-04
+    category: reliability
+    description: "Tool failure handled gracefully: retry, skip, or ask user"
+    severity: high
+    verified_by: tool_using_agent
+
+  - id: AG-05
+    category: security
+    description: "High-risk tools gated by human approval"
+    severity: critical
+    verified_by: human_in_the_loop
+
+  - id: AG-06
+    category: security
+    description: "No eval() or dynamic code execution in tool calls"
+    severity: critical
+    verified_by: tool_using_agent
+
+  - id: AG-07
+    category: security
+    description: "Agent identity verified for inter-agent communication"
+    severity: high
+    verified_by: multi_agent_orchestration
+
+  - id: AG-08
+    category: observability
+    description: "Full agent trace logged: thoughts, tool calls, results"
+    severity: high
+    verified_by: tool_using_agent
+
+  - id: AG-09
+    category: observability
+    description: "Iteration count and token usage tracked per agent run"
+    severity: medium
+    verified_by: tool_using_agent
+
+  - id: AG-10
+    category: observability
+    description: "Cost tracked per agent run (tokens + tool execution costs)"
+    severity: medium
+    verified_by: tool_using_agent
+
+  - id: AG-11
+    category: correctness
+    description: "Tool descriptions clear and unambiguous"
+    severity: high
+    verified_by: tool_using_agent
+
+  - id: AG-12
+    category: correctness
+    description: "Agent remembers conversation context across turns"
+    severity: medium
+    verified_by: tool_using_agent
+
+  - id: AG-13
+    category: reliability
+    description: "Kill switch available to stop runaway agents"
+    severity: critical
+    verified_by: human_in_the_loop
+
+  - id: AG-14
+    category: performance
+    description: "Independent tool calls executed in parallel"
+    severity: medium
+    verified_by: planning_agent
+
+  - id: AG-15
+    category: reliability
+    description: "Inter-agent delegation depth limited (max 5)"
+    severity: high
+    verified_by: multi_agent_orchestration

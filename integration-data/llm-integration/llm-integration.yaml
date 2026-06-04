@@ -1,0 +1,1023 @@
+# =============================================================================
+# AI Architecture Cookbook — LLM Integration
+# Schema: v3 | Domain: llm-integration
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: llm-integration
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    LLM integration patterns covering managed API usage, self-hosted inference,
+    prompt engineering best practices, cost control, latency optimization,
+    guardrails, caching, cascading fallbacks, and token budget management.
+    Provides context-aware recommendations for safely and cost-effectively
+    integrating LLMs into production applications.
+
+  tags:
+    - llm
+    - ai
+    - model-integration
+    - prompt-engineering
+    - inference
+    - guardrails
+    - cost-optimization
+    - caching
+
+  categories:
+    - integration-data
+
+  prerequisites:
+    - id: api-design
+      reason: "LLM integration follows API design patterns for request/response handling"
+    - id: rate-limiting
+      reason: "LLM API calls must be rate-limited to stay within tier limits and budgets"
+    - id: secrets-management
+      reason: "LLM API keys and model credentials require secure storage"
+    - id: error-handling
+      reason: "LLM failures (timeouts, rate limits, content filters) need robust error handling"
+    - id: logging-observability
+      reason: "LLM call latency, token usage, and failure rates are critical observability signals"
+
+  related_standards:
+    - id: input-validation
+      relationship: complementary
+      context: "LLM prompts must be validated and sanitized for injection attacks"
+    - id: performance-optimization
+      relationship: complementary
+      context: "LLM latency optimization requires caching, batching, and streaming"
+    - id: rag-architecture
+      relationship: complementary
+      context: "RAG is a key pattern for grounding LLM responses in retrieved context"
+    - id: messaging-events
+      relationship: complementary
+      context: "Async LLM processing fits event-driven architectures for long-running inference"
+
+context_inputs:
+  - name: model_source
+    type: enum
+    description: "How the LLM is hosted and accessed"
+    required: true
+    default: api_managed
+    enum_values:
+      - api_managed
+      - self_hosted
+      - hybrid
+
+  - name: cost_sensitivity
+    type: enum
+    description: "How tight the budget is for LLM inference"
+    required: true
+    default: medium
+    enum_values:
+      - low
+      - medium
+      - high
+
+  - name: latency_requirement
+    type: enum
+    description: "Target response time for LLM inference"
+    required: true
+    default: interactive
+    enum_values:
+      - realtime
+      - interactive
+      - batch
+
+  - name: privacy_requirement
+    type: enum
+    description: "How sensitive the data sent to the LLM is"
+    required: false
+    default: moderate
+    enum_values:
+      - strict
+      - moderate
+      - none
+
+  - name: guardrails_required
+    type: boolean
+    description: "Whether content filtering and safety guardrails are needed"
+    required: false
+    default: true
+
+  - name: expected_throughput
+    type: enum
+    description: "Expected volume of LLM inference requests"
+    required: false
+    default: low
+    enum_values:
+      - low
+      - medium
+      - high
+      - very_high
+
+decision_tree:
+  - id: strict_privacy
+    priority: 1
+    if:
+      - privacy_requirement == strict
+    then:
+      pattern: self_hosted_inference
+      standards:
+        - "vLLM"
+        - "Ollama"
+        - "Text Generation Inference (TGI)"
+      notes: >
+        Strict privacy means data cannot leave your infrastructure.
+        Self-host using vLLM, TGI, or Ollama. This avoids sending
+        sensitive data to third-party API providers.
+    else:
+      pattern: standard_api_integration
+      notes: "When privacy is not strict, managed APIs provide the best cost-performance ratio"
+
+  - id: cost_sensitive_high_volume
+    priority: 2
+    if:
+      - cost_sensitivity == high
+      - expected_throughput in [high, very_high]
+    then:
+      pattern: managed_with_caching
+      notes: >
+        For high-volume, cost-sensitive workloads, cache frequent prompts
+        and responses aggressively. Use semantic caching to reuse results
+        for semantically similar inputs. Consider self-hosting for very
+        high volume.
+
+  - id: realtime_latency
+    priority: 3
+    if:
+      - latency_requirement == realtime
+    then:
+      pattern: optimized_realtime
+      notes: >
+        Real-time LLM requires streaming, speculative decoding, and model
+        quantization. Use smaller models for first-pass responses and
+        fall back to larger models for complex cases.
+    else:
+      pattern: standard_api_integration
+      notes: "Interactive and batch workloads can use standard non-streaming API calls"
+
+  - id: guardrails_needed
+    priority: 4
+    if:
+      - guardrails_required == true
+    then:
+      pattern: guarded_integration
+      notes: >
+        Content filtering, PII detection, prompt injection prevention,
+        and output validation should wrap every LLM call to ensure
+        safe operation in production.
+
+  - id: high_reliability
+    priority: 5
+    if:
+      - expected_throughput in [high, very_high]
+    then:
+      pattern: cascade_fallback
+      notes: >
+        High-throughput production systems need cascading fallback:
+        primary → secondary → degrade gracefully.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: critical
+  fallback:
+    pattern: standard_api_integration
+    description: "Direct API call to a managed LLM provider is the safe default"
+
+patterns:
+  - id: standard_api_integration
+    name: "Standard LLM API Integration"
+    description: >
+      Direct integration with a managed LLM provider (OpenAI, Anthropic,
+      Google, AWS Bedrock, Azure OpenAI) via their REST API or SDK.
+      Suitable for most use cases where data privacy allows external
+      API calls and latency requirements are interactive (1-5 seconds).
+    use_when:
+      - "No strict data privacy requirements"
+      - "Latency requirement is interactive (1-5s)"
+      - "Low to medium throughput (< 100 RPS)"
+      - "Want fastest time-to-market with minimal ops overhead"
+    avoid_when:
+      - "Strict data privacy (PII, PHI, trade secrets)"
+      - "Very high throughput where API costs dominate"
+      - "Sub-500ms latency requirement"
+      - "Offline or air-gapped deployment"
+    tradeoffs:
+      pros:
+        - "Zero infrastructure to manage"
+        - "Access to best-in-class models (GPT-4, Claude, Gemini)"
+        - "Pay-per-token, no fixed costs"
+        - "Automatic model updates and improvements"
+        - "Built-in content filtering and safety"
+      cons:
+        - "Data leaves your infrastructure"
+        - "Per-token cost can be high at scale"
+        - "Vendor lock-in risk"
+        - "Latency includes network round-trip (typically 1-5s)"
+        - "Rate limits and capacity constraints"
+    implementation:
+      guidelines:
+        - "Use official SDKs — they handle retries, streaming, error handling"
+        - "Implement circuit breaker for API failures"
+        - "Set per-user rate limits to prevent abuse and cost spikes"
+        - "Log all API calls with user_id, prompt_hash, token_count, latency"
+        - "Monitor token usage per user and per feature"
+        - "Set hard spend limits with alerts at 80%, 90%, 100%"
+        - "Use separate API keys per environment (dev, staging, prod)"
+        - "Implement request timeout (retry 3x with exponential backoff)"
+        - "Version the prompt template along with the API model version"
+      common_errors:
+        - error: "No retry logic with backoff"
+          impact: "Transient failures cause user-facing errors"
+          fix: "Implement retry with exponential backoff (3 attempts, starting at 1s)"
+        - error: "No usage tracking"
+          impact: "Surprise bills, can't attribute costs to features or users"
+          fix: "Track tokens per user, feature, and model; set budget alerts"
+        - error: "Hardcoding API keys in code"
+          impact: "Credential leaks in version control"
+          fix: "Store API keys in secrets manager; inject as env vars"
+        - error: "Exposing raw model output without validation"
+          impact: "Model hallucinations or injection content reaches users"
+          fix: "Always validate and sanitize model output before returning"
+    maturity:
+      level: standard
+    standards:
+      - name: "OpenAI API"
+        type: tool
+        role: "Managed LLM API with GPT-4o, GPT-4, and embedding models"
+        status: recommended
+      - name: "Anthropic API"
+        type: tool
+        role: "Managed LLM API with Claude 3.5 models"
+        status: recommended
+      - name: "AWS Bedrock"
+        type: tool
+        role: "Managed API for multiple foundation models"
+        status: recommended
+      - name: "Google Gemini API"
+        type: tool
+        role: "Managed multimodal LLM API"
+        status: recommended
+
+  - id: self_hosted_inference
+    name: "Self-Hosted LLM Inference"
+    description: >
+      Deploy open-source LLMs on your own infrastructure using vLLM,
+      Ollama, Text Generation Inference (TGI), or llama.cpp. Required
+      when data privacy prevents external API calls, when latency needs
+      to be sub-100ms, or when long-running batch inference is cheaper
+      than per-token API pricing.
+    use_when:
+      - "Strict data privacy: PII, PHI, trade secrets, legal data"
+      - "Sub-500ms latency requirement"
+      - "Very high throughput where API costs exceed self-hosting"
+      - "Offline, air-gapped, or edge deployment"
+      - "Need specific open-source model not available via API"
+    avoid_when:
+      - "No GPU infrastructure or budget"
+      - "Low throughput makes API pricing more cost-effective"
+      - "Need the absolute best model quality (frontier models are API-only)"
+      - "No team capacity for infrastructure maintenance"
+    tradeoffs:
+      pros:
+        - "Data never leaves your infrastructure"
+        - "Sub-100ms latency after first token"
+        - "Predictable cost (fixed infrastructure, no per-token fees)"
+        - "No rate limits — full control over throughput"
+        - "Can use custom models (fine-tuned, distilled)"
+      cons:
+        - "GPU infrastructure is expensive and complex"
+        - "Requires ML ops expertise (model deployment, scaling)"
+        - "Model quality is below frontier API models"
+        - "Must manage updates, security patches, capacity"
+        - "Cold start latency for new model instances"
+    implementation:
+      guidelines:
+        - "Use vLLM for high-throughput serving with PagedAttention"
+        - "Quantize models (FP16 → INT4/INT8) to reduce GPU memory by 2-4x"
+        - "Right-size GPU: count model parameters vs GPU VRAM"
+        - "Use continuous batching for throughput (vLLM, TGI)"
+        - "Implement request queuing for burst smoothing"
+        - "Pre-warm model instances to avoid cold starts"
+        - "Monitor GPU utilization, memory, and request latency"
+        - "Scale horizontally: multiple instances with load balancer"
+        - "Use ONNX Runtime for CPU-only inference when GPU unavailable"
+        - "Schedule large batch jobs during off-peak hours"
+      common_errors:
+        - error: "Under-provisioning GPU memory"
+          impact: "Out of memory errors, models fail to load"
+          fix: "Calculate: model_size (params * 2 for FP16 + 20% overhead) * concurrent_requests"
+        - error: "No request queuing"
+          impact: "Bursts of requests overwhelm the inference server"
+          fix: "Implement queue with max concurrency; reject with 503 when full"
+        - error: "Serving without quantization for high throughput"
+          impact: "GPU memory limits batch size; throughput suffers"
+          fix: "Quantize to INT4 or INT8; measure quality impact first"
+    maturity:
+      level: advanced
+    standards:
+      - name: "vLLM"
+        type: tool
+        role: "High-throughput LLM serving engine with PagedAttention"
+        status: recommended
+      - name: "Ollama"
+        type: tool
+        role: "Simple local LLM runner for development and edge"
+        status: recommended
+      - name: "Text Generation Inference (TGI)"
+        type: tool
+        role: "HuggingFace's inference server for production"
+        status: recommended
+      - name: "llama.cpp"
+        type: tool
+        role: "CPU-optimized LLM inference with quantization"
+        status: recommended
+
+  - id: managed_with_caching
+    name: "Managed API with Semantic Caching"
+    description: >
+      Use a managed LLM API but add a semantic caching layer that
+      intercepts requests. When a user query is semantically similar
+      to a previously cached result, return the cached response instead
+      of calling the API. Dramatically reduces cost and latency for
+      repeated or similar queries.
+    use_when:
+      - "High query volume with many repeat or similar questions"
+      - "Cost optimization is a priority"
+      - "FAQ, customer support, documentation Q&A use cases"
+      - "Response consistency is valued over freshness"
+    avoid_when:
+      - "Every query is unique (creative writing, code generation)"
+      - "Stateful conversations where context must be fresh"
+      - "Strict real-time accuracy on changing data"
+    tradeoffs:
+      pros:
+        - "30-80% reduction in API costs for repetitive queries"
+        - "Response time drops from seconds to milliseconds (cache hit)"
+        - "Reduced rate limit pressure"
+        - "Consistent responses for identical questions"
+      cons:
+        - "Stale responses if underlying data changes"
+        - "Semantic cache requires embedding computation (adds latency on miss)"
+        - "Cache invalidation is non-trivial"
+        - "Storage cost for embedding cache (vector DB)"
+    implementation:
+      guidelines:
+        - "Use embedding similarity (cosine > 0.95) to detect cache hits"
+        - "Set TTL (time-to-live) for cached responses based on data freshness"
+        - "Cache per user or per tenant to avoid cross-user data leaks"
+        - "Implement cache warming: pre-compute responses for frequent queries"
+        - "Log cache hit rate to measure cost savings"
+        - "Invalidate cache entries when source documents change"
+        - "Use LRU eviction with a max cache size"
+        - "Cache at the prompt level, not just the response"
+      common_errors:
+        - error: "Cache hit on semantically different queries"
+          impact: "Wrong or misleading responses returned from cache"
+          fix: "Use high similarity threshold (> 0.95); validate in production"
+        - error: "No cache invalidation"
+          impact: "Responses become stale and incorrect over time"
+          fix: "Set TTL; invalidate on document or data changes"
+        - error: "Cross-tenant cache contamination"
+          impact: "User A sees cached response tailored for User B"
+          fix: "Namespace cache keys by user_id or tenant_id"
+    maturity:
+      level: advanced
+    standards:
+      - name: "GPTCache"
+        type: tool
+        role: "Semantic caching library for LLM responses"
+        status: recommended
+      - name: "Redis + Embeddings"
+        type: tool
+        role: "Redis with vector search for semantic cache"
+        status: recommended
+
+  - id: optimized_realtime
+    name: "Optimized Realtime LLM Inference"
+    description: >
+      Optimize LLM responses for sub-second or streaming performance.
+      Uses streaming (SSE), speculative decoding, prompt caching, and
+      model quantization to minimize time-to-first-token and overall
+      response time. Critical for chat, assistant, and interactive use
+      cases where response time defines user experience.
+    use_when:
+      - "User-facing chat requiring sub-second time-to-first-token"
+      - "Real-time assistant or copilot experiences"
+      - "Streaming output for improved perceived performance"
+      - "Audio or voice applications needing low latency"
+    avoid_when:
+      - "Batch processing where latency doesn't matter"
+      - "Simple tasks that could use a smaller, faster model"
+      - "Low throughput where standard API is sufficient"
+    tradeoffs:
+      pros:
+        - "Time-to-first-token under 200ms with streaming"
+        - "Better user experience with incremental output display"
+        - "Speculative decoding can achieve 2-3x speedup"
+        - "Prompt caching reduces redundant computation"
+      cons:
+        - "Streaming adds complexity to response handling"
+        - "Speculative decoding requires specific model and infra"
+        - "Prompt caching adds memory overhead"
+        - "Harder to measure and enforce response quality"
+    implementation:
+      guidelines:
+        - "Use Server-Sent Events (SSE) for streaming responses"
+        - "Implement prompt caching: cache KV cache of frequent prompt prefixes"
+        - "Use smaller models for first-pass responses; escalate when needed"
+        - "Enable speculative decoding (draft model + target model)"
+        - "Set max_tokens limit per request to bound worst-case latency"
+        - "Monitor time-to-first-token, tokens-per-second, total latency"
+        - "Use streaming for UX, but implement timeouts at the application level"
+        - "Pre-fill prompt prefix to share KV cache across requests"
+      common_errors:
+        - error: "Streaming without error handling"
+          impact: "Mid-stream errors leave users with partial responses"
+          fix: "Handle stream errors gracefully; show partial + retry button"
+        - error: "No timeout on streaming"
+          impact: "Slow model generation ties up resources indefinitely"
+          fix: "Set max_tokens and wall-clock timeout (e.g., 30s)"
+        - error: "Treating streaming like non-streaming"
+          impact: "Processing response only after stream closes loses UX benefit"
+          fix: "Render tokens incrementally as they arrive"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Server-Sent Events (SSE)"
+        type: protocol
+        role: "Standard protocol for streaming LLM responses"
+        status: recommended
+      - name: "Speculative Decoding"
+        type: pattern
+        role: "Draft-then-verify for faster generation"
+        status: emerging
+
+  - id: guarded_integration
+    name: "Guarded LLM Integration with Safety Layers"
+    description: >
+      Wrap every LLM call with multiple guard layers: input guard
+      (prompt injection detection, PII redaction, topic filtering),
+      output guard (content moderation, factual consistency check,
+      PII leakage prevention), and usage guard (rate limiting, cost
+      capping, abuse detection). Required for any production system
+      with user-facing LLM interactions.
+    use_when:
+      - "User-facing LLM features (chat, assistant, content generation)"
+      - "Regulated industries: healthcare, finance, legal, education"
+      - "Systems serving minors or vulnerable users"
+      - "Any public-facing LLM application"
+    avoid_when:
+      - "Internal-only tooling with trusted users"
+      - "Batch processing with pre-approved, non-user inputs"
+      - "Developer preview or prototype phase"
+    tradeoffs:
+      pros:
+        - "Prevents prompt injection, jailbreak, and data leakage"
+        - "Moderates harmful or inappropriate content"
+        - "Provides audit trail for every LLM interaction"
+        - "Layered approach means no single point of failure in safety"
+      cons:
+        - "Adds 50-500ms latency per guard layer"
+        - "False positives block legitimate queries"
+        - "Multiple guard models increase operational complexity"
+        - "Guard coverage must be tested and maintained"
+    implementation:
+      guidelines:
+        - "Input guard: detect prompt injection, jailbreak attempts, system prompt leaks"
+        - "PII guard: redact PII/PHI from inputs before sending to LLM"
+        - "Topic guard: restrict LLM to allowed topics; reject out-of-scope queries"
+        - "Output guard: moderate content, block hate speech, check factual claims"
+        - "Add a second LLM call to verify response safety before returning to user"
+        - "Log guard failures for incident review and guard tuning"
+        - "Implement kill switch: disable LLM feature if guard failure rate spikes"
+        - "A/B test guard threshold changes to minimize false positives"
+      common_errors:
+        - error: "Only input guard, no output guard"
+          impact: "LLM can still generate harmful content even with clean input"
+          fix: "Always apply output guard; LLMs can generate harm from benign prompts"
+        - error: "Guard model too weak for the task"
+          impact: "High false negative rate — harmful content passes through"
+          fix: "Use purpose-built guard models; measure and tune accuracy"
+        - error: "No guard failure monitoring"
+          impact: "Guard degradation goes unnoticed until incident"
+          fix: "Monitor guard false positive and false negative rates over time"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Nvidia NeMo Guardrails"
+        type: framework
+        role: "Open-source guardrails framework with input/output rails"
+        status: recommended
+      - name: "Guardrails AI"
+        type: framework
+        role: "Policy-based guardrails for LLM applications"
+        status: recommended
+      - name: "Azure AI Content Safety"
+        type: tool
+        role: "Managed content moderation API"
+        status: recommended
+      - name: "AWS Bedrock Guardrails"
+        type: tool
+        role: "Managed guardrails for Bedrock models"
+        status: recommended
+
+  - id: cascade_fallback
+    name: "Cascading LLM Fallback Strategy"
+    description: >
+      Define a cascade of LLM options with fallback: primary model →
+      secondary (cheaper/faster) → tertiary (cached response) →
+      graceful degradation (static response). Ensures the system
+      remains available even when the primary LLM is down, rate-limited,
+      or returning low-quality responses.
+    use_when:
+      - "Production systems requiring high availability"
+      - "Multiple model providers available"
+      - "Cost optimization with spillover to cheaper models"
+      - "Geographic redundancy (region failover)"
+    avoid_when:
+      - "Single model provider lock-in"
+      - "Prototype phase with low availability requirements"
+    tradeoffs:
+      pros:
+        - "Increased availability — less downtime from provider outages"
+        - "Cost optimization — spill to cheaper models during low-traffic"
+        - "User experience — graceful degradation instead of errors"
+        - "Provider independence — can switch dominant provider without downtime"
+      cons:
+        - "Response quality may differ between cascade levels"
+        - "Cascade logic adds complexity (health checks, scoring)"
+        - "Need to maintain compatibility across multiple models"
+        - "Testing matrix multiplies with each cascade level"
+    implementation:
+      guidelines:
+        - "Define cascade levels: Tier1 (best), Tier2 (cheap/fast), Tier3 (cached), Fallback (static)"
+        - "Health-check each tier before routing to it (don't waste time on dead endpoints)"
+        - "Use circuit breaker pattern for each model endpoint"
+        - "Score responses for quality before returning (reject low-quality output)"
+        - "Log which tier served each request for cost allocation"
+        - "Test all cascade paths in staging — including the static fallback"
+        - "Set per-tier timeouts: shorter for fallback tiers"
+      common_errors:
+        - error: "Cascading to models with incompatible output formats"
+          impact: "Downstream systems break when fallback model returns different schema"
+          fix: "Test all cascade tiers with the same integration contract"
+        - error: "Fallback to expensive model on high traffic"
+          impact: "Cost spikes during primary outage"
+          fix: "Route to cheapest healthy tier, not the best one during incidents"
+        - error: "No circuit breaker on primary"
+          impact: "Requests keep timing out on primary, adding latency before fallback"
+          fix: "Implement circuit breaker; skip primary after N failures"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "OpenAI / Anthropic / Bedrock"
+        type: pattern
+        role: "Multi-provider cascade configuration"
+        status: recommended
+
+examples:
+  - id: llm_integration_pattern
+    title: "Production LLM Integration with All Layers"
+    context: "Building a customer-facing AI assistant with enterprise requirements"
+    correct: |
+      # Production LLM Integration — Correct Implementation
+
+      class LLMService:
+          def __init__(self):
+              self.cache = SemanticCache(
+                  embedding_model="text-embedding-3-small",
+                  similarity_threshold=0.95,
+                  ttl_seconds=3600,
+              )
+              self.circuit_breakers = {
+                  "primary": CircuitBreaker(failure_threshold=5, recovery_timeout=60),
+                  "secondary": CircuitBreaker(failure_threshold=3, recovery_timeout=30),
+              }
+              self.guard = Guardrails(
+                  input_rails=["prompt_injection", "pii_redaction", "topic_filter"],
+                  output_rails=["content_moderation", "factual_consistency"],
+              )
+
+          async def generate(self, request: LLMRequest) -> LLMResponse:
+              # 1. INPUT GUARD
+              guard_result = await self.guard.check_input(request.prompt, request.user)
+              if guard_result.blocked:
+                  return LLMResponse(blocked=True, reason=guard_result.reason)
+
+              # 2. SEMANTIC CACHE CHECK
+              cache_hit = await self.cache.lookup(request.prompt, request.user)
+              if cache_hit:
+                  return LLMResponse(cached=True, content=cache_hit.content)
+
+              # 3. CASCADE WITH CIRCUIT BREAKERS
+              tiers = [
+                  ("primary", request.model_config.primary),
+                  ("secondary", request.model_config.secondary),
+                  ("fallback", {"model": "gpt-4o-mini", "max_tokens": 512}),
+              ]
+              last_error = None
+              for tier_name, model_config in tiers:
+                  if self.circuit_breakers.get(tier_name, CircuitBreaker()).is_open():
+                      continue
+                  try:
+                      response = await self._call_model(model_config, request)
+                      break
+                  except Exception as e:
+                      last_error = e
+                      continue
+
+              # 4. OUTPUT GUARD
+              safe_response = await self.guard.check_output(response.content)
+              if safe_response.blocked:
+                  return LLMResponse(blocked=True, reason=safe_response.reason)
+
+              # 5. CACHE RESULT (for future similar queries)
+              await self.cache.store(request.prompt, response.content)
+
+              return LLMResponse(content=safe_response.content, tier=tier_name)
+
+          async def _call_model(self, config, request):
+              return await ai_client.chat.completions.create(
+                  model=config["model"],
+                  messages=[{"role": "user", "content": request.prompt}],
+                  max_tokens=config.get("max_tokens", 2048),
+                  temperature=0.3,
+                  stream=True,  # Better UX via SSE
+                  timeout=30,
+              )
+
+          # 6. MONITORING
+          async def track_usage(self, request, response, tier, latency):
+              metrics = {
+                  "user_id": request.user.id,
+                  "feature": request.feature,
+                  "model": response.model,
+                  "tier": tier,
+                  "tokens_prompt": response.usage.prompt_tokens,
+                  "tokens_completion": response.usage.completion_tokens,
+                  "cost_estimate": calculate_cost(response),
+                  "latency_ms": latency,
+                  "guard_blocked": response.blocked,
+                  "cached": response.cached,
+              }
+              await self.analytics.track_llm_usage(metrics)
+              if metrics["cost_estimate"] > BUDGET_ALERT_THRESHOLD:
+                  await self.alerts.send("LLM cost spike detected")
+    incorrect: |
+      # WRONG: Naive LLM Integration — Common Mistakes
+
+      class NaiveLLM:
+          def __init__(self):
+              self.api_key = "sk-..."  # HARDCODED — will be leaked in git
+              self.client = OpenAI(api_key=self.api_key)
+
+          async def ask(self, prompt):
+              # 1. NO INPUT GUARD — prompt injection not detected
+              # 2. NO CACHE — every request costs money
+              # 3. NO CASCADE — single point of failure
+              # 4. NO OUTPUT GUARD — harmful content reaches user
+              # 5. NO ERROR HANDLING — no retry, no timeout
+              # 6. NO USAGE TRACKING — can't attribute costs
+              # 7. NO STREAMING — user waits for full response
+
+              response = await self.client.chat.completions.create(
+                  model="gpt-4",  # Always the most expensive model
+                  messages=[{"role": "user", "content": prompt}],
+                  max_tokens=4096,  # Potentially expensive
+                  # No timeout — hangs forever if API is slow
+                  # No error handler — exception crashes the function
+              )
+              return response.choices[0].message.content
+
+          # Result:
+          # - API key leaks in git history (security incident)
+          # - Surprise bill: no cost tracking, always GPT-4
+          # - Prone to prompt injection
+          # - Single API provider = single point of failure
+          # - Blocks on slow responses (no streaming UX)
+          # - No degradation: API down = feature completely broken
+    explanation: >
+      The correct example implements a production-grade LLM integration with
+      guardrails, caching, cascade fallback, circuit breakers, usage tracking,
+      and streaming. The incorrect example shows the most common mistakes:
+      hardcoded API keys, no guardrails, no fallback, no error handling.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All LLM API calls use TLS 1.3"
+      - "Self-hosted model endpoints behind reverse proxy with TLS termination"
+  data_protection:
+    requirements:
+      - "PII/PHI redacted from prompts before sending to managed API providers"
+      - "Sensitive data excluded from prompt caching layers"
+      - "Model responses scanned for data leakage before returning to user"
+  access_control:
+    requirements:
+      - "LLM API keys stored in secrets manager; never in code or config files"
+      - "Per-user and per-feature rate limits to prevent abuse"
+      - "Model access restricted by tenant for multi-tenant deployments"
+  input_output:
+    requirements:
+      - "Prompt injection detection on all user inputs"
+      - "Output guardrail: content moderation on all model responses"
+      - "System prompt hardened against extraction attacks"
+  secrets:
+    requirements:
+      - "API keys rotated regularly; use separate keys per environment"
+      - "Self-hosted model credentials stored in secrets manager"
+  monitoring:
+    requirements:
+      - "LLM latency, token usage, cost per feature/user tracked and alerted"
+      - "Guardrail failure rate monitored (false positives and false negatives)"
+      - "Circuit breaker events logged for incident review"
+      - "Prompt injection and jailbreak attempts logged for security analysis"
+
+compliance:
+  standards:
+    - name: "GDPR"
+      relevance: "Personal data sent to LLM APIs must meet data processing agreements; users may request deletion of stored prompts"
+    - name: "HIPAA"
+      relevance: "PHI must not be sent to managed LLM APIs without BAA; self-hosted inference required"
+    - name: "SOC 2"
+      relevance: "LLM usage logging, access controls, and incident response for audit compliance"
+    - name: "EU AI Act"
+      relevance: "Risk classification and transparency requirements for AI systems using LLMs"
+
+  requirements_mapping:
+    - control: data_residency
+      description: "User data sent to LLM APIs must comply with data residency requirements"
+      maps_to:
+        - "GDPR data localization"
+        - "HIPAA data storage requirements"
+    - control: content_safety
+      description: "LLM outputs must be moderated for harmful content before reaching users"
+      maps_to:
+        - "EU AI Act transparency obligations"
+    - control: audit_trail
+      description: "Every LLM interaction logged with user, prompt, response, and cost"
+      maps_to:
+        - "SOC 2 audit controls"
+    - control: cost_governance
+      description: "LLM spend tracked per feature/user with budget controls"
+      maps_to:
+        - "FinOps best practices"
+
+prompt_recipes:
+  - id: llm_greenfield
+    scenario: greenfield
+    description: "Design LLM integration from scratch"
+    prompt: |
+      Design LLM integration for {application}.
+
+      Context:
+      - Model source: [api_managed/self_hosted/hybrid]
+      - Cost sensitivity: [low/medium/high]
+      - Latency requirement: [realtime/interactive/batch]
+      - Privacy requirement: [strict/moderate/none]
+      - Guardrails required: [yes/no]
+      - Expected throughput: [low/medium/high/very_high]
+
+      Architecture:
+      1. Model selection: which model(s) and why?
+      2. Integration: API or self-hosted SDK?
+      3. Caching: semantic or exact-match? TTL strategy?
+      4. Fallback: cascade tiers with circuit breakers?
+      5. Guardrails: input and output rail types?
+      6. Monitoring: token usage, cost, latency tracking?
+      7. Error handling: retry, timeout, degrade strategy?
+
+  - id: llm_cost_optimization
+    scenario: performance
+    description: "Optimize LLM costs"
+    prompt: |
+      Optimize LLM costs for {application}.
+
+      Strategies:
+      1. Analyze current spend breakdown by model, feature, user
+      2. Implement semantic caching for frequent queries
+      3. Cascade: route simple queries to cheaper models
+      4. Reduce max_tokens and set per-feature token limits
+      5. Batch non-urgent requests during off-peak pricing
+      6. Quantize and self-host if volume justifies capex
+      7. A/B test cheaper models on quality metrics
+      8. Monitor cost per resolved user query
+
+  - id: llm_audit
+    scenario: audit
+    description: "Audit LLM integration for security, quality, and compliance"
+    prompt: |
+      Audit LLM integration for {application}.
+
+      Security:
+      1. Are API keys in secrets manager (not code)?
+      2. Is prompt injection detection active?
+      3. Are PII/PHI redacted from prompts?
+      4. Is model output moderated for harmful content?
+      5. Are guardrail failures logged and alerted?
+
+      Quality:
+      1. Are retries with backoff configured?
+      2. Is there a circuit breaker for API failures?
+      3. Are responses validated for format and content?
+      4. Is there a cascade fallback strategy?
+      5. Are different features using appropriate-cost models?
+
+      Compliance:
+      1. Is LLM usage logged per user and feature?
+      2. Is spend tracked and within budget?
+      3. Does data processing agreement cover LLM API provider?
+      4. Can user prompts be deleted on request (right to erasure)?
+
+  - id: llm_migration
+    scenario: migration
+    description: "Migrate from one LLM provider to another"
+    prompt: |
+      Migrate {application} from {current_provider} to {target_provider}.
+
+      Steps:
+      1. Audit current model usage, prompt templates, and output formats
+      2. Set up target provider API keys and secrets
+      3. Implement provider abstraction layer
+      4. Add target provider as secondary cascade tier (shadow mode)
+      5. Compare response quality over 1-2 weeks
+      6. Gradually shift traffic from tier2 to tier1
+      7. Monitor quality metrics during transition
+      8. Decommission old provider after stabilization
+
+  - id: llm_high_security
+    scenario: high-security
+    description: "Design LLM integration for regulated environments"
+    prompt: |
+      Design LLM integration for {regulated_application} in {compliance_framework}.
+
+      Constraints:
+      - Data must not leave {region/on-prem environment}
+      - Every response must be guardrailed and audited
+      - Budget is secondary to compliance and safety
+
+      Architecture:
+      1. Self-host models using vLLM or TGI on {infrastructure}
+      2. Input guard: prompt injection + PII redaction + topic filter
+      3. Output guard: content moderation + consistency check
+      4. Full audit trail: user, prompt, response, guard actions
+      5. Model access control per user role
+      6. Regular penetration testing of guard layers
+
+anti_patterns:
+  - name: "Hardcoded API Keys and Config"
+    description: >
+      Storing LLM API keys in source code, config files, or environment
+      variables without a secrets manager. Keys leak through version
+      control, CI logs, or dumped environment variables.
+    fix: "Always use a secrets manager (AWS Secrets Manager, Vault, Azure Key Vault); inject keys at runtime"
+    severity: critical
+    related_pattern: standard_api_integration
+
+  - name: "Unmonitored LLM Spend"
+    description: >
+      Deploying LLM features without tracking token usage or cost per
+      user, per feature, or per model. Results in surprise bills,
+      inability to attribute costs, and no ability to detect abuse.
+    fix: "Track tokens and cost per request; set per-user budgets; alert on spend spikes"
+    severity: high
+    related_pattern: standard_api_integration
+
+  - name: "No Fallback Strategy"
+    description: >
+      Relying on a single LLM provider without fallback. When the
+      provider is down, rate-limited, or slow, the feature is completely
+      unavailable with no graceful degradation.
+    fix: "Implement cascade fallback: primary → secondary → cached → graceful degradation"
+    severity: critical
+    related_pattern: cascade_fallback
+
+  - name: "No Input or Output Guardrails"
+    description: >
+      Sending user prompts directly to the LLM without input validation
+      and returning raw model output without content moderation. Exposes
+      users to prompt injection, harmful content, and data leakage.
+    fix: "Implement input guard (injection, PII, topic) and output guard (moderation, PII, consistency)"
+    severity: critical
+    related_pattern: guarded_integration
+
+  - name: "Always Using the Most Expensive Model"
+    description: >
+      Using the same expensive frontier model for all requests regardless
+      of complexity. Simple tasks get over-served, driving up costs
+      unnecessarily.
+    fix: "Route requests by complexity: simple → cheap model, complex → frontier model"
+    severity: medium
+    related_pattern: standard_api_integration
+
+checklist:
+  - id: LLM-01
+    category: security
+    description: "API keys stored in secrets manager, not in code or config files"
+    severity: critical
+    verified_by: standard_api_integration
+
+  - id: LLM-02
+    category: security
+    description: "Prompt injection detection implemented on all user inputs"
+    severity: critical
+    verified_by: guarded_integration
+
+  - id: LLM-03
+    category: security
+    description: "Output guardrails moderate all model responses before returning to user"
+    severity: critical
+    verified_by: guarded_integration
+
+  - id: LLM-04
+    category: security
+    description: "PII/PHI redacted from prompts sent to managed API providers"
+    severity: critical
+    verified_by: guarded_integration
+
+  - id: LLM-05
+    category: reliability
+    description: "Cascade fallback strategy implemented (primary → secondary → degrade)"
+    severity: critical
+    verified_by: cascade_fallback
+
+  - id: LLM-06
+    category: reliability
+    description: "Circuit breaker configured per model provider endpoint"
+    severity: high
+    verified_by: cascade_fallback
+
+  - id: LLM-07
+    category: reliability
+    description: "Retry with exponential backoff configured (3 attempts, 1s base)"
+    severity: high
+    verified_by: standard_api_integration
+
+  - id: LLM-08
+    category: reliability
+    description: "Request timeout configured per tier (shorter for fallback tiers)"
+    severity: high
+    verified_by: standard_api_integration
+
+  - id: LLM-09
+    category: performance
+    description: "Semantic caching implemented for frequent queries"
+    severity: medium
+    verified_by: managed_with_caching
+
+  - id: LLM-10
+    category: performance
+    description: "Streaming enabled for user-facing real-time interactions"
+    severity: medium
+    verified_by: optimized_realtime
+
+  - id: LLM-11
+    category: performance
+    description: "Time-to-first-token monitored (target < 500ms for realtime)"
+    severity: medium
+    verified_by: optimized_realtime
+
+  - id: LLM-12
+    category: observability
+    description: "Token usage and cost tracked per user and per feature"
+    severity: high
+    verified_by: standard_api_integration
+
+  - id: LLM-13
+    category: observability
+    description: "LLM latency, error rate, and spend dashboards configured"
+    severity: high
+    verified_by: standard_api_integration
+
+  - id: LLM-14
+    category: observability
+    description: "Budget alerts at 80%, 90%, 100% of monthly LLM spend"
+    severity: high
+    verified_by: standard_api_integration
+
+  - id: LLM-15
+    category: compliance
+    description: "User prompts and responses logged with retention policy"
+    severity: medium
+    verified_by: guarded_integration
+
+  - id: LLM-16
+    category: compliance
+    description: "Data processing agreement in place with LLM provider"
+    severity: high
+    verified_by: standard_api_integration
+
+  - id: LLM-17
+    category: reliability
+    description: "Model selection per feature (not one model for everything)"
+    severity: medium
+    verified_by: cascade_fallback
+
+  - id: LLM-18
+    category: security
+    description: "Self-hosted models properly isolated from external network"
+    severity: critical
+    verified_by: self_hosted_inference

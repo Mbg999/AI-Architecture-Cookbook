@@ -1,0 +1,1134 @@
+# =============================================================================
+# AI Architecture Cookbook — RAG Architecture
+# Schema: v3 | Domain: rag-architecture
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: rag-architecture
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Retrieval-Augmented Generation (RAG) architectural patterns covering
+    vector databases, embeddings, chunking strategies, re-ranking, hybrid
+    search, grounding, and retrieval evaluation. Provides context-aware
+    recommendations from lightweight edge RAG to large-scale production
+    pipelines with real-time ingestion.
+
+  tags:
+    - rag
+    - retrieval-augmented-generation
+    - vector-search
+    - embeddings
+    - llm
+    - ai
+    - grounding
+    - hybrid-search
+
+  categories:
+    - integration-data
+
+  prerequisites:
+    - id: search
+      reason: "Vector search extends full-text search with semantic retrieval"
+    - id: data-persistence
+      reason: "Vector indexes are derived from data stores; documents and embeddings need storage"
+    - id: data-transformation
+      reason: "Documents must be chunked, cleaned, and enriched before embedding"
+    - id: performance-optimization
+      reason: "Retrieval latency directly impacts end-to-end RAG response time"
+
+  related_standards:
+    - id: api-design
+      relationship: complementary
+      context: "RAG APIs follow query patterns that retrieve context before generating responses"
+    - id: logging-observability
+      relationship: complementary
+      context: "RAG pipelines need observability for retrieval quality, latency, and hallucination detection"
+    - id: input-validation
+      relationship: complementary
+      context: "User queries must be sanitized before both retrieval and generation"
+
+context_inputs:
+  - name: retrieval_scale
+    type: enum
+    description: "Size of the document corpus to search against"
+    required: true
+    default: medium
+    enum_values:
+      - small
+      - medium
+      - large
+      - very_large
+
+  - name: query_complexity
+    type: enum
+    description: "Complexity and variety of user queries"
+    required: true
+    default: moderate
+    enum_values:
+      - simple
+      - moderate
+      - complex
+
+  - name: freshness_requirement
+    type: enum
+    description: "How quickly new documents must be retrievable"
+    required: false
+    default: near_realtime
+    enum_values:
+      - realtime
+      - near_realtime
+      - periodic
+      - batch
+
+  - name: grounding_requirement
+    type: enum
+    description: "How strictly the LLM response must be grounded in retrieved context"
+    required: false
+    default: moderate
+    enum_values:
+      - strict
+      - moderate
+      - lenient
+
+  - name: deployment_environment
+    type: enum
+    description: "Where the RAG pipeline runs"
+    required: false
+    default: cloud
+    enum_values:
+      - cloud
+      - on_premises
+      - hybrid
+      - embedded
+
+  - name: language_requirements
+    type: enum
+    description: "Languages the corpus covers"
+    required: false
+    default: single
+    enum_values:
+      - single
+      - multi
+      - code
+
+decision_tree:
+  - id: embedded_edge_rag
+    priority: 1
+    if:
+      - deployment_environment == embedded
+    then:
+      pattern: lightweight_rag
+      standards:
+        - "sentence-transformers"
+        - "Ollama"
+        - "sqlite-vss"
+      notes: >
+        Embedded/edge environments have strict memory and compute constraints.
+        Use lightweight sentence transformer models (< 100MB), local vector
+        stores (sqlite-vss, DuckDB), and small LLMs (Phi-3, Llama-3.2-3B).
+        Skip reranking and multi-stage retrieval.
+    else:
+      pattern: standard_rag
+      notes: "Non-embedded environments can use full RAG with dedicated vector stores"
+
+  - id: large_scale_retrieval
+    priority: 2
+    if:
+      - retrieval_scale in [large, very_large]
+    then:
+      pattern: clustered_vector_search
+      notes: >
+        Large corpora (millions of vectors) require distributed vector stores
+        with partitioning, sharding, and HNSW or IVF indexes. Use Pinecone,
+        Weaviate, Qdrant, or Milvus with cluster configuration.
+
+  - id: strict_grounding
+    priority: 3
+    if:
+      - grounding_requirement == strict
+    then:
+      pattern: hybrid_search_with_reranking
+      notes: >
+        When strict grounding is required (medical, legal, compliance), use
+        hybrid search combining vector similarity with keyword/BM25, plus
+        cross-encoder reranking to ensure only the most relevant context is
+        passed to the LLM.
+
+  - id: complex_queries
+    priority: 4
+    if:
+      - query_complexity == complex
+    then:
+      pattern: multi_stage_retrieval
+      notes: >
+        Complex queries benefit from query decomposition (sub-queries),
+        multi-source retrieval, and fusion (RRF or reciprocal rank fusion)
+        before generation.
+
+  - id: fresh_data
+    priority: 5
+    if:
+      - freshness_requirement == realtime
+    then:
+      pattern: streaming_rag
+      notes: >
+        Real-time freshness requires streaming ingestion pipelines that embed
+        documents as they arrive and index them incrementally without full
+        reindex.
+    else:
+      pattern: standard_rag
+      notes: "Standard RAG works for periodic or near-real-time freshness requirements"
+
+decision_metadata:
+  confidence: medium
+  risk_if_wrong: high
+  fallback:
+    pattern: standard_rag
+    description: "Standard RAG (chunk + embed + vector search + LLM) is the safe default for most use cases"
+
+patterns:
+  - id: standard_rag
+    name: "Standard RAG Pipeline"
+    description: >
+      The canonical RAG pattern: documents are chunked, embedded into a vector
+      store, and retrieved at query time to provide the LLM with relevant context.
+      The LLM generates a grounded response based on the retrieved passages.
+      This is the recommended starting point for most RAG implementations.
+    use_when:
+      - "Starting a new RAG system (minimal complexity)"
+      - "Document corpus is small to medium (< 1M documents)"
+      - "Near-real-time freshness is acceptable (seconds to minutes)"
+      - "Query complexity is simple to moderate"
+    avoid_when:
+      - "Strict grounding guarantees are required (legal, medical)"
+      - "Corpus exceeds millions of documents without cluster setup"
+      - "Real-time document ingestion is required"
+      - "Edge/embedded deployment with < 1GB memory"
+    tradeoffs:
+      pros:
+        - "Simple to implement and debug"
+        - "Well-understood architecture with mature tooling"
+        - "Easy to evolve to more complex patterns (hybrid, multi-stage)"
+        - "Broad LLM and vector store support"
+      cons:
+        - "No relevance reranking — first-pass results may be noisy"
+        - "Single retrieval strategy misses relevant documents that don't match semantically"
+        - "No query decomposition for complex questions"
+        - "Retrieval quality is limited by embedding model quality"
+    implementation:
+      guidelines:
+        - "Chunk documents at an appropriate granularity (256-1024 tokens depending on domain)"
+        - "Use overlap between chunks to avoid cutting off meaning at boundaries"
+        - "Index document metadata alongside vectors for filtering (date, source, category)"
+        - "Store embedding model version in metadata for reproducibility"
+        - "Include the source document reference in each chunk for citation"
+        - "Set a similarity threshold to filter out irrelevant context"
+        - "Limit retrieved chunks to 3-10 depending on LLM context window"
+        - "Implement query rewriting: reformulate user query before retrieval"
+        - "Log retrieval quality metrics: hit rate, MRR, NDCG@K"
+      common_errors:
+        - error: "Chunking without semantic boundaries"
+          impact: "Chunks split mid-paragraph lose meaning; retrieval quality degrades"
+          fix: "Use semantic chunking (sentence splitting, paragraph boundaries, markdown sections)"
+        - error: "No metadata filtering"
+          impact: "Retrieval returns irrelevant documents from different timeframes or categories"
+          fix: "Tag documents with date, source, category; filter at query time"
+        - error: "Overcrowding the context window"
+          impact: "LLM gets distracted by too much context; quality degrades with > 20 chunks"
+          fix: "Use top-K with similarity threshold; keep 3-10 highest quality chunks"
+        - error: "No query rewriting"
+          impact: "User's raw query 'it' or 'that PR' has no semantic specificity for retrieval"
+          fix: "Prepend query with conversation history; expand abbreviations"
+    maturity:
+      level: standard
+    standards:
+      - name: "LangChain"
+        type: framework
+        role: "RAG pipeline orchestration framework"
+        status: recommended
+      - name: "LlamaIndex"
+        type: framework
+        role: "Data framework for RAG with advanced indexing"
+        status: recommended
+      - name: "OpenAI Embeddings API"
+        type: tool
+        role: "Text-embedding-3-small / 3-large embedding models"
+        status: recommended
+      - name: "HuggingFace Sentence-Transformers"
+        type: tool
+        role: "Open-source embedding models (BGE, E5, Instructor)"
+        status: recommended
+
+  - id: hybrid_search_with_reranking
+    name: "Hybrid Search with Cross-Encoder Reranking"
+    description: >
+      Combines semantic (vector) search with lexical (BM25) search, then applies
+      a cross-encoder reranker to the fused results. The cross-encoder scores
+      each candidate passage against the query directly, providing much higher
+      relevance accuracy than embedding similarity alone. This is the gold
+      standard for grounding-sensitive applications.
+    use_when:
+      - "Strict grounding is required: legal, medical, finance, compliance"
+      - "Retrieval quality is more important than latency"
+      - "Corpus contains both semantic and keyword-relevant documents"
+      - "Many queries contain domain-specific terminology (codes, references)"
+    avoid_when:
+      - "Sub-200ms end-to-end latency is required"
+      - "Reranker model cannot be self-hosted (data privacy)"
+      - "Deployment is edge/embedded with no GPU"
+    tradeoffs:
+      pros:
+        - "Significantly higher retrieval accuracy than vector-only"
+        - "Cross-encoder relevance score is more reliable than embedding cosine similarity"
+        - "BM25 catches exact keyword matches that vector search misses"
+        - "Proven to reduce hallucination in production RAG systems"
+      cons:
+        - "Cross-encoder reranking adds 50-500ms latency per query"
+        - "Running two retrieval systems doubles infrastructure costs"
+        - "BM25 index requires separate maintenance (tokenization, stopwords)"
+        - "Reranker throughput is limited — requires GPU for high QPS"
+    implementation:
+      guidelines:
+        - "Run vector search and BM25 search in parallel (not sequential)"
+        - "Normalize and combine scores using Reciprocal Rank Fusion (RRF) or weighted average"
+        - "Use a cross-encoder model (BGE-Reranker, Cohere Rerank, or MS MARCO) for final scoring"
+        - "Cache reranker results for common queries"
+        - "Tune K1 and b parameters in BM25 for your corpus"
+        - "Set separate top-K for each retrieval leg (e.g., 50 each) then rerank to top 5"
+        - "Implement fallback: if reranker is down, fall back to fused vector+BM25 scores"
+      common_errors:
+        - error: "Running vector then BM25 sequentially"
+          impact: "Latency is additive instead of parallel"
+          fix: "Fire both retrieval requests concurrently"
+        - error: "Reranking all candidates with no pre-filter"
+          impact: "Reranker throughput becomes bottleneck; GPU memory overflows"
+          fix: "Bi-encoder first-pass (retrieve 50-100), cross-encoder second-pass (rerank to 5-10)"
+        - error: "Ignoring BM25 for code/document IDs"
+          impact: "Exact reference searches fail with vector-only retrieval"
+          fix: "Always include BM25 when corpus has codes, IDs, or structured references"
+    maturity:
+      level: advanced
+    standards:
+      - name: "BGE-Reranker"
+        type: tool
+        role: "Cross-encoder reranking model (BAAI)"
+        status: recommended
+      - name: "Cohere Rerank"
+        type: tool
+        role: "Managed reranking API"
+        status: recommended
+      - name: "Elasticsearch"
+        type: tool
+        role: "Supports both vector and BM25 search with hybrid scoring"
+        status: recommended
+
+  - id: multi_stage_retrieval
+    name: "Multi-Stage Query Decomposition and Retrieval"
+    description: >
+      For complex queries, this pattern decomposes the user's question into
+      sub-queries, retrieves context for each, then fuses the results before
+      generation. Handles multi-hop questions, comparative queries, and queries
+      that span multiple document domains.
+    use_when:
+      - "Queries require synthesizing information from multiple documents"
+      - "Comparative or contrastive queries ('compare X and Y')"
+      - "Multi-hop questions ('What did person A say about topic B in context C?')"
+      - "Enterprise knowledge bases with diverse content types"
+    avoid_when:
+      - "Simple factoid queries (single passage answer)"
+      - "Strict latency budgets (< 500ms end-to-end)"
+    tradeoffs:
+      pros:
+        - "Handles complex queries that single-pass RAG cannot answer correctly"
+        - "Improves recall by exploring multiple retrieval paths"
+        - "Can incorporate different retrieval strategies per sub-query (vector vs keyword vs SQL)"
+        - "Fusion (RRF) produces better ranked results than any single retrieval path"
+      cons:
+        - "2-5x more retrieval calls per query"
+        - "Requires a sub-query planner/decomposer (LLM call or heuristic)"
+        - "Result fusion is non-trivial (score normalization, deduplication)"
+        - "Higher latency and cost"
+    implementation:
+      guidelines:
+        - "Use an LLM call or prompt to decompose the query into sub-queries"
+        - "Route each sub-query to the appropriate data source (vector, BM25, SQL, graph)"
+        - "Execute sub-queries in parallel to minimize latency"
+        - "Fuse results with Reciprocal Rank Fusion or weighted score combination"
+        - "Deduplicate results from different sub-queries"
+        - "Include sub-query and source metadata in returned context"
+        - "Implement query expansion: add synonyms and related terms to sub-queries"
+      common_errors:
+        - error: "No deduplication after fusion"
+          impact: "Same document appears multiple times in context, wasting the LLM context window"
+          fix: "Deduplicate by document ID; keep the highest score"
+        - error: "Sub-queries are too similar"
+          impact: "No diversity in retrieved results; all sub-queries return the same documents"
+          fix: "Explicitly instruct the decomposer to return diverse, non-overlapping sub-queries"
+        - error: "Score normalization between incompatible scales"
+          impact: "Vector cosine similarity (0-1) vs BM25 (0-N) scores don't combine directly"
+          fix: "Use rank-based fusion (RRF) instead of score-based fusion"
+    maturity:
+      level: advanced
+    standards:
+      - name: "LlamaIndex Sub-Question Query Engine"
+        type: framework
+        role: "Built-in query decomposition and routing"
+        status: recommended
+      - name: "LangChain Multi-Retriever"
+        type: framework
+        role: "Multi-source retrieval with routing"
+        status: recommended
+
+  - id: streaming_rag
+    name: "Streaming RAG with Real-Time Ingestion"
+    description: >
+      A RAG pipeline that ingests documents continuously via streaming
+      (CDC events, message queues, file watchers), embeds them in real-time,
+      and updates the vector index incrementally without full reindex operations.
+      Used when documents arrive continuously and must be searchable immediately.
+    use_when:
+      - "Documents are ingested continuously (news, social media, chat logs)"
+      - "Users expect seconds-level freshness"
+      - "Real-time collaboration or live document editing"
+      - "Monitoring and alerting use cases"
+    avoid_when:
+      - "Documents change infrequently (batch update is sufficient)"
+      - "Index consistency and accuracy are prioritized over freshness"
+      - "No streaming infrastructure (Kafka, Pulsar, SQS) available"
+    tradeoffs:
+      pros:
+        - "Documents are searchable within seconds of ingestion"
+        - "No scheduled reindex jobs — index stays fresh continuously"
+        - "Integrates naturally with event-driven architectures"
+        - "Can backfill by replaying the event stream"
+      cons:
+        - "Streaming infrastructure adds operational complexity"
+        - "Must handle out-of-order and duplicate events"
+        - "Index mutations (delete, update) are harder than full reindex"
+        - "Embedding throughput must match ingest rate"
+    implementation:
+      guidelines:
+        - "Ingest documents via CDC (Change Data Capture) or application-level events"
+        - "Use an idempotent upsert pattern: document_id as vector ID"
+        - "Batch embed documents in micro-batches (e.g., 100 docs or 5 seconds)"
+        - "Handle deletes: delete vector by document_id when source is removed"
+        - "Monitor ingestion lag: time between document event and searchable"
+        - "Use a dead-letter queue for documents that fail to embed"
+        - "Periodically rebuild the index from source of truth for consistency"
+      common_errors:
+        - error: "Embedding documents one at a time"
+          impact: "Embedding API rate limits and throughput become a bottleneck"
+          fix: "Batch embed — most embedding APIs support batch inference"
+        - error: "No deduplication on event replay"
+          impact: "Replaying events duplicates vectors; search returns duplicate results"
+          fix: "Use idempotent upsert by document_id"
+        - error: "Index drift over time"
+          impact: "Deleted or updated documents accumulate stale vectors"
+          fix: "Periodic full reindex from source of truth; monitor index consistency"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Apache Kafka"
+        type: tool
+        role: "Event streaming for document ingestion pipeline"
+        status: recommended
+      - name: "Change Data Capture (CDC)"
+        type: pattern
+        role: "Capture database changes as events for index updates"
+        status: recommended
+
+  - id: clustered_vector_search
+    name: "Clustered Vector Search with Distributed Indexing"
+    description: >
+      For large-scale RAG (millions to billions of vectors), use a distributed
+      vector database that partitions the index across nodes. Supports HNSW
+      or IVF indexes with sharding, replication, and horizontal scaling.
+    use_when:
+      - "Corpus has 1M+ vectors"
+      - "Query latency must stay under 100ms at scale"
+      - "High availability and fault tolerance required"
+      - "Multi-tenant isolation of vector indexes"
+    avoid_when:
+      - "Corpus fits in a single node (most use cases under 1M vectors)"
+      - "Deployment is edge/embedded"
+      - "Latency requirements are lenient (> 500ms acceptable)"
+    tradeoffs:
+      pros:
+        - "Horizontal scaling to billions of vectors"
+        - "Production-grade HA, replication, and backup"
+        - "Built-in sharding, partitioning, and tenant isolation"
+        - "Mature tooling with Kubernetes operators"
+      cons:
+        - "Significant operational overhead (cluster management)"
+        - "Cost: compute, storage, and network for multi-node deployment"
+        - "Index build time for large datasets (hours to days)"
+        - "Overkill for most use cases under 1M vectors"
+    implementation:
+      guidelines:
+        - "Use HNSW index for the best latency-recall tradeoff at scale"
+        - "Partition by tenant or document category for query isolation"
+        - "Configure replication factor of at least 2 for production"
+        - "Right-size shards: target 500MB-2GB per shard"
+        - "Monitor recall rate and latency per shard"
+        - "Use quantization (PQ or SQ) to reduce memory for billion-scale"
+        - "Pre-warm the index on node restart for consistent performance"
+      common_errors:
+        - error: "Over-sharding small datasets"
+          impact: "Unnecessary network round-trips; latency increases instead of decreasing"
+          fix: "Scale by actual data volume; start with fewer larger shards"
+        - error: "No tenant isolation"
+          impact: "One tenant's data load affects query performance for all tenants"
+          fix: "Partition by tenant or use dedicated indexes per tenant"
+        - error: "Ignoring index build time"
+          impact: "Index build on 100M vectors can take hours; unexpected during incident recovery"
+          fix: "Pre-build indexes; use rolling rebuilds; test rebuild time in staging"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Pinecone"
+        type: tool
+        role: "Managed vector database with pod-based scaling"
+        status: recommended
+      - name: "Weaviate"
+        type: tool
+        role: "Open-source vector database with hybrid search"
+        status: recommended
+      - name: "Qdrant"
+        type: tool
+        role: "Open-source vector database with filtering and sharding"
+        status: recommended
+      - name: "Milvus"
+        type: tool
+        role: "Distributed vector database for billion-scale"
+        status: recommended
+
+  - id: lightweight_rag
+    name: "Lightweight Edge / Local RAG"
+    description: >
+      A minimal RAG pattern for edge devices, mobile apps, or privacy-sensitive
+      environments where no cloud dependency is allowed. Uses local embedding
+      models (< 100MB), on-device vector stores, and small LLMs running via
+      Ollama, llama.cpp, or ONNX Runtime.
+    use_when:
+      - "Deployment on edge devices with limited memory (< 2GB)"
+      - "Data privacy requirements prevent cloud API calls"
+      - "Offline-first application availability"
+      - "Desktop applications with local knowledge bases"
+    avoid_when:
+      - "Need for high-accuracy retrieval (small models have lower accuracy)"
+      - "Large corpus that doesn't fit in device memory"
+      - "No GPU/accelerator available on target device"
+    tradeoffs:
+      pros:
+        - "No internet dependency — fully offline capable"
+        - "Data never leaves the device — maximum privacy"
+        - "Zero inference cost (no API fees)"
+        - "Low latency (no network round-trip)"
+      cons:
+        - "Smaller models have lower retrieval accuracy"
+        - "Limited by device memory and compute"
+        - "Cannot handle very large corpora"
+        - "Slower embedding inference without GPU"
+    implementation:
+      guidelines:
+        - "Use sentence-transformers models < 100MB (all-MiniLM-L6-v2, BGE-small)"
+        - "Store vectors in sqlite-vss, DuckDB, or LanceDB"
+        - "Use Ollama or llama.cpp for local LLM inference"
+        - "Quantize embeddings (int8) to reduce memory by 4x"
+        - "Pre-compute and cache embeddings for static documents"
+        - "Limit corpus to what fits in target device memory"
+      common_errors:
+        - error: "Using full-size embedding models on edge"
+          impact: "Out of memory or multi-second embedding time per document"
+          fix: "Use models with < 100M parameters and quantized weights"
+        - error: "Loading the entire index into memory"
+          impact: "Out of memory on low-end devices"
+          fix: "Use memory-mapped indexes (mmap) or streaming/disk-based indexes"
+        - error: "No offline fallback for cloud-reliant RAG"
+          impact: "Application breaks when network is unavailable"
+          fix: "Design for offline-first: local models and index by default"
+    maturity:
+      level: advanced
+    standards:
+      - name: "sqlite-vss"
+        type: tool
+        role: "SQLite extension for vector similarity search"
+        status: recommended
+      - name: "Ollama"
+        type: tool
+        role: "Local LLM runner"
+        status: recommended
+      - name: "sentence-transformers"
+        type: framework
+        role: "Local embedding model inference"
+        status: recommended
+      - name: "LanceDB"
+        type: tool
+        role: "Embedded vector database with persistent storage"
+        status: emerging
+
+examples:
+  - id: rag_pipeline
+    title: "Standard RAG Pipeline Architecture"
+    context: "Building a customer support RAG system with product documentation"
+    correct: |
+      # RAG Pipeline — Correct Implementation
+
+      # 1. DOCUMENT INGESTION & CHUNKING
+      # Semantic chunking respects document structure
+      from semantic_chunker import SemanticChunker
+
+      chunker = SemanticChunker(
+          chunk_size=512,       # tokens
+          chunk_overlap=64,
+          separators=["\n\n", "\n", ". ", " ", ""],
+          use_semantic_boundaries=True,  # Don't split mid-sentence
+      )
+      chunks = chunker.chunk_document(markdown_doc)
+
+      # 2. EMBEDDING WITH METADATA
+      embedding_model = EmbeddingModel("text-embedding-3-small")
+      for chunk in chunks:
+          vector = embedding_model.embed(chunk.content)
+          vector_store.upsert(
+              id=chunk.id,
+              vector=vector,
+              metadata={
+                  "source": chunk.source_url,
+                  "page": chunk.page_number,
+                  "version": chunk.doc_version,
+                  "timestamp": chunk.updated_at.isoformat(),
+              }
+          )
+
+      # 3. QUERY PROCESSING: rewrite + filter
+      def process_query(raw_query: str, user_context: dict) -> QueryRequest:
+          # Rewrite: expand abbreviations, add conversation history
+          rewritten = query_rewriter.rewrite(
+              raw_query,
+              history=user_context.get("conversation_history"),
+              user_role=user_context.get("role"),
+          )
+          # Metadata filter: only search relevant doc versions
+          return QueryRequest(
+              text=rewritten,
+              metadata_filter={"version": user_context.get("doc_version", "latest")},
+              top_k=5,
+              similarity_threshold=0.7,
+          )
+
+      # 4. RETRIEVAL
+      def retrieve(query: QueryRequest) -> list[Chunk]:
+          results = vector_store.search(
+              query=query.text,
+              filter=query.metadata_filter,
+              top_k=query.top_k,
+              score_threshold=query.similarity_threshold,
+          )
+          return results
+
+      # 5. GENERATION with citation
+      def generate(query: str, context: list[Chunk]) -> str:
+          prompt = f"""You are a customer support agent.
+          Answer the question using ONLY the context below.
+          If the context doesn't contain the answer, say "I don't have enough information."
+
+          Context:
+          {format_chunks_with_citations(context)}
+
+          Question: {query}
+
+          Answer (cite sources as [1], [2], etc.):"""
+
+          response = llm.complete(prompt)
+          return response
+
+      # 6. EVALUATION LOOP
+      def evaluate_rag(query: str, response: str, chunks: list[Chunk]) -> dict:
+          return {
+              "faithfulness": faithfulness_score(response, chunks),
+              "answer_relevance": relevance_score(query, response),
+              "context_recall": context_coverage(query, chunks),
+              "latency_ms": end_to_end_latency,
+          }
+    incorrect: |
+      # WRONG: Naive RAG implementation with common mistakes
+
+      # 1. Naive chunking — splits mid-paragraph, no overlap
+      chunks = []
+      for i in range(0, len(doc_text), 500):  # Cuts at arbitrary character boundaries
+          chunks.append(doc_text[i:i+500])
+
+      # 2. No metadata — vectors have no provenance
+      for chunk in chunks:
+          vector_store.upsert(
+              id=hash(chunk),       # Collisions with identical text
+              vector=embedder.embed(chunk)
+              # No metadata! Can't filter by source, date, or version
+          )
+
+      # 3. No query rewriting — raw query may be ambiguous
+      def retrieve(query):
+          # "Tell me about the bug in PR #142"
+          # Vector search has no concept of PR numbers
+          return vector_store.search(query, top_k=20)
+          # 20 results may overwhelm the LLM context window
+
+      # 4. Generation without citations
+      def generate(query, context):
+          prompt = f"""Answer the question based on context: {context}"""
+          # No instruction about "I don't know" — LLM may hallucinate
+          # No citation format — can't verify source of claims
+          return llm.complete(prompt)
+
+      # Problems:
+      # 1. Chunking splits sentences arbitrarily — meaning is lost
+      # 2. No metadata = no filtering = irrelevant context from wrong versions
+      # 3. No score threshold = irrelevant chunks passed to LLM
+      # 4. No citation = unverifiable responses, can't debug hallucinations
+      # 5. No evaluation = no signal to improve retrieval quality
+    explanation: >
+      The correct example implements a production-grade RAG pipeline with
+      semantic chunking, metadata-enriched vectors, query rewriting, score
+      thresholds, citation format, and evaluation metrics. The incorrect
+      example shows the most common mistakes: naive chunking, no metadata,
+      no query rewriting, and unverifiable generation.
+
+  - id: chunking_strategies
+    title: "Chunking Strategy Comparison"
+    context: "Choosing the right chunking approach for different document types"
+    correct: |
+      # SEMANTIC CHUNKING (recommended for most cases)
+      from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+      splitter = RecursiveCharacterTextSplitter(
+          chunk_size=1024,       # token count using tiktoken
+          chunk_overlap=128,     # overlap to preserve context at boundaries
+          separators=[
+              "\n## ",           # Markdown H2 sections
+              "\n### ",          # Markdown H3 subsections
+              "\n\n",            # Paragraph boundaries
+              "\n",              # Line breaks
+              ". ",              # Sentence boundaries
+              " ",               # Word boundaries (last resort)
+          ],
+          length_function=tiktoken_len,
+      )
+
+      # Advantages:
+      # - Respects semantic boundaries (sections, paragraphs)
+      # - Overlap prevents context loss at chunk edges
+      # - Recursive = falls back to smaller separators
+      # - Compatible with LLM token limits
+
+      # AGENTIC CHUNKING (for complex documents)
+      from llama_index import DocumentSummaryIndex
+
+      index = DocumentSummaryIndex.from_documents(
+          documents,
+          summary_query="Summarize this document section",
+      )
+      # Each chunk has a summary; retrieval can search summaries first,
+      # then drill into matching chunks.
+
+      # For code: use language-specific parsers
+      from code_chunker import CodeChunker
+
+      code_chunker = CodeChunker(
+          language="python",
+          chunk_by="function",   # each function is one chunk
+          include_imports=False, # imports go in a separate chunk
+          max_lines=100,
+      )
+    incorrect: |
+      # WRONG: Fixed-size chunking (most common mistake)
+      chunk_size = 500
+
+      chunks = []
+      for i in range(0, len(text), chunk_size):
+          chunk = text[i:i+chunk_size]
+
+          # Problems:
+          # 1. Splits MID-SENTENCE: "The user clicked the confirm but-"
+          #                          "-ton to submit the form."
+          #    Neither chunk contains a complete thought.
+          #
+          # 2. Splits MID-CODE: "def calculate_total(items):"
+          #                     "    return sum(item.price for ite-"
+          #                     "-m in items if item.active)"
+          #    Syntax is broken; LLM can't understand the fragment.
+          #
+          # 3. No overlap: "The cost is $5.99 per unit. | The total is..."
+          #    Context lost at boundary — "The total" has no reference point.
+          #
+          # 4. Fixed size ignores document structure:
+          #    A 500-char section header is grouped with content from
+          #    the wrong section.
+          chunks.append(chunk)
+    explanation: >
+      Semantic chunking respects document structure (sections, paragraphs,
+      sentences) and uses overlap to preserve context at chunk boundaries.
+      Fixed-size character chunking splits mid-thought and loses meaning,
+      especially in code or structured documents.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All traffic between RAG components (embedding service, vector store, LLM) uses TLS"
+      - "Vector store cluster communication encrypted with mutual TLS"
+  data_protection:
+    requirements:
+      - "Sensitive documents excluded from embedding or encrypted before embedding"
+      - "Vector embeddings can encode sensitive information — restrict access to vector store"
+      - "RAG context output must not leak PII or trade secrets from retrieved documents"
+  access_control:
+    requirements:
+      - "Vector store access authenticated and authorized per user scope"
+      - "Document-level access controls propagated to chunk-level retrieval"
+      - "Embedding API access restricted to authorized services only"
+  input_output:
+    requirements:
+      - "User queries sanitized before retrieval (injection into query DSL)"
+      - "Retrieved context filtered by user authorization before LLM prompt assembly"
+      - "LLM output sanitized — prevent prompt injection from retrieved context"
+  secrets:
+    requirements:
+      - "LLM API keys and embedding API keys stored in secrets manager"
+      - "Vector store credentials rotated regularly"
+  monitoring:
+    requirements:
+      - "RAG pipeline latency monitored: retrieval, generation, end-to-end"
+      - "Hallucination detection: faithfulness scores tracked per response"
+      - "Retrieval quality metrics logged: hit rate, MRR, NDCG@K"
+      - "Prompt injection and jailbreak attempts logged and alerted"
+
+compliance:
+  standards:
+    - name: "GDPR"
+      relevance: "Personal data in documents must be retrievable for deletion requests; vector embeddings may encode PII"
+    - name: "HIPAA"
+      relevance: "Medical RAG requires strict access controls and audit trails for retrieved PHI"
+    - name: "SOC 2"
+      relevance: "RAG pipelines operate as data processing systems with access control and audit requirements"
+    - name: "NIST AI RMF"
+      relevance: "RAG systems should follow NIST AI Risk Management Framework for trustworthy AI"
+
+  requirements_mapping:
+    - control: document_access_scope
+      description: "Retrieved context filtered by user's document access permissions"
+      maps_to:
+        - "Role-based access control"
+        - "Document-level permissions"
+    - control: right_to_erasure
+      description: "Documents deleted from source must be removed from vector index"
+      maps_to:
+        - "GDPR Article 17"
+    - control: hallucination_prevention
+      description: "RAG responses must cite sources and refuse when context is insufficient"
+      maps_to:
+        - "NIST AI RMF trustworthy AI principles"
+    - control: audit_trail
+      description: "Every RAG query and response logged with provenance for auditing"
+      maps_to:
+        - "SOC 2 audit requirements"
+        - "HIPAA audit controls"
+
+prompt_recipes:
+  - id: rag_greenfield
+    scenario: greenfield
+    description: "Design a RAG system from scratch"
+    prompt: |
+      Design a RAG system for {application}.
+
+      Context:
+      - Corpus size: [small/medium/large/very_large]
+      - Query complexity: [simple/moderate/complex]
+      - Freshness requirement: [realtime/near_realtime/periodic/batch]
+      - Grounding requirement: [strict/moderate/lenient]
+      - Deployment environment: [cloud/on-premises/hybrid/embedded]
+
+      Step 1 — Chunking: Choose between semantic (paragraph/section), code-aware, or agentic chunking. Specify chunk size and overlap.
+      Step 2 — Embedding: Choose a model (open-source or API). Include model dims and quantization strategy.
+      Step 3 — Vector store: Choose between lightweight (sqlite-vss, DuckDB), dedicated (Pinecone, Weaviate, Qdrant), or distributed cluster (Milvus). Justify selection based on corpus size.
+      Step 4 — Retrieval: Choose between vector-only, hybrid vector+BM25, or multi-stage with reranking. Specify top-K and score threshold.
+      Step 5 — Generation: Choose LLM, context window strategy, prompt template with citation format.
+      Step 6 — Evaluation: Define faithfulness, recall, and precision metrics.
+
+      Output a diagram showing the pipeline architecture and a brief rationale for each choice.
+
+  - id: rag_optimization
+    scenario: performance
+    description: "Optimize RAG retrieval quality and latency"
+    prompt: |
+      Optimize the RAG pipeline for {application}.
+
+      Retrieval quality optimization:
+      1. Analyze top-K retrieval failures — are relevant documents missing?
+      2. Compare vector-only vs hybrid search on a held-out query set
+      3. Add cross-encoder reranking and measure NDCG improvement
+      4. Test different chunk sizes (256, 512, 1024 tokens) on retrieval accuracy
+      5. Implement query rewriting and measure hit rate improvement
+      6. Evaluate alternative embedding models (BGE vs E5 vs OpenAI)
+
+      Latency optimization:
+      1. Profile end-to-end latency: chunking → embedding → retrieval → generation
+      2. Measure vector store query time p50/p95/p99
+      3. Batch embed documents during ingestion (not one at a time)
+      4. Cache frequent queries and their retrieval results
+      5. Quantize vectors (fp32 → int8) to reduce memory bandwidth
+      6. Use approximate nearest neighbor (HNSW) instead of exhaustive search
+
+  - id: rag_migration
+    scenario: migration
+    description: "Migrate from naive RAG to production-grade RAG"
+    prompt: |
+      Migrate {application} from basic RAG to production-grade RAG.
+
+      Current state (naive):
+      - Fixed-size character chunking
+      - Single embedding model, no metadata
+      - Vector-only retrieval, no reranking
+      - No evaluation metrics
+
+      Target state (production):
+      - Semantic or agentic chunking with metadata
+      - Hybrid search (vector + BM25) with cross-encoder reranking
+      - Query rewriting and decomposition for complex queries
+      - Hallucination detection and retrieval quality monitoring
+
+      Migration plan:
+      1. Audit current chunking quality — identify common failure cases
+      2. Choose new chunking strategy and re-chunk the corpus
+      3. Backfill metadata (source, date, version, permissions)
+      4. Re-embed with the new model (test model quality on a sample first)
+      5. Add BM25 index alongside the vector index
+      6. Implement and tune cross-encoder reranker
+      7. A/B test old vs new pipeline on 10% of traffic
+      8. Monitor faithfulness scores before full rollout
+
+  - id: rag_audit
+    scenario: audit
+    description: "Audit RAG system for quality, security, and compliance"
+    prompt: |
+      Audit the RAG system for {application}.
+
+      Quality checklist:
+      1. Are retrieved chunks semantically coherent (not split mid-sentence)?
+      2. Does every retrieved chunk have score above the threshold?
+      3. Is query rewriting in place for ambiguous user queries?
+      4. Are LLM responses faithful to retrieved context?
+      5. Are citations included in every response?
+      6. Is there a "don't know" fallback when context is insufficient?
+      7. Are faithfulness, recall, and precision metrics tracked over time?
+
+      Security checklist:
+      1. Is the LLM prompt protected against prompt injection from retrieved context?
+      2. Are sensitive documents excluded from the vector index?
+      3. Are retrieval results filtered by user authorization scope?
+      4. Is all inter-service communication encrypted (TLS)?
+      5. Are embedding and LLM API keys in a secrets manager?
+
+      Compliance checklist:
+      1. Can documents be deleted from the vector index on request (right to erasure)?
+      2. Is every RAG query and response logged for auditing?
+      3. Are vector store access logs retained for compliance period?
+      4. Is PII/PHI handling documented and approved?
+
+  - id: rag_high_security
+    scenario: high-security
+    description: "Design a RAG system for regulated environments"
+    prompt: |
+      Design a production RAG system for {regulated_application} in a
+      {compliance_framework} (e.g., HIPAA, GDPR, SOC 2) environment.
+
+      Constraints:
+      - Strict grounding: every claim must cite a retrievable source document
+      - No data leaks: retrieval results scoped to user's authorization level
+      - Audit trail: every query and response logged with user, timestamp, and source docs
+      - Right to erasure: documents must be deletable from vector index on request
+
+      Architecture requirements:
+      1. Document-level access controls propagated to chunk level
+      2. Hybrid search (vector + BM25) with cross-encoder reranking for maximum relevance
+      3. Faithfulness scoring on every response — alert on low scores
+      4. Prompt template with explicit "don't know" instruction
+      5. Retrieved context filtered by user's document permissions before LLM prompt
+      6. Encryption at rest for vector store; TLS for all inter-service communication
+      7. Retention policies for query logs and vector index snapshots
+
+  - id: rag_edge
+    scenario: edge-case
+    description: "Design RAG for resource-constrained environments"
+    prompt: |
+      Design a RAG system for {edge_application} running on a device with
+      {memory_limit}GB RAM and {compute_profile} (CPU/GPU).
+
+      Constraints:
+      - No cloud API calls (data sovereignty / offline operation)
+      - Maximum memory budget: {memory_budget}
+      - Latency budget: {max_latency}ms
+
+      Design choices:
+      1. Embedding model: which sentence-transformers model fits in the memory budget?
+      2. Vector store: sqlite-vss, DuckDB, or LanceDB? Justify memory usage.
+      3. LLM: which quantized model (Phi-3, Llama-3.2-3B, Gemma-2-2B)?
+      4. Chunking: optimize chunk size for the LLM's context window
+      5. Index quantization: int8 or binary quantization to reduce memory
+      6. Caching: pre-compute embeddings for static documents
+
+anti_patterns:
+  - name: "RAG Without Evaluation"
+    description: >
+      Deploying a RAG pipeline without measuring faithfulness, retrieval
+      recall, or answer relevance. Without metrics, you can't detect
+      hallucination, poor retrieval quality, or regression after changes.
+    fix: "Implement evaluation from day one: faithfulness score, answer relevance, context recall, and precision (e.g., RAGAS framework)"
+    severity: critical
+    related_pattern: standard_rag
+
+  - name: "Context Dumping Without Filtering"
+    description: >
+      Retrieving the top-K chunks without a similarity threshold and passing
+      all of them to the LLM, including irrelevant or low-scoring chunks.
+      The LLM gets distracted by irrelevant context, increasing hallucination.
+    fix: "Set a similarity threshold (typically 0.6-0.8); only pass chunks above threshold. Limit to 3-10 highest quality chunks."
+    severity: high
+    related_pattern: standard_rag
+
+  - name: "Fixed-Size Character Chunking"
+    description: >
+      Splitting documents at fixed character boundaries without regard for
+      sentence, paragraph, or code structure. Produces incoherent chunks
+      that confuse both retrieval (noisy vector) and generation (broken context).
+    fix: "Use semantic chunking that respects document structure: section boundaries, paragraphs, sentences. Add overlap for context preservation."
+    severity: high
+    related_pattern: standard_rag
+
+  - name: "No Query Rewriting"
+    description: >
+      Feeding the user's raw query directly into vector search without
+      rewriting or expanding it. Ambiguous queries ("it", "the bug", "that
+      PR") have no semantic specificity for effective retrieval.
+    fix: "Implement query rewriting: expand abbreviations, resolve pronouns from conversation history, add domain context."
+    severity: medium
+    related_pattern: standard_rag
+
+  - name: "RAG as Silver Bullet"
+    description: >
+      Assuming RAG solves all LLM limitations without proper architecture.
+      RAG requires ongoing tuning: chunking strategy, embedding selection,
+      reranking, and evaluation. RAG without maintenance degrades over time.
+    fix: "Treat RAG as a system that requires continuous monitoring and tuning — implement evaluation metrics and regular quality reviews."
+    severity: medium
+    related_pattern: standard_rag
+
+checklist:
+  - id: RAG-01
+    category: correctness
+    description: "Semantic chunking respects document structure (sections, paragraphs, sentences)"
+    severity: high
+    verified_by: standard_rag
+
+  - id: RAG-02
+    category: correctness
+    description: "Chunk overlap configured to preserve context at boundaries (typically 10-20%)"
+    severity: medium
+    verified_by: standard_rag
+
+  - id: RAG-03
+    category: correctness
+    description: "Metadata stored with every vector (source, date, version, permissions)"
+    severity: high
+    verified_by: standard_rag
+
+  - id: RAG-04
+    category: correctness
+    description: "Similarity score threshold applied before passing chunks to LLM"
+    severity: high
+    verified_by: standard_rag
+
+  - id: RAG-05
+    category: correctness
+    description: "Top-K limited to 3-10 chunks to avoid overwhelming the LLM context window"
+    severity: medium
+    verified_by: standard_rag
+
+  - id: RAG-06
+    category: correctness
+    description: "Citations included in every RAG response with source references"
+    severity: high
+    verified_by: standard_rag
+
+  - id: RAG-07
+    category: design
+    description: "Query rewriting in place for ambiguous or context-dependent user queries"
+    severity: high
+    verified_by: standard_rag
+
+  - id: RAG-08
+    category: reliability
+    description: "Hybrid search (vector + BM25) implemented for grounding-critical applications"
+    severity: high
+    verified_by: hybrid_search_with_reranking
+
+  - id: RAG-09
+    category: reliability
+    description: "Cross-encoder reranker scoring retrieval results before LLM generation"
+    severity: high
+    verified_by: hybrid_search_with_reranking
+
+  - id: RAG-10
+    category: performance
+    description: "End-to-end RAG latency monitored (p50/p95/p99)"
+    severity: medium
+    verified_by: standard_rag
+
+  - id: RAG-11
+    category: performance
+    description: "Vector store query latency within SLA (typically < 50ms p95)"
+    severity: medium
+    verified_by: clustered_vector_search
+
+  - id: RAG-12
+    category: security
+    description: "Retrieved context filtered by user's document access permissions"
+    severity: critical
+    verified_by: standard_rag
+
+  - id: RAG-13
+    category: security
+    description: "LLM prompt injection prevented from retrieved context via input sanitization"
+    severity: critical
+    verified_by: standard_rag
+
+  - id: RAG-14
+    category: observability
+    description: "Faithfulness score tracked per response; alerts on low scores"
+    severity: high
+    verified_by: standard_rag
+
+  - id: RAG-15
+    category: observability
+    description: "Retrieval quality metrics logged: hit rate, MRR, NDCG@K"
+    severity: medium
+    verified_by: standard_rag
+
+  - id: RAG-16
+    category: compliance
+    description: "Document deletion propagates to vector index (right to erasure)"
+    severity: critical
+    verified_by: standard_rag
+
+  - id: RAG-17
+    category: reliability
+    description: "Dead-letter queue configured for documents that fail embedding"
+    severity: medium
+    verified_by: streaming_rag
+
+  - id: RAG-18
+    category: performance
+    description: "Embedding inference batched during ingestion (not one document at a time)"
+    severity: medium
+    verified_by: streaming_rag

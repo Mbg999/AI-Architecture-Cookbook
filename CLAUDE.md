@@ -1,6 +1,6 @@
 # AI Architecture Cookbook
 
-This repository contains 43 machine-readable architectural standards for AI code assistants.
+This repository contains 48 machine-readable architectural standards for AI code assistants.
 
 ## MCP Server
 
@@ -30,22 +30,22 @@ When implementing or reviewing any architectural component, **use the MCP tools*
 - Reviewing security → `get_checklist { "domain": "encryption", "severity": "critical" }`
 - Starting a new service → `recommend_pattern { "context": { "scale": "enterprise", "needs_login": true } }`
 
-## Standards Catalog (43 entries)
+## Standards Catalog (48 entries)
 
 ### Foundational (11)
 authentication, api-design, error-handling, logging-observability, data-persistence, input-validation, messaging-events, configuration-management, authorization, session-management, secrets-management
 
-### Application Architecture (9)
-layered-architecture, service-architecture, domain-driven-design, state-management, dependency-injection, repository-pattern, design-patterns, resilience-chaos-engineering, feature-flags
+### Application Architecture (10)
+layered-architecture, service-architecture, domain-driven-design, state-management, ai-agent-architecture, dependency-injection, repository-pattern, design-patterns, resilience-chaos-engineering, feature-flags
 
-### Infrastructure (7)
-containerization, orchestration, ci-cd, infrastructure-as-code, cloud-architecture, database-migration, api-gateway-edge-security
+### Infrastructure (8)
+containerization, orchestration, ci-cd, infrastructure-as-code, cloud-architecture, database-migration, api-gateway-edge-security, model-serving-inference
 
 ### Security & Quality (10)
 encryption, rate-limiting, testing-strategies, code-quality, performance-optimization, accessibility, client-platform-security, secure-sdlc, compliance-data-privacy, security-monitoring
 
-### Integration & Data (6)
-third-party-integration, webhooks, file-storage, search, data-transformation, versioning
+### Integration & Data (9)
+third-party-integration, webhooks, file-storage, search, rag-architecture, llm-integration, vector-databases, data-transformation, versioning
 
 ## Workflow
 

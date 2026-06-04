@@ -1,6 +1,6 @@
 # AI Architecture Cookbook
 
-Strongly opinionated architectural standards for AI code assistants. 43 domain-specific decision frameworks covering authentication, API design, containerization, encryption, testing, and more — each with context-aware decision trees, implementation patterns, anti-patterns, security hardening, and verification checklists.
+Strongly opinionated architectural standards for AI code assistants. 44 domain-specific decision frameworks covering authentication, API design, containerization, encryption, testing, and more — each with context-aware decision trees, implementation patterns, anti-patterns, security hardening, and verification checklists.
 
 These standards are primarily aimed at enterprise-level architectures and operational scenarios.
 
@@ -35,9 +35,6 @@ git clone <repo-url> && cd AI-Architecture-Cookbook
 
 ```powershell
 # Windows (PowerShell)
-
-Get vetted prompt recipes for a domain (human- and machine-ready snippets):
-
 git clone <repo-url>; cd AI-Architecture-Cookbook
 .\scripts\setup.ps1
 ```
@@ -74,7 +71,7 @@ cd mcp-server && npm install && npm run build
 
 Then configure your AI assistant:
 
-Smoke test (quick verification)
+#### Smoke test (quick verification)
 
 After building, run a quick smoke test that spawns the server and calls a couple of tools. From the repository root:
 
@@ -90,13 +87,13 @@ node --input-type=module dist/examples/stdio-client.mjs || node dist/examples/st
 
 Expected output: two JSON-like responses printed for `search_standards` and `recommend_pattern`.
 
-Environment and requirements
+#### Environment and requirements
 
 - Node: >=18 (recommended LTS)
 - npm: latest compatible with Node 18+
 - Python: 3.9+ for the `tools/validate.py` script (optional dev tooling)
 
-Python (recommended venv workflow)
+#### Python (recommended venv workflow)
 
 Use a virtual environment for the repository's Python tools and prompts:
 
@@ -128,7 +125,7 @@ Notes:
 - `requirements.txt` (repo root) is kept for the Python dev tooling; using `-r requirements.txt` installs all pinned versions.
 - If you prefer `pipx` for isolated CLI tools, install the validator there instead of a venv.
 
-JSON vs natural-language in clients
+#### JSON vs natural-language in clients
 
 - Many MCP clients accept either: (A) a natural-language prompt that instructs the assistant to call a tool, or (B) a direct "Call tool" action where you provide the tool name and a JSON input object.
 - If your client exposes a direct tool call UI, paste the JSON object from the examples. If using a chat-style interface, paste the natural-language example.
@@ -383,7 +380,7 @@ python3 prompts/compose.py --format copilot --categories foundational,security-q
 Read `index.yaml` for the full catalog, then load specific entries as needed:
 
 ```
-index.yaml                    → Master catalog (all 43 entries, tag index)
+index.yaml                    → Master catalog (all 44 entries, tag index)
 {category}/_index.yaml        → Category metadata
 {category}/{domain}/{domain}.yaml → Full standard
 ```
@@ -473,9 +470,10 @@ Notes
 | [session-management](foundational/session-management/) | Server-side sessions, JWT rotation, BFF | [for humans](foundational/session-management/README.md) \| [for Agents](foundational/session-management/session-management.yaml) |
 | [secrets-management](foundational/secrets-management/) | Vault services, rotation, zero-trust access | [for humans](foundational/secrets-management/README.md) \| [for Agents](foundational/secrets-management/secrets-management.yaml) |
 
-### Application Architecture (9 standards)
+### Application Architecture (10 standards)
 | Standard | Description | files |
 |----------|-------------|-------|
+| [ai-agent-architecture](application-architecture/ai-agent-architecture/) | Agent loops, tool use, memory, planning, multi-agent | [for humans](application-architecture/ai-agent-architecture/README.md) \| [for Agents](application-architecture/ai-agent-architecture/ai-agent-architecture.yaml) |
 | [layered-architecture](application-architecture/layered-architecture/) | Clean, hexagonal, onion architecture | [for humans](application-architecture/layered-architecture/README.md) \| [for Agents](application-architecture/layered-architecture/layered-architecture.yaml) |
 | [service-architecture](application-architecture/service-architecture/) | Microservices, modular monolith | [for humans](application-architecture/service-architecture/README.md) \| [for Agents](application-architecture/service-architecture/service-architecture.yaml) |
 | [domain-driven-design](application-architecture/domain-driven-design/) | Bounded contexts, aggregates | [for humans](application-architecture/domain-driven-design/README.md) \| [for Agents](application-architecture/domain-driven-design/domain-driven-design.yaml) |
@@ -511,15 +509,18 @@ Notes
 | [compliance-data-privacy](security-quality/compliance-data-privacy/) | GDPR, CCPA, HIPAA, consent, data retention | [for humans](security-quality/compliance-data-privacy/README.md) \| [for Agents](security-quality/compliance-data-privacy/compliance-data-privacy.yaml) |
 | [security-monitoring](security-quality/security-monitoring/) | SIEM, anomaly detection, incident response | [for humans](security-quality/security-monitoring/README.md) \| [for Agents](security-quality/security-monitoring/security-monitoring.yaml) |
 
-### Integration & Data (6 standards)
+### Integration & Data (9 standards)
 | Standard | Description | files |
 |----------|-------------|-------|
-| [third-party-integration](integration-data/third-party-integration/) | Vendor abstraction, circuit breakers | [for humans](integration-data/third-party-integration/README.md) \| [for Agents](integration-data/third-party-integration/third-party-integration.yaml) |
-| [webhooks](integration-data/webhooks/) | Delivery guarantees, idempotent processing | [for humans](integration-data/webhooks/README.md) \| [for Agents](integration-data/webhooks/webhooks.yaml) |
-| [file-storage](integration-data/file-storage/) | Object storage, CDN, presigned URLs | [for humans](integration-data/file-storage/README.md) \| [for Agents](integration-data/file-storage/file-storage.yaml) |
-| [search](integration-data/search/) | Full-text search, indexing strategies | [for humans](integration-data/search/README.md) \| [for Agents](integration-data/search/search.yaml) |
 | [data-transformation](integration-data/data-transformation/) | ETL/ELT, streaming pipelines | [for humans](integration-data/data-transformation/README.md) \| [for Agents](integration-data/data-transformation/data-transformation.yaml) |
+| [file-storage](integration-data/file-storage/) | Object storage, CDN, presigned URLs | [for humans](integration-data/file-storage/README.md) \| [for Agents](integration-data/file-storage/file-storage.yaml) |
+| [llm-integration](integration-data/llm-integration/) | LLM guardrails, caching, cost control, self-hosted inference | [for humans](integration-data/llm-integration/README.md) \| [for Agents](integration-data/llm-integration/llm-integration.yaml) |
+| [rag-architecture](integration-data/rag-architecture/) | Vector search, embeddings, RAG pipelines, grounding | [for humans](integration-data/rag-architecture/README.md) \| [for Agents](integration-data/rag-architecture/rag-architecture.yaml) |
+| [search](integration-data/search/) | Full-text search, indexing strategies | [for humans](integration-data/search/README.md) \| [for Agents](integration-data/search/search.yaml) |
+| [third-party-integration](integration-data/third-party-integration/) | Vendor abstraction, circuit breakers | [for humans](integration-data/third-party-integration/README.md) \| [for Agents](integration-data/third-party-integration/third-party-integration.yaml) |
+| [vector-databases](integration-data/vector-databases/) | Index types, sharding, hybrid search, provider comparison | [for humans](integration-data/vector-databases/README.md) \| [for Agents](integration-data/vector-databases/vector-databases.yaml) |
 | [versioning](integration-data/versioning/) | API versioning, backward compatibility | [for humans](integration-data/versioning/README.md) \| [for Agents](integration-data/versioning/versioning.yaml) |
+| [webhooks](integration-data/webhooks/) | Delivery guarantees, idempotent processing | [for humans](integration-data/webhooks/README.md) \| [for Agents](integration-data/webhooks/webhooks.yaml) |
 
 ## Entry Structure
 
@@ -590,7 +591,7 @@ The validator (`tools/validate.py`) checks every YAML entry against the v3 JSON 
 ### Usage examples
 
 ```bash
-# Validate all 43 entries
+# Validate all 44 entries
 python3 tools/validate.py
 ```
 
@@ -598,8 +599,8 @@ python3 tools/validate.py
 ============================================================
 AI Architecture Cookbook — Validation Report
 ============================================================
-Entries validated: 43
-Passed: 43
+Entries validated: 44
+Passed: 44
 Failed: 0
 
 ✓ All entries valid. (0 warnings)

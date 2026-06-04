@@ -24,3 +24,12 @@ entries:
   versioning:
     path: versioning/versioning.yaml
     description: "API versioning strategies, backward compatibility, and deprecation policies"
+  rag-architecture:
+    path: rag-architecture/rag-architecture.yaml
+    description: "RAG architecture: vector search, embeddings, chunking, reranking, hybrid retrieval, and grounding"
+  llm-integration:
+    path: llm-integration/llm-integration.yaml
+    description: "LLM integration patterns: guardrails, caching, cost control, self-hosted inference, fallback cascades"
+  vector-databases:
+    path: vector-databases/vector-databases.yaml
+    description: "Vector database selection: index types, sharding, hybrid search, and provider comparison"

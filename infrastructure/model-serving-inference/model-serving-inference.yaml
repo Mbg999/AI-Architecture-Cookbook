@@ -1,0 +1,726 @@
+# =============================================================================
+# AI Architecture Cookbook — Model Serving & Inference
+# Schema: v3 | Domain: model-serving-inference
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: model-serving-inference
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Model serving and inference infrastructure patterns covering batch vs
+    real-time inference, model serving platforms (vLLM, Triton, TGI),
+    quantization strategies (FP16, INT8, INT4), edge deployment, GPU
+    optimization, autoscaling, and A/B model rollout. Provides context-aware
+    recommendations for deploying and serving ML models in production.
+
+  tags:
+    - model-serving
+    - inference
+    - quantization
+    - gpu
+    - triton
+    - vllm
+    - tgi
+    - mlops
+
+  categories:
+    - infrastructure
+
+  prerequisites:
+    - id: containerization
+      reason: "Model serving runs in containers with specific GPU and runtime requirements"
+    - id: orchestration
+      reason: "Production model serving uses Kubernetes for scaling and rolling updates"
+    - id: cloud-architecture
+      reason: "GPU instance selection affects serving cost and performance"
+    - id: performance-optimization
+      reason: "Inference latency optimization is the primary performance concern"
+
+  related_standards:
+    - id: ci-cd
+      relationship: complementary
+      context: "Model deployments follow CI/CD pipelines with A/B testing and rollout"
+
+context_inputs:
+  - name: inference_mode
+    type: enum
+    description: "When inference results are needed"
+    required: true
+    default: realtime
+    enum_values:
+      - realtime
+      - near_realtime
+      - batch
+
+  - name: model_size
+    type: enum
+    description: "Size of the model in parameters"
+    required: true
+    default: medium
+    enum_values:
+      - small
+      - medium
+      - large
+      - very_large
+
+  - name: throughput_requirement
+    type: enum
+    description: "Required inference throughput"
+    required: false
+    default: low
+    enum_values:
+      - low
+      - medium
+      - high
+      - very_high
+
+  - name: latency_sla
+    type: enum
+    description: "Maximum acceptable inference latency"
+    required: false
+    default: interactive
+    enum_values:
+      - realtime
+      - interactive
+      - batch
+
+  - name: gpu_availability
+    type: boolean
+    description: "Whether GPU hardware is available for inference"
+    required: false
+    default: true
+
+  - name: deployment_target
+    type: enum
+    description: "Where inference runs"
+    required: false
+    default: cloud_gpu
+    enum_values:
+      - cloud_gpu
+      - on_premises_gpu
+      - edge_cpu
+      - serverless
+
+decision_tree:
+  - id: batch_inference
+    priority: 1
+    if:
+      - inference_mode == batch
+    then:
+      pattern: batch_inference_pipeline
+      notes: >
+        Batch inference processes large datasets offline. Optimize for
+        throughput using large batch sizes, model quantization, and
+        GPU batching. Use job schedulers (K8s Job, AWS Batch).
+
+  - id: edge_inference
+    priority: 2
+    if:
+      - deployment_target == edge_cpu
+      - gpu_availability == false
+    then:
+      pattern: edge_optimized_inference
+      standards:
+        - "ONNX Runtime"
+        - "TensorFlow Lite"
+        - "llama.cpp"
+      notes: >
+        Edge inference requires aggressive quantization (INT4/INT8),
+        model distillation, and CPU-optimized runtimes (ONNX, TFLite,
+        llama.cpp).
+
+  - id: high_throughput
+    priority: 3
+    if:
+      - throughput_requirement in [high, very_high]
+      - model_size in [large, very_large]
+    then:
+      pattern: distributed_inference
+      notes: >
+        High-throughput inference on large models requires distributed
+        serving with tensor parallelism across GPUs. Use vLLM or TensorRT-LLM.
+
+  - id: serverless
+    priority: 4
+    if:
+      - deployment_target == serverless
+    then:
+      pattern: serverless_inference
+      notes: >
+        Serverless inference (AWS SageMaker, modal.com, Replicate) is
+        cost-effective for variable or low-traffic workloads. Pay per
+        inference, no idle GPU cost.
+
+  - id: standard_realtime
+    priority: 5
+    if:
+      - inference_mode in [realtime, near_realtime]
+    then:
+      pattern: standard_model_serving
+      notes: "Standard real-time model serving with a dedicated inference server is the default for all non-batch deployments"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: standard_model_serving
+    description: "Standard model serving with a dedicated inference server is the safe default"
+
+patterns:
+  - id: standard_model_serving
+    name: "Standard Model Serving"
+    description: >
+      Deploy a model behind a dedicated inference server (vLLM, Triton,
+      TGI, TorchServe) with REST/gRPC API, request queuing, and GPU
+      batching. Suitable for most production use cases with real-time
+      or interactive latency requirements.
+    use_when:
+      - "Real-time or interactive inference (sub-second to seconds)"
+      - "Dedicated GPU available"
+      - "Single model variant being served"
+      - "Low to medium throughput (< 100 QPS)"
+    avoid_when:
+      - "Very high throughput (distributed serving needed)"
+      - "Batch processing (batch pipeline is more efficient)"
+      - "Edge/CPU deployment (quantization needed)"
+    tradeoffs:
+      pros:
+        - "Simple deployment with well-supported inference servers"
+        - "Continuous batching maximizes GPU utilization"
+        - "Built-in health checks, metrics, and request queuing"
+        - "Easier debugging and monitoring"
+      cons:
+        - "Single-model per instance limits GPU utilization for small models"
+        - "Manual scaling — must provision for peak load"
+        - "Idle GPU cost during low traffic"
+    implementation:
+      guidelines:
+        - "Use vLLM for LLMs (PagedAttention for memory efficiency)"
+        - "Use Triton Inference Server for multi-framework models"
+        - "Enable continuous batching for throughput"
+        - "Configure request queue with max size and timeout"
+        - "Implement model warm-up to avoid cold-start latency"
+        - "Monitor GPU utilization, memory, and request latency"
+        - "Set up horizontal autoscaling based on queue depth"
+        - "Use NVIDIA MPS or MIG for GPU sharing"
+      common_errors:
+        - error: "No model warm-up"
+          impact: "First requests after deployment have 10-30s cold start latency"
+          fix: "Send warm-up requests after model loads before accepting traffic"
+        - error: "Under-provisioning GPU memory"
+          impact: "Model fails to load or OOM at peak throughput"
+          fix: "Use vLLM for PagedAttention; calculate memory: params * precision_bytes * 1.2"
+        - error: "No request queuing"
+          impact: "Bursts overwhelm the server; requests timeout or drop"
+          fix: "Configure request queue with max_size and backpressure"
+    maturity:
+      level: standard
+    standards:
+      - name: "vLLM"
+        type: tool
+        role: "High-throughput LLM serving with PagedAttention"
+        status: recommended
+      - name: "NVIDIA Triton Inference Server"
+        type: tool
+        role: "Multi-framework inference server with GPU optimization"
+        status: recommended
+      - name: "HuggingFace TGI"
+        type: tool
+        role: "Text Generation Inference for HuggingFace models"
+        status: recommended
+
+  - id: distributed_inference
+    name: "Distributed Inference with Tensor Parallelism"
+    description: >
+      Distribute a large model across multiple GPUs using tensor parallelism
+      (model sharding). Each GPU holds a portion of the model weights and
+      computes its portion of the forward pass. Enables serving models that
+      don't fit on a single GPU (70B+ parameters) and scales throughput
+      linearly with GPU count.
+    use_when:
+      - "Model doesn't fit on a single GPU (> 40GB VRAM)"
+      - "High throughput requirements (> 100 QPS)"
+      - "Sub-500ms latency requirement for large models"
+    avoid_when:
+      - "Model fits on a single GPU (single-node serving is simpler)"
+      - "Low throughput (GPU costs aren't justified)"
+      - "No multi-GPU infrastructure available"
+    tradeoffs:
+      pros:
+        - "Models that don't fit on one GPU can be served"
+        - "Near-linear throughput scaling with GPU count"
+        - "Lower latency than CPU offloading"
+        - "Standardized via NVIDIA NCCL and TensorRT-LLM"
+      cons:
+        - "Significant GPU infrastructure cost"
+        - "Network bandwidth between GPUs is critical (NVLink preferred)"
+        - "Complex deployment (multi-node, NCCL configuration)"
+        - "Lower efficiency than single-GPU for models that fit"
+    implementation:
+      guidelines:
+        - "Use TensorRT-LLM or vLLM with tensor parallelism"
+        - "Place GPUs on same node with NVLink for best performance"
+        - "Use pipeline parallelism for very deep models"
+        - "Monitor NCCL communication overhead"
+        - "Target 50-70% MFU (Model FLOPS Utilization)"
+        - "Right-size TP degree: 2x A100 for 70B, 4x for 175B"
+        - "Implement request batching within each GPU shard"
+      common_errors:
+        - error: "GPUs on different nodes without fast interconnect"
+          impact: "NCCL communication dominates inference time"
+          fix: "Use GPUs on same node with NVLink; avoid cross-node TP"
+        - error: "Over-partitioning small models"
+          impact: "Communication overhead > compute benefit"
+          fix: "Only use TP for models that don't fit on one GPU"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "TensorRT-LLM"
+        type: tool
+        role: "NVIDIA's optimized LLM serving with TP support"
+        status: recommended
+      - name: "vLLM Tensor Parallelism"
+        type: tool
+        role: "Multi-GPU LLM serving with PagedAttention"
+        status: recommended
+
+  - id: batch_inference_pipeline
+    name: "Batch Inference Pipeline"
+    description: >
+      Process large datasets through a model in batch mode. Jobs run on
+      scheduled or triggered cadence, optimized for throughput rather than
+      latency. Uses large batch sizes, gradient accumulation, and model
+      quantization to maximize data processed per GPU-hour.
+    use_when:
+      - "Large dataset to process (millions of records)"
+      - "No real-time latency requirement"
+      - "Nightly or periodic inference jobs"
+      - "Cost optimization: batch is cheaper per inference"
+    avoid_when:
+      - "Real-time or interactive response needed"
+      - "Small datasets (overhead of job scheduling isn't justified)"
+      - "Streaming inference (model-in-the-loop)"
+    tradeoffs:
+      pros:
+        - "Highest throughput per GPU-hour"
+        - "Can use spot/preemptible instances for cost savings"
+        - "Retry on failure — no real-time SLA pressure"
+        - "Easier to parallelize across many nodes"
+      cons:
+        - "Results not available until job completes"
+        - "Job scheduling and orchestration overhead"
+        - "Batch failures require reprocessing logic"
+        - "Peak resource demand during batch windows"
+    implementation:
+      guidelines:
+        - "Maximize batch size to just under GPU memory limit"
+        - "Use INT8 or FP16 precision for 2x throughput"
+        - "Use spot instances for cost savings (with checkpointing)"
+        - "Implement checkpoint/restart for long-running jobs"
+        - "Partition dataset into shards for parallel processing"
+        - "Monitor throughput (samples/sec) and GPU utilization"
+        - "Write results to object storage; trigger downstream consumers"
+      common_errors:
+        - error: "Batch too small for GPU"
+          impact: "GPU underutilized; per-sample cost is higher"
+          fix: "Increase batch size; if dataset is small, use sequential processing"
+        - error: "No checkpointing for long jobs"
+          impact: "Job failure at 95% requires full restart"
+          fix: "Checkpoint every N batches; resume from last checkpoint"
+    maturity:
+      level: standard
+    standards:
+      - name: "Apache Spark + ML"
+        type: tool
+        role: "Distributed batch processing with ML inference"
+        status: recommended
+      - name: "AWS Batch / K8s Job"
+        type: tool
+        role: "Batch job scheduling with auto-scaling"
+        status: recommended
+
+  - id: edge_optimized_inference
+    name: "Edge-Optimized Inference"
+    description: >
+      Optimize models for CPU or edge-device deployment using quantization
+      (INT4, INT8), pruning, distillation, and hardware-specific runtimes
+      (ONNX Runtime, TensorFlow Lite, CoreML, llama.cpp). Reduces model
+      size 2-8x with minimal accuracy loss.
+    use_when:
+      - "Deployment on edge devices, mobile, or IoT"
+      - "No GPU available for inference"
+      - "Strict memory and power constraints"
+      - "Privacy requirements mandate local inference"
+    avoid_when:
+      - "GPU infrastructure available (GPU is more efficient)"
+      - "Model accuracy cannot tolerate quantization loss"
+      - "Distilled/quantized model doesn't meet quality bar"
+    tradeoffs:
+      pros:
+        - "Runs on CPU — no GPU cost or availability constraints"
+        - "Data never leaves the device"
+        - "Zero inference latency (no network calls)"
+        - "Lower power consumption than cloud inference"
+      cons:
+        - "Lower accuracy than full-precision models"
+        - "Slower per-inference than GPU (10-100x)"
+        - "Model size limits: memory is constrained on edge"
+        - "Hardware-specific optimization (different per platform)"
+    implementation:
+      guidelines:
+        - "Quantize from FP16 to INT8 or INT4 (post-training quantization)"
+        - "Use knowledge distillation: train student model to mimic teacher"
+        - "Use ONNX Runtime for cross-platform CPU optimization"
+        - "Use llama.cpp for LLM inference on CPU"
+        - "Profile latency on target hardware before deployment"
+        - "Validate accuracy after quantization on a test set"
+        - "Use model pruning to remove redundant parameters"
+      common_errors:
+        - error: "Deploying full-size model on edge without optimization"
+          impact: "Out of memory or multi-second inference time"
+          fix: "Quantize to INT8 or INT4; distill to smaller model"
+        - error: "No accuracy validation after quantization"
+          impact: "Model quality degrades silently in production"
+          fix: "Benchmark accuracy on a held-out test set before and after quantization"
+    maturity:
+      level: advanced
+    standards:
+      - name: "ONNX Runtime"
+        type: tool
+        role: "Cross-platform optimized inference engine"
+        status: recommended
+      - name: "llama.cpp"
+        type: tool
+        role: "CPU-optimized LLM inference with GGUF quantization"
+        status: recommended
+      - name: "TensorFlow Lite"
+        type: tool
+        role: "Mobile and edge-optimized inference runtime"
+        status: recommended
+      - name: "NVIDIA TensorRT"
+        type: tool
+        role: "GPU-optimized inference with INT8/FP8 quantization"
+        status: recommended
+
+  - id: serverless_inference
+    name: "Serverless Inference"
+    description: >
+      Deploy models to serverless inference platforms (AWS SageMaker,
+      Modal, Replicate, Banan). No infrastructure management — pay per
+      inference. Automatically scales to zero when idle. Best for variable
+      traffic, prototyping, and low-volume production workloads.
+    use_when:
+      - "Variable or unpredictable traffic patterns"
+      - "Low to medium inference volume"
+      - "Prototyping and ML development"
+      - "Teams without DevOps capacity"
+    avoid_when:
+      - "Very high throughput (dedicated serving is cheaper)"
+      - "Sub-100ms latency requirement (cold starts add delay)"
+      - "Strict data residency requirements"
+    tradeoffs:
+      pros:
+        - "No infrastructure management"
+        - "Scales to zero — no cost when idle"
+        - "Automatic scaling under load"
+        - "Pay-per-inference pricing"
+      cons:
+        - "Cold start latency (5-30s on first request)"
+        - "Higher per-inference cost at volume"
+        - "Limited GPU selection (often older GPU generations)"
+        - "Less control over runtime and optimizations"
+    implementation:
+      guidelines:
+        - "Implement keep-warm pings to reduce cold starts for prod traffic"
+        - "Use smaller quantized models for faster cold starts"
+        - "Set concurrency limits to prevent cost spikes"
+        - "Configure auto-scaling min/max instances"
+        - "Monitor cold start frequency and latency"
+        - "Use multi-model endpoints for small models"
+      common_errors:
+        - error: "No cold start mitigation for user-facing apps"
+          impact: "Users experience 10-30s delays on first request"
+          fix: "Send keep-warm pings every 30s; use small model for fast load"
+        - error: "No cost budget for serverless inference"
+          impact: "Traffic spike causes unexpected bill"
+          fix: "Set max concurrency and budget alerts"
+    maturity:
+      level: standard
+    standards:
+      - name: "AWS SageMaker Serverless"
+        type: tool
+        role: "AWS serverless ML inference"
+        status: recommended
+      - name: "Modal"
+        type: tool
+        role: "Cloud platform for serverless GPU inference"
+        status: recommended
+      - name: "Replicate"
+        type: tool
+        role: "Managed model deployment with API"
+        status: recommended
+
+examples:
+  - id: model_serving_config
+    title: "Model Serving Configuration Decision"
+    context: "Deploying a 7B parameter LLM for production"
+    correct: |
+      # Model Serving Configuration — Correct Approach
+
+      model_config = {
+          "size": "7B",
+          "precision": "FP16",     # 14GB VRAM for 7B
+          "gpu": "A10G (24GB)",   # Single GPU is enough
+          "inference_mode": "realtime",
+          "expected_qps": 50,
+      }
+
+      # Decision: vLLM with continuous batching
+      # Single A10G (24GB) can serve 7B-FP16 with room for KV cache
+
+      deployment = {
+          "server": "vllm",
+          "model": "mistral-7b-instruct",
+          "gpu": "A10G x1",
+          "tensor_parallel": 1,       # Fits on one GPU
+          "max_num_seqs": 256,        # Continuous batching
+          "max_model_len": 8192,      # 8K context window
+          "gpu_memory_utilization": 0.90,
+          "quantization": None,       # FP16 is fine for single GPU
+          "request_queue_max": 100,   # Backpressure
+          "autoscaling": {            # Horizontal scaling
+              "min_instances": 1,
+              "max_instances": 3,
+              "target_queue_depth": 50,
+          },
+          "monitoring": {
+              "metrics": ["gpu_util", "request_latency_p50_p99",
+                          "queue_depth", "throughput"],
+              "alerts": {
+                  "latency_p99 > 2s": "critical",
+                  "queue_depth > 80": "warning",
+              },
+          },
+      }
+    incorrect: |
+      # WRONG: No capacity planning, no monitoring, wrong precision
+
+      bad_deployment = {
+          "server": "vllm",
+          "model": "mistral-7b",
+          "gpu": "T4 (16GB)",       # NOT ENOUGH VRAM for 7B-FP16
+          "max_num_seqs": 1000,     # Too many — OOM at peak
+          "gpu_memory_utilization": 0.95,  # No room for KV cache
+          # No quantization for the T4's limited memory
+          "quantization": None,
+          # No autoscaling — single instance
+          # No monitoring — can't detect OOM or latency spikes
+      }
+
+      # Result: OOM errors, dropped requests, no visibility
+    explanation: >
+      The correct example properly sizes the GPU for the model, enables
+      continuous batching, configures autoscaling, and sets up monitoring.
+      The incorrect example uses an underpowered GPU (T4 16GB can't fit
+      7B-FP16 with KV cache) and lacks autoscaling and monitoring.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All inference API endpoints use TLS"
+      - "gRPC inference with mTLS for service-to-service"
+  data_protection:
+    requirements:
+      - "Inference input/output logged with appropriate data classification"
+      - "Sensitive data excluded from inference logs"
+  access_control:
+    requirements:
+      - "Inference endpoints authenticated (API keys or IAM)"
+      - "Model deployment access restricted to authorized roles"
+      - "Rate limiting per API key or tenant"
+  input_output:
+    requirements:
+      - "Inference inputs validated against expected schema"
+      - "Model outputs sanitized — guard against prompt injection from input"
+  secrets:
+    requirements:
+      - "Model weights access controlled (registry authentication)"
+      - "Inference server credentials in secrets manager"
+  monitoring:
+    requirements:
+      - "GPU utilization, memory, and temperature monitored"
+      - "Inference latency p50/p95/p99 tracked and alerted"
+      - "Model drift detection over time"
+      - "Auto-scaling events logged"
+
+compliance:
+  standards:
+    - name: "SOC 2"
+      relevance: "Model serving infrastructure requires access controls, monitoring, and audit trails"
+
+  requirements_mapping:
+    - control: model_access
+      description: "Model weights and inference endpoints access-controlled"
+      maps_to:
+        - "SOC 2 logical access controls"
+    - control: inference_monitoring
+      description: "Inference quality and performance monitored for degradation"
+      maps_to:
+        - "SOC 2 monitoring controls"
+
+prompt_recipes:
+  - id: serving_greenfield
+    scenario: greenfield
+    description: "Design model serving infrastructure"
+    prompt: |
+      Design model serving for {model_name} ({model_params}B parameters).
+
+      Context:
+      - Inference mode: [realtime/near_realtime/batch]
+      - Model size: [small/medium/large/very_large]
+      - Throughput: [low/medium/high/very_high]
+      - Latency SLA: [realtime/interactive/batch]
+      - GPU available: [yes/no]
+      - Deployment target: [cloud_gpu/on_premises/edge_cpu/serverless]
+
+      Design:
+      1. Inference server choice with rationale
+      2. GPU type and count for target latency
+      3. Quantization strategy (FP16, INT8, INT4)
+      4. Request batching strategy
+      5. Autoscaling configuration
+      6. Monitoring and alerting setup
+
+  - id: serving_optimization
+    scenario: performance
+    description: "Optimize inference performance and cost"
+    prompt: |
+      Optimize inference for {model_name}.
+
+      Strategies:
+      1. Quantize model (FP16 → INT8 → INT4) and measure accuracy impact
+      2. Increase batch size for GPU utilization
+      3. Enable continuous batching (vLLM, Triton)
+      4. Use tensor parallelism if model doesn't fit on one GPU
+      5. Switch to spot instances for batch workloads
+      6. Reduce model size via distillation
+      7. Implement request caching for common inputs
+      8. Profile and optimize GPU kernel execution
+
+  - id: edge_deployment
+    scenario: migration
+    description: "Deploy model to edge/CPU devices"
+    prompt: |
+      Deploy {model_name} to edge devices.
+
+      Steps:
+      1. Quantize model from FP16 to INT8 or INT4
+      2. Convert to ONNX format for cross-platform compatibility
+      3. Benchmark latency on target edge hardware
+      4. Validate accuracy drop after quantization
+      5. Implement caching and batch if memory allows
+      6. Set up OTA model update mechanism
+
+  - id: ab_test_rollout
+    scenario: migration
+    description: "Implement A/B model rollout in production"
+    prompt: |
+      Set up A/B testing for model deployment.
+
+      Plan:
+      1. Deploy new model version alongside current (shadow mode for validation)
+      2. Route 5% of traffic to new model, monitor p50/p99 latency
+      3. Gradually increase traffic split (10%, 25%, 50%, 100%)
+      4. Rollback plan: if latency p99 > 3s or error rate > 1%, revert
+      5. Automated rollback via K8s or inference server API
+      6. Measure quality metrics for each variant
+
+anti_patterns:
+  - name: "GPU Underutilization"
+    description: >
+      Running inference with batch size of 1 on a large GPU. GPU
+      utilization is below 10%, wasting expensive hardware and
+      increasing per-inference cost.
+    fix: "Increase batch size; enable continuous batching; consolidate multiple models on one GPU"
+    severity: high
+    related_pattern: standard_model_serving
+
+  - name: "No Cold Start Mitigation"
+    description: >
+      Deploying serverless inference without keep-warm pings or model
+      pre-loading. Users experience 10-30s latency on the first request
+      after idle periods.
+    fix: "Send keep-warm pings; use model pre-warming; set min instances > 0"
+    severity: medium
+    related_pattern: serverless_inference
+
+  - name: "Deploying Unquantized Models to Edge"
+    description: >
+      Deploying FP16 models to CPU-only edge devices. Models are too
+      large to fit in memory or take minutes per inference.
+    fix: "Quantize to INT8/INT4; distill to smaller model; use ONNX Runtime optimization"
+    severity: high
+    related_pattern: edge_optimized_inference
+
+checklist:
+  - id: MS-01
+    category: performance
+    description: "GPU memory sized for model + KV cache (vLLM) or intermediate tensors"
+    severity: critical
+    verified_by: standard_model_serving
+
+  - id: MS-02
+    category: performance
+    description: "Continuous batching enabled for throughput"
+    severity: high
+    verified_by: standard_model_serving
+
+  - id: MS-03
+    category: performance
+    description: "Request queue with max size and timeout configured"
+    severity: high
+    verified_by: standard_model_serving
+
+  - id: MS-04
+    category: performance
+    description: "Model warm-up requests sent before accepting traffic"
+    severity: high
+    verified_by: standard_model_serving
+
+  - id: MS-05
+    category: performance
+    description: "GPU utilization monitored (target > 70%)"
+    severity: medium
+    verified_by: standard_model_serving
+
+  - id: MS-06
+    category: reliability
+    description: "Autoscaling configured based on queue depth"
+    severity: high
+    verified_by: standard_model_serving
+
+  - id: MS-07
+    category: reliability
+    description: "Spot instance fallback with checkpointing for batch jobs"
+    severity: medium
+    verified_by: batch_inference_pipeline
+
+  - id: MS-08
+    category: performance
+    description: "Latency p50/p95/p99 monitored with alerts"
+    severity: high
+    verified_by: standard_model_serving
+
+  - id: MS-09
+    category: security
+    description: "Inference endpoints authenticated and rate-limited"
+    severity: high
+    verified_by: standard_model_serving
+
+  - id: MS-10
+    category: performance
+    description: "Quantization accuracy validated on held-out test set"
+    severity: high
+    verified_by: edge_optimized_inference

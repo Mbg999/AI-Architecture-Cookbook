@@ -6,6 +6,13 @@ description: >
   management, and domain modeling.
 
 entries:
+  - domain: ai-agent-architecture
+    version: "1.0.0"
+    description: "AI agent architecture: loops, tool use, memory, planning, multi-agent orchestration"
+    tags: ["ai", "agent", "function-calling", "tool-use", "mcp", "memory", "planning", "multi-agent"]
+    prerequisites: ["llm-integration", "state-management", "messaging-events", "api-design"]
+    pattern_count: 5
+    anti_pattern_count: 5
   - domain: layered-architecture
     version: "1.0.0"
     description: "Layered architecture patterns including clean architecture, hexagonal, and onion"

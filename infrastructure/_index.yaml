@@ -62,3 +62,11 @@ entries:
     prerequisites: ["api-design", "authentication", "rate-limiting"]
     pattern_count: 4
     anti_pattern_count: 3
+
+  - domain: model-serving-inference
+    version: "1.0.0"
+    description: "Model serving and inference: batch vs real-time, serving platforms, quantization, GPU optimization, edge deployment"
+    tags: ["model-serving", "inference", "quantization", "gpu", "triton", "vllm", "tgi", "mlops"]
+    prerequisites: ["containerization", "orchestration", "cloud-architecture", "performance-optimization"]
+    pattern_count: 5
+    anti_pattern_count: 3

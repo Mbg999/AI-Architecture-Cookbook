@@ -1,0 +1,783 @@
+# =============================================================================
+# AI Architecture Cookbook — Vector Databases
+# Schema: v3 | Domain: vector-databases
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: vector-databases
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Vector database selection and architecture patterns covering index
+    types (HNSW, IVF, PQ), embedding dimensions, sharding and partitioning,
+    hybrid search (vector + BM25), multi-tenancy, and provider comparison
+    between Pinecone, Weaviate, Qdrant, Milvus, pgvector, and Chroma.
+
+  tags:
+    - vector-database
+    - embeddings
+    - vector-search
+    - hnsw
+    - ivf
+    - vector-index
+    - hybrid-search
+
+  categories:
+    - integration-data
+
+  prerequisites:
+    - id: data-persistence
+      reason: "Vector databases are a type of data persistence layer for embeddings"
+    - id: search
+      reason: "Vector search extends and complements full-text search"
+    - id: performance-optimization
+      reason: "Index choice and sharding directly impact query latency and recall"
+
+  related_standards:
+    - id: rag-architecture
+      relationship: complementary
+      context: "RAG pipelines are the primary consumer of vector databases"
+    - id: infrastructure-as-code
+      relationship: complementary
+      context: "Vector DB clusters are provisioned and managed via IaC"
+
+context_inputs:
+  - name: vector_count
+    type: enum
+    description: "Number of vectors to store and search"
+    required: true
+    default: medium
+    enum_values:
+      - small
+      - medium
+      - large
+      - very_large
+      - billion_scale
+
+  - name: embedding_dimensions
+    type: enum
+    description: "Dimensionality of the embedding vectors"
+    required: true
+    default: medium_768
+    enum_values:
+      - small_384
+      - medium_768
+      - large_1536
+      - very_large_3072
+
+  - name: latency_requirement
+    type: enum
+    description: "Target query latency for vector search"
+    required: false
+    default: interactive
+    enum_values:
+      - realtime
+      - interactive
+      - batch
+
+  - name: recall_requirement
+    type: enum
+    description: "Minimum acceptable recall rate for approximate search"
+    required: false
+    default: high
+    enum_values:
+      - standard
+      - high
+      - exact
+
+  - name: hybrid_search_required
+    type: boolean
+    description: "Whether the DB must support combined vector + keyword search"
+    required: false
+    default: false
+
+  - name: deployment_model
+    type: enum
+    description: "How the vector database is deployed"
+    required: false
+    default: managed
+    enum_values:
+      - embedded
+      - managed
+      - self_hosted
+
+decision_tree:
+  - id: exact_search
+    priority: 1
+    if:
+      - recall_requirement == exact
+    then:
+      pattern: exact_nearest_neighbor
+      notes: >
+        Exact search guarantees 100% recall but is only feasible for
+        small datasets (< 10K vectors). Use brute-force or IVF with
+        exhaustive search. For larger datasets, consider pre-filtering.
+
+  - id: billion_scale
+    priority: 2
+    if:
+      - vector_count == billion_scale
+    then:
+      pattern: distributed_vector_db
+      notes: >
+        Billion-scale requires distributed vector databases with sharding,
+        replication, and PQ compression. Use Milvus, Qdrant, or Weaviate
+        in cluster mode with GPU-accelerated indexing.
+
+  - id: managed_small
+    priority: 3
+    if:
+      - deployment_model == managed
+      - vector_count in [small, medium]
+    then:
+      pattern: managed_vector_db
+      notes: >
+        Small to medium workloads are best served by managed vector
+        databases (Pinecone, Weaviate Cloud, Qdrant Cloud). Zero ops
+        overhead, automatic scaling, and built-in monitoring.
+
+  - id: embedded_use
+    priority: 4
+    if:
+      - deployment_model == embedded
+    then:
+      pattern: embedded_vector_db
+      notes: >
+        Embedded vector DBs (sqlite-vss, LanceDB, Chroma) run in-process
+        with the application. Suitable for local development, edge devices,
+        and when minimal infrastructure is desired.
+
+  - id: hybrid_needed
+    priority: 5
+    if:
+      - hybrid_search_required == true
+    then:
+      pattern: hybrid_capable_db
+      notes: >
+        For hybrid search (vector + BM25), choose databases with native
+        hybrid support: Weaviate, Qdrant, Elasticsearch, or pgvector with
+        full-text search.
+
+  - id: large_cluster
+    priority: 6
+    if:
+      - vector_count in [large, very_large]
+    then:
+      pattern: distributed_vector_db
+      notes: >
+        Large-scale vector search requires distributed infrastructure with
+        HNSW index, sharding, and replication. Use Milvus, Qdrant, or
+        Weaviate cluster.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: managed_vector_db
+    description: "A managed vector database (Pinecone, Weaviate Cloud) is the safe default for most use cases"
+
+patterns:
+  - id: managed_vector_db
+    name: "Managed Vector Database (Pinecone, Weaviate Cloud, Qdrant Cloud)"
+    description: >
+      Fully managed vector database services that handle infrastructure,
+      scaling, and maintenance. Pay per vector or per pod. Best for teams
+      that want to focus on application logic without operational overhead.
+    use_when:
+      - "Small to medium vector count (< 5M vectors)"
+      - "No dedicated infrastructure team"
+      - "Fast time-to-market priority"
+      - "Variable or unpredictable query volume"
+    avoid_when:
+      - "Strict data residency requirements (data stays on-prem)"
+      - "Very high volume making managed costs prohibitive"
+      - "Need custom index configurations or fine-grained control"
+      - "Embedded/edge deployment"
+    tradeoffs:
+      pros:
+        - "Zero infrastructure management"
+        - "Automatic scaling and high availability"
+        - "Built-in monitoring and dashboards"
+        - "Predictable pricing (per pod or per vector)"
+      cons:
+        - "Data leaves your infrastructure"
+        - "Higher cost at scale than self-hosted"
+        - "Less control over index configuration"
+        - "Vendor lock-in for advanced features"
+    implementation:
+      guidelines:
+        - "Choose pod size based on vector count and dimensions"
+        - "Configure replication factor for production (min 2)"
+        - "Set up index timeout and retry for transient errors"
+        - "Monitor pod utilization and scale proactively"
+        - "Implement circuit breaker for managed API calls"
+        - "Use separate indexes per environment (dev, staging, prod)"
+      common_errors:
+        - error: "Under-provisioning pods"
+          impact: "Query latency spikes or timeouts during traffic bursts"
+          fix: "Monitor utilization; scale up before hitting 80% capacity"
+        - error: "No index timeout"
+          impact: "Slow queries hang indefinitely, blocking the application"
+          fix: "Configure client timeout (e.g., 5s for search, 30s for upsert)"
+    maturity:
+      level: standard
+    standards:
+      - name: "Pinecone"
+        type: tool
+        role: "Managed vector database with pod-based scaling"
+        status: recommended
+      - name: "Weaviate Cloud"
+        type: tool
+        role: "Managed vector database with hybrid search"
+        status: recommended
+      - name: "Qdrant Cloud"
+        type: tool
+        role: "Managed vector database with filtering and sharding"
+        status: recommended
+
+  - id: distributed_vector_db
+    name: "Distributed Vector Database Cluster (Milvus, Qdrant, Weaviate)"
+    description: >
+      Self-hosted or dedicated cluster of vector database nodes with
+      horizontal sharding, replication, and distributed query processing.
+      Uses HNSW or IVF indexes with optional quantization (PQ) for
+      memory efficiency. Suitable for large-scale production deployments.
+    use_when:
+      - "Large to billion-scale vector count"
+      - "Strict latency requirements (< 50ms p99)"
+      - "High availability and disaster recovery required"
+      - "Multi-tenant isolation of vector indexes"
+      - "Custom index configuration needed"
+    avoid_when:
+      - "Small dataset (managed is simpler and cheaper)"
+      - "No ops team for cluster management"
+      - "Development or prototype phase"
+    tradeoffs:
+      pros:
+        - "Horizontal scaling to billions of vectors"
+        - "Fine-grained control over index configuration"
+        - "Multi-tenant with dedicated resource limits"
+        - "GPU-accelerated indexing for faster builds"
+        - "No per-query cost (fixed infrastructure)"
+      cons:
+        - "Significant operational overhead (K8s operators, backups)"
+        - "Complex initial setup and tuning"
+        - "Index rebuild takes hours for large datasets"
+        - "GPU infrastructure is expensive"
+    implementation:
+      guidelines:
+        - "Use HNSW index for best latency-recall tradeoff"
+        - "Configure shard count: target 500MB-2GB per shard"
+        - "Set replication factor to at least 2 for HA"
+        - "Use PQ (Product Quantization) for billion-scale memory reduction"
+        - "Monitor recall rate: set ef_search and ef_construction for target recall"
+        - "Partition by tenant for multi-tenant query isolation"
+        - "Pre-warm indexes on node restart"
+        - "Use rolling index builds to avoid downtime"
+      common_errors:
+        - error: "Over-sharding small datasets"
+          impact: "Network overhead increases latency instead of reducing it"
+          fix: "Start with fewer, larger shards; shard only when needed"
+        - error: "No capacity planning for index build"
+          impact: "Index build fails mid-way due to memory or disk limits"
+          fix: "Test index build time and resource usage in staging first"
+        - error: "Single shard for large dataset"
+          impact: "Shard exceeds node capacity; query latency degrades"
+          fix: "Shard by vector ID range or tenant; monitor shard balance"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Milvus"
+        type: tool
+        role: "Distributed vector database with GPU support"
+        status: recommended
+      - name: "Qdrant"
+        type: tool
+        role: "Open-source vector database with fine-grained sharding"
+        status: recommended
+      - name: "Weaviate"
+        type: tool
+        role: "Open-source vector database with built-in hybrid search"
+        status: recommended
+
+  - id: embedded_vector_db
+    name: "Embedded Vector Database (sqlite-vss, LanceDB, Chroma)"
+    description: >
+      A vector database that runs in-process with the application, storing
+      vectors locally on disk. No server process, no network calls. Ideal
+      for local development, edge devices, desktop apps, and privacy-first
+      applications where data cannot leave the device.
+    use_when:
+      - "Local development and testing"
+      - "Edge devices with limited memory"
+      - "Desktop applications with local search"
+      - "Privacy-sensitive applications (data stays on device)"
+      - "Low query volume (< 100 QPS)"
+    avoid_when:
+      - "Production multi-user applications"
+      - "High availability or replication required"
+      - "Large vector count (> 500K)"
+      - "Need complex filtering or hybrid search"
+    tradeoffs:
+      pros:
+        - "Zero infrastructure — runs in-process"
+        - "Lowest latency (no network calls)"
+        - "Maximum data privacy (data never leaves the device)"
+        - "Simple deployment: just a library dependency"
+      cons:
+        - "Limited to single machine"
+        - "No replication or high availability"
+        - "Memory-bound: limited by application memory"
+        - "Basic query capabilities"
+    implementation:
+      guidelines:
+        - "Use sqlite-vss for SQL-based vector search in mobile/desktop apps"
+        - "Use LanceDB for columnar storage with vector indexing"
+        - "Use Chroma for quick prototyping with Python notebooks"
+        - "Quantize embeddings to int8 to reduce memory by 4x"
+        - "Load index at application startup; keep in memory for fast queries"
+        - "Persist index to disk for durability"
+        - "Limit to < 500K vectors for acceptable performance"
+      common_errors:
+        - error: "Loading entire index for every query"
+          impact: "Multi-second latency from disk I/O"
+          fix: "Load index into memory at startup; use mmap for large indexes"
+        - error: "Using embedded DB for production multi-user app"
+          impact: "No concurrency, no replication, data loss on crash"
+          fix: "Use managed or distributed vector DB for production"
+    maturity:
+      level: standard
+    standards:
+      - name: "sqlite-vss"
+        type: tool
+        role: "SQLite extension for vector search"
+        status: recommended
+      - name: "LanceDB"
+        type: tool
+        role: "Embedded vector database with persistent columnar storage"
+        status: emerging
+      - name: "Chroma"
+        type: tool
+        role: "Open-source embedding database for AI applications"
+        status: recommended
+
+  - id: hybrid_capable_db
+    name: "Hybrid Vector + Keyword Database"
+    description: >
+      A vector database with native support for both vector similarity
+      search and keyword (BM25) search in a single query. Eliminates the
+      need to maintain separate search indexes and simplifies the
+      architecture. Results are fused using RRF or weighted scores.
+    use_when:
+      - "Need both semantic and keyword search capabilities"
+      - "Documents have structured metadata requiring filtering"
+      - "Want a single database instead of maintaining two systems"
+      - "Query patterns vary between semantic and exact-match"
+    avoid_when:
+      - "Existing dedicated search infrastructure already in place"
+      - "Vector-only search is sufficient"
+      - "Need deep full-text search features (facets, aggregations, synonyms)"
+    tradeoffs:
+      pros:
+        - "Single database for both search paradigms"
+        - "Simplified operations — one system to manage"
+        - "RRF fusion built-in (no custom score normalization)"
+        - "Consistent filtering across both search types"
+      cons:
+        - "Less feature-rich for keyword search than Elasticsearch"
+        - "May not scale as well as dedicated single-purpose systems"
+        - "Fusion strategy is fixed by the provider"
+        - "Query latency can be higher than either system alone"
+    implementation:
+      guidelines:
+        - "Configure BM25 parameters (k1, b) per use case"
+        - "Set RRF fusion weight or use default"
+        - "Apply metadata filters to both search legs"
+        - "Monitor recall improvement over vector-only baselines"
+        - "A/B test hybrid vs vector-only on a held-out query set"
+      common_errors:
+        - error: "No metadata filtering on both legs"
+          impact: "Filters apply to only one search path; results include out-of-scope docs"
+          fix: "Ensure metadata filters are applied to both vector and BM25 queries"
+        - error: "Ignoring BM25 parameters for domain-specific text"
+          impact: "Default k1 and b produce poor keyword relevance"
+          fix: "Tune k1 (term saturation) and b (length normalization) for your corpus"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Weaviate"
+        type: tool
+        role: "Native hybrid search with vector + BM25 fusion"
+        status: recommended
+      - name: "Qdrant"
+        type: tool
+        role: "Supports multiple named vectors per point with filtering"
+        status: recommended
+      - name: "pgvector"
+        type: tool
+        role: "PostgreSQL extension with vector + full-text search"
+        status: recommended
+
+  - id: exact_nearest_neighbor
+    name: "Exact Nearest Neighbor Search"
+    description: >
+      Brute-force exact nearest neighbor search computes the distance
+      between the query vector and every vector in the database. Guarantees
+      100% recall but does not scale beyond small datasets. Useful as a
+      ground truth comparison for evaluating approximate index quality.
+    use_when:
+      - "Dataset small enough for exhaustive search (< 10K vectors)"
+      - "100% recall required (e.g., deduplication, validation)"
+      - "Evaluating approximate index recall (as ground truth)"
+    avoid_when:
+      - "Dataset larger than 10K vectors"
+      - "Sub-100ms latency requirements at medium scale"
+      - "Production query serving"
+    tradeoffs:
+      pros:
+        - "100% recall — guaranteed correct nearest neighbors"
+        - "No index build time or approximation errors"
+        - "Simple implementation (brute-force or exact IVF)"
+        - "Useful as evaluation baseline for approximate indexes"
+      cons:
+        - "O(n) time complexity — does not scale"
+        - "10K+ vectors becomes slow (100ms+ per query)"
+        - "No ANN recall/throughput tradeoff"
+    implementation:
+      guidelines:
+        - "Pre-compute distance matrix for static datasets"
+        - "Use GPU-accelerated exact search for larger datasets"
+        - "Use as a validation benchmark for ANN indexes"
+        - "Cache exact results for frequent queries"
+      common_errors:
+        - error: "Using exact search for production query serving at scale"
+          impact: "O(n) time complexity doesn't scale beyond 10K vectors"
+          fix: "Use exact search only for ground-truth evaluation; use ANN for query serving"
+        - error: "Not normalizing vectors before exact search"
+          impact: "Distance values are inconsistent; threshold-based filtering fails"
+          fix: "Normalize all vectors to unit length before search"
+    maturity:
+      level: standard
+    standards:
+      - name: "FAISS exact search"
+        type: tool
+        role: "Exact search with IndexFlatIP or IndexFlatL2"
+        status: recommended
+      - name: "scikit-learn NearestNeighbors"
+        type: tool
+        role: "Brute-force nearest neighbor with multiple distance metrics"
+        status: recommended
+
+examples:
+  - id: vector_db_selection
+    title: "Vector Database Selection Flow"
+    context: "Choosing the right vector DB for a new AI application"
+    correct: |
+      # Vector DB Selection — Decision Flow
+
+      context = {
+          "vector_count": 500_000,         # Medium
+          "embedding_dimensions": 768,     # Medium
+          "latency_requirement": "realtime", # < 100ms
+          "recall_requirement": "high",    # > 95%
+          "hybrid_search_required": True,  # Need vector + BM25
+          "deployment_model": "managed",   # No ops team
+      }
+
+      def select_vector_db(ctx):
+          if ctx["vector_count"] > 1_000_000_000:
+              return "Milvus cluster + PQ quantization"
+
+          if ctx["deployment_model"] == "managed":
+              if ctx["hybrid_search_required"]:
+                  return "Weaviate Cloud (native hybrid)"
+              return "Pinecone (fast, managed, vector-only)"
+
+          if ctx["deployment_model"] == "embedded":
+              if ctx["vector_count"] < 500_000:
+                  return "LanceDB or sqlite-vss"
+              return "Consider managed — dataset too large for embedded"
+
+          # Self-hosted
+          if ctx["vector_count"] > 10_000_000:
+              return "Qdrant or Milvus cluster"
+          if ctx["hybrid_search_required"]:
+              return "Weaviate self-hosted or pgvector"
+          return "Qdrant single node"
+
+      # Result: Weaviate Cloud (managed, hybrid search, medium scale)
+      print(select_vector_db(context))
+      # → "Weaviate Cloud (native hybrid)"
+    incorrect: |
+      # WRONG: Picking a vector DB without evaluating constraints
+
+      def bad_selection():
+          # Picks Pinecone because it's popular, ignoring:
+          # - Hybrid search requirement (Pinecone doesn't have BM25)
+          # - Fixed pod size may not fit 768-dim vectors
+          # - No consideration of cost at scale
+          return "Pinecone"
+
+      # Problems:
+      # 1. Popularity-driven choice, not requirements-driven
+      # 2. Doesn't check hybrid search capability
+      # 3. No evaluation of vector dimensionality fit
+      # 4. No cost projection at expected scale
+      # 5. No backup or alternative considered
+    explanation: >
+      The correct approach evaluates vector count, dimensions, latency,
+      recall, hybrid needs, and deployment model before selecting a vector
+      database. The incorrect example picks based on popularity without
+      evaluating technical constraints.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All vector DB client connections use TLS"
+      - "Cluster inter-node communication encrypted with mTLS"
+  data_protection:
+    requirements:
+      - "Sensitive data vectors encrypted at rest"
+      - "Embedding vectors from PII data must be protected at same level as source data"
+  access_control:
+    requirements:
+      - "Vector DB authentication required (API keys or IAM)"
+      - "Index-level access controls for multi-tenant isolation"
+      - "Administrative operations restricted to authorized roles"
+  input_output:
+    requirements:
+      - "Query input sanitized to prevent injection into vector DB query language"
+      - "Filter values validated against allowed schema"
+  secrets:
+    requirements:
+      - "Vector DB API keys and credentials stored in secrets manager"
+      - "X.509 certificates for mTLS rotated regularly"
+  monitoring:
+    requirements:
+      - "Query latency, recall rate, and index size monitored"
+      - "Cluster health: node status, shard balance, replication lag"
+      - "Index build time and resource usage tracked"
+
+compliance:
+  standards:
+    - name: "GDPR"
+      relevance: "Vectors derived from personal data are subject to same protections; support deletion requests"
+    - name: "SOC 2"
+      relevance: "Access controls, encryption, and audit logging for vector data"
+
+  requirements_mapping:
+    - control: vector_data_protection
+      description: "Vectors containing PII must be encrypted and access-controlled"
+      maps_to:
+        - "Encryption at rest"
+        - "Access control"
+    - control: right_to_erasure
+      description: "Deleting a document must delete its vector from the index"
+      maps_to:
+        - "GDPR Article 17"
+    - control: tenant_isolation
+      description: "Multi-tenant vector indexes must prevent cross-tenant data access"
+      maps_to:
+        - "SOC 2 logical access controls"
+
+prompt_recipes:
+  - id: vdb_greenfield
+    scenario: greenfield
+    description: "Select a vector database for a new project"
+    prompt: |
+      Select a vector database for {application}.
+
+      Context:
+      - Vector count: [small/medium/large/very_large/billion_scale]
+      - Embedding dimensions: [384/768/1536/3072]
+      - Latency requirement: [realtime/interactive/batch]
+      - Recall requirement: [standard/high/exact]
+      - Hybrid search needed: [yes/no]
+      - Deployment model: [embedded/managed/self_hosted]
+
+      Evaluate:
+      1. Managed: Pinecone, Weaviate Cloud, Qdrant Cloud
+      2. Self-hosted: Milvus, Qdrant, Weaviate, pgvector
+      3. Embedded: sqlite-vss, LanceDB, Chroma
+
+      For each candidate, rate: scalability, latency, recall, cost, ops complexity.
+      Recommend one with rationale.
+
+  - id: vdb_optimization
+    scenario: performance
+    description: "Optimize vector database performance and recall"
+    prompt: |
+      Optimize vector DB performance for {application}.
+
+      Performance tuning:
+      1. Choose index type: HNSW for latency, IVF for memory, PQ for scale
+      2. Tune ef_construction (build quality) and ef_search (search quality)
+      3. Monitor recall vs latency tradeoff
+      4. Right-size shard count and replication factor
+      5. Enable query caching for frequent vectors
+      6. Use quantization to reduce memory
+
+      Recall tuning:
+      1. Measure recall@K for current index configuration
+      2. Increase ef_search to improve recall at latency cost
+      3. Re-index with higher ef_construction for better index quality
+      4. Test different distance metrics (cosine, euclidean, dot product)
+      5. Validate recall on representative query set
+
+  - id: vdb_migration
+    scenario: migration
+    description: "Migrate between vector database providers"
+    prompt: |
+      Migrate vector database from {current_provider} to {target_provider}.
+
+      Steps:
+      1. Export vectors and metadata from current provider
+      2. Create target index with matching schema (dimensions, distance metric)
+      3. Bulk-import vectors into target
+      4. Validate recall parity: same queries, compare top-K results
+      5. Run shadow mode: both DBs receive queries, compare results
+      6. Gradually shift traffic to new provider
+      7. Decommission old provider after stabilization
+
+  - id: vdb_audit
+    scenario: audit
+    description: "Audit vector database configuration and security"
+    prompt: |
+      Audit vector DB configuration for {application}.
+
+      Performance:
+      1. Is index type appropriate for vector count and latency target?
+      2. Are ef_search and ef_construction tuned for target recall?
+      3. Is shard count balanced and appropriate for data size?
+      4. Is replication factor ≥ 2 for production?
+      5. Are slow queries identified and optimized?
+
+      Security:
+      1. Is TLS enabled for all connections?
+      2. Is authentication required for all access?
+      3. Are indexes isolated per tenant?
+      4. Are API keys in secrets manager?
+      5. Are admin operations logged and audited?
+
+      Operations:
+      1. Is index size monitored with alerts?
+      2. Is query latency p95/p99 monitored?
+      3. Is there a backup and restore procedure?
+      4. Is there a capacity plan for growth?
+
+anti_patterns:
+  - name: "Vector Database as General-Purpose Database"
+    description: >
+      Using a vector database as the primary application database, storing
+      non-vector data alongside vectors. Vector DBs are optimized for ANN
+      search, not for transactional workloads, joins, or complex queries.
+    fix: "Use a primary database for transactional data; vector DB is a derived index for similarity search"
+    severity: high
+    related_pattern: managed_vector_db
+
+  - name: "Ignoring Recall Quality"
+    description: >
+      Deploying an approximate index without measuring recall against
+      exact search. Users get wrong or missing results without knowing
+      because there's no ground truth comparison.
+    fix: "Benchmark ANN recall against exact search on a held-out query set; set minimum recall target (e.g., 95%)"
+    severity: high
+    related_pattern: exact_nearest_neighbor
+
+  - name: "Wrong Distance Metric"
+    description: >
+      Using cosine distance when the application needs dot product, or
+      vice versa. Embedding models are trained with a specific distance
+      metric; using the wrong one degrades retrieval quality.
+    fix: "Match the distance metric to the embedding model's training metric (check model documentation)"
+    severity: medium
+    related_pattern: managed_vector_db
+
+  - name: "One-Shard-for-All"
+    description: >
+      Using a single shard for a large vector collection. The shard exceeds
+      node capacity, query latency degrades, and there's no horizontal
+      scaling benefit.
+    fix: "Start with appropriate shard count; monitor shard size; rebalance when necessary"
+    severity: medium
+    related_pattern: distributed_vector_db
+
+checklist:
+  - id: VDB-01
+    category: design
+    description: "Distance metric matches embedding model training metric"
+    severity: critical
+    verified_by: managed_vector_db
+
+  - id: VDB-02
+    category: performance
+    description: "Index type appropriate for vector count and latency target"
+    severity: high
+    verified_by: distributed_vector_db
+
+  - id: VDB-03
+    category: performance
+    description: "ef_search and ef_construction tuned for target recall rate"
+    severity: high
+    verified_by: distributed_vector_db
+
+  - id: VDB-04
+    category: performance
+    description: "ANN recall benchmarked against exact search (target > 95%)"
+    severity: high
+    verified_by: exact_nearest_neighbor
+
+  - id: VDB-05
+    category: performance
+    description: "Shard count balanced for data volume (target 500MB-2GB per shard)"
+    severity: medium
+    verified_by: distributed_vector_db
+
+  - id: VDB-06
+    category: reliability
+    description: "Replication factor ≥ 2 for production deployments"
+    severity: critical
+    verified_by: distributed_vector_db
+
+  - id: VDB-07
+    category: reliability
+    description: "Backup and restore procedure documented and tested"
+    severity: high
+    verified_by: distributed_vector_db
+
+  - id: VDB-08
+    category: security
+    description: "TLS enabled for all client and inter-node connections"
+    severity: critical
+    verified_by: managed_vector_db
+
+  - id: VDB-09
+    category: security
+    description: "API key or IAM authentication required for all access"
+    severity: critical
+    verified_by: managed_vector_db
+
+  - id: VDB-10
+    category: security
+    description: "Index-level access controls for multi-tenant isolation"
+    severity: high
+    verified_by: distributed_vector_db
+
+  - id: VDB-11
+    category: observability
+    description: "Query latency p50/p95/p99 monitored with alerts"
+    severity: high
+    verified_by: managed_vector_db
+
+  - id: VDB-12
+    category: observability
+    description: "Index size growth tracked for capacity planning"
+    severity: medium
+    verified_by: distributed_vector_db
+
+  - id: VDB-13
+    category: reliability
+    description: "Client timeout configured for search and upsert operations"
+    severity: high
+    verified_by: managed_vector_db
