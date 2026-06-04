@@ -1,0 +1,708 @@
+# =============================================================================
+# AI Architecture Cookbook — FinOps & Cost Optimization
+# Schema: v3 | Domain: finops-cost-optimization
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: finops-cost-optimization
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    FinOps and cloud cost optimization patterns covering resource
+    rightsizing, spot/preemptible instance usage, reserved instances,
+    and tagging-based chargeback/showback. Provides context-aware
+    recommendations for reducing cloud spend while maintaining
+    performance and reliability.
+
+  tags:
+    - finops
+    - cost-optimization
+    - rightsizing
+    - spot-instances
+    - budgets
+    - chargeback
+    - showback
+
+  categories:
+    - infrastructure
+
+  prerequisites:
+    - cloud-architecture
+    - containerization
+
+  related_standards:
+    - id: cloud-architecture
+      relationship: complementary
+      context: "Cost optimization is a core pillar of well-architected frameworks"
+    - id: containerization
+      relationship: complementary
+      context: "Container rightsizing and bin-packing affect compute cost"
+    - id: orchestration
+      relationship: complementary
+      context: "Cluster scaling and pod rightsizing directly impact cost"
+    - id: performance-optimization
+      relationship: complementary
+      context: "Rightsizing balances performance and cost"
+
+context_inputs:
+  - name: monthly_budget
+    type: enum
+    description: "Monthly cloud spend target"
+    required: true
+    default: moderate
+    enum_values:
+      - strict
+      - moderate
+      - flexible
+
+  - name: workload_type
+    type: enum
+    description: "Characteristics of the primary workload"
+    required: true
+    default: steady_state
+    enum_values:
+      - steady_state
+      - bursty
+      - batch
+      - mission_critical
+
+  - name: scaling_pattern
+    type: enum
+    description: "How the workload scales over time"
+    required: true
+    default: stable
+    enum_values:
+      - stable
+      - seasonal
+      - unpredictable
+      - growing_rapidly
+
+  - name: team_structure
+    type: enum
+    description: "Organizational structure for cost accountability"
+    required: false
+    default: centralized
+    enum_values:
+      - centralized
+      - federated
+      - hybrid
+
+decision_tree:
+  - id: strict_budget_starts_with_rightsizing
+    priority: 1
+    if:
+      - monthly_budget == strict
+    then:
+      pattern: resource_rightsizing
+      standards:
+        - "Cloud Provider Rightsizing Recommendations"
+      notes: "Tight budgets require immediate rightsizing — identify and eliminate over-provisioned resources first"
+
+  - id: bursty_or_batch_uses_spot
+    priority: 2
+    if:
+      - workload_type in [bursty, batch]
+      - monthly_budget in [strict, moderate]
+    then:
+      pattern: spot_preemptible_usage
+      standards:
+        - "Spot Instance Best Practices"
+      notes: "Fault-tolerant bursty and batch workloads are ideal for spot/preemptible instances at 60-90% discount"
+
+  - id: steady_state_uses_reserved
+    priority: 3
+    if:
+      - workload_type == steady_state
+      - scaling_pattern in [stable, seasonal]
+    then:
+      pattern: reserved_instances
+      standards:
+        - "Reserved Instances / Savings Plans"
+      notes: "Steady-state predictable workloads benefit from reserved instances or savings plans for 30-60% discount"
+
+  - id: federated_teams_need_chargeback
+    priority: 4
+    if:
+      - team_structure in [federated, hybrid]
+    then:
+      pattern: tagging_chargeback_showback
+      standards:
+        - "Cloud Provider Tagging Best Practices"
+      notes: "Federated team structures require cost allocation via tagging and chargeback/showback reporting"
+
+  - id: rapidly_growing_needs_continuous_optimization
+    priority: 5
+    if:
+      - scaling_pattern == growing_rapidly
+    then:
+      pattern: resource_rightsizing
+      standards:
+        - "Auto-Scaling Best Practices"
+      notes: "Rapidly growing workloads need continuous rightsizing reviews and auto-scaling to prevent cost overruns"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: resource_rightsizing
+    description: "Rightsizing existing resources is the first step in any cost optimization strategy"
+
+patterns:
+  - id: resource_rightsizing
+    name: Resource Rightsizing
+    description: >
+      Matching the capacity of cloud resources to their actual utilization.
+      Right-sized instances eliminate waste from over-provisioning and
+      prevent performance issues from under-provisioning. The first and
+      highest-impact cost optimization activity.
+
+    use_when:
+      - "Resources are provisioned 'just in case' without usage data"
+      - "CPU, memory, or network utilization consistently below 40%"
+      - "Monthly cloud bill is growing faster than workload demands"
+      - "Starting any cost optimization initiative"
+
+    avoid_when:
+      - "Resources are already right-sized and utilization >60%"
+      - "Performance requirements prohibit instance type changes"
+      - "Rightsizing would violate compliance requirements"
+
+    tradeoffs:
+      pros:
+        - "Immediate cost reduction (often 20-40%)"
+        - "No architectural changes needed"
+        - "Cloud provider tools provide recommendations"
+        - "Improves resource utilization metrics"
+      cons:
+        - "Requires monitoring data collection period (1-4 weeks)"
+        - "Rightsizing too aggressively causes performance issues"
+        - "Manual review of recommendations is time-consuming"
+        - "Must repeat periodically as workload changes"
+
+    implementation:
+      guidelines:
+        - "Collect utilization metrics for at least 2 weeks of production traffic"
+        - "Focus on the top 20% of spenders first (Pareto principle)"
+        - "Use cloud provider recommendations as starting point, verify manually"
+        - "Right-size storage volumes separately from compute"
+        - "Automate rightsizing for auto-scaling groups (adjust launch templates)"
+        - "Track savings with before/after cost comparison"
+        - "Schedule quarterly rightsizing review cadence"
+
+      common_errors:
+        - error: "Rightsizing production instances without performance testing"
+          impact: "Under-provisioned instance causes performance degradation and outages"
+          fix: "Test new instance types in staging first; monitor performance during transition"
+        - error: "Only rightsizing compute, ignoring storage"
+          impact: "Storage costs 30-50% of bill; over-provisioned volumes waste significant spend"
+          fix: "Apply rightsizing to storage volumes, database instances, and network resources"
+        - error: "One-time rightsizing without ongoing review"
+          impact: "Savings erode over 6 months as workload grows and new resources are added"
+          fix: "Schedule quarterly rightsizing reviews; automate monitoring of utilization trends"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: Cloud Provider Rightsizing Tools
+        type: tool
+        role: "AWS Compute Optimizer, Azure Advisor, GCP Recommender"
+        status: recommended
+      - name: Auto-Scaling Best Practices
+        type: practice
+        role: "Dynamic capacity matching to demand"
+        status: recommended
+
+  - id: spot_preemptible_usage
+    name: Spot/Preemptible Instance Usage
+    description: >
+      Using discounted compute capacity that can be reclaimed by the
+      cloud provider with short notice. Spot (AWS, Azure, GCP) and
+      preemptible (GCP) instances offer 60-90% discounts compared to
+      on-demand. Suitable for fault-tolerant, stateless, and batch
+      workloads.
+
+    use_when:
+      - "Workload is fault-tolerant (can handle instance termination)"
+      - "Stateless services (data persisted outside instance)"
+      - "Batch processing, ETL, data analytics jobs"
+      - "CI/CD worker nodes"
+      - "Horizontal scale-out with graceful termination handling"
+
+    avoid_when:
+      - "Stateful applications with local data"
+      - "Latency-sensitive workloads that cannot handle interruption"
+      - "Mission-critical services with strict uptime SLAs"
+      - "Workloads requiring GPUs (limited spot availability)"
+
+    tradeoffs:
+      pros:
+        - "60-90% discount vs. on-demand pricing"
+        - "Massive savings for batch and fault-tolerant workloads"
+        - "Can scale out significantly more capacity for the same budget"
+        - "Works well with container orchestration (pod eviction handling)"
+      cons:
+        - "Instances can be terminated with 30s-2min notice"
+        - "Not suitable for all workload types"
+        - "Availability varies by instance type, region, and time"
+        - "Requires application-level interruption handling"
+
+    implementation:
+      guidelines:
+        - "Diversify across instance types and regions to improve availability"
+        - "Implement graceful shutdown handling (SIGTERM, drain connections)"
+        - "Use spot instance pools with fallback to on-demand"
+        - "Design for interruption: checkpoint progress, persist state externally"
+        - "Use spot in auto-scaling groups with mixed instances policy"
+        - "Monitor spot instance interruption rate and adjust diversification"
+        - "Combine with reserved instances for baseline + spot for burst"
+
+      common_errors:
+        - error: "No interruption handling in application"
+          impact: "Terminated mid-job — no checkpointing, data lost, or partial results"
+          fix: "Implement checkpointing; handle SIGTERM to drain and persist before shutdown"
+        - error: "Single instance type or region for spot"
+          impact: "Spot capacity unavailable; workload stuck waiting for specific instance type"
+          fix: "Diversify across 3-5 instance types and 2-3 regions in the spot allocation strategy"
+        - error: "Using spot for stateful workloads"
+          impact: "Instance termination loses local state; corruption or data loss"
+          fix: "Persist state to external storage (database, object store); use spot only for stateless compute"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: Spot Instance Best Practices
+        type: practice
+        role: "Guidance for reliable spot instance usage"
+        status: recommended
+        reference: "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/spot-best-practices.html"
+
+  - id: reserved_instances
+    name: Reserved Instances / Committed Use
+    description: >
+      Pre-purchasing compute capacity for 1-3 year terms in exchange for
+      significant discounts (30-60% vs. on-demand). Also includes savings
+      plans (AWS) and committed use contracts (Azure, GCP). Best for
+      steady-state, predictable workloads with stable resource needs.
+
+    use_when:
+      - "Steady-state baseline capacity that runs 24/7"
+      - "Predictable resource needs for the next 1-3 years"
+      - "Workloads where instance family will not change frequently"
+      - "Organization can commit to upfront or partial payment"
+
+    avoid_when:
+      - "Workloads that are experimental or may be decommissioned soon"
+      - "Frequently changing instance types or families"
+      - "Unpredictable scaling patterns (reserved capacity may be stranded)"
+      - "Budget available for spot or on-demand is cheaper at current utilization"
+
+    tradeoffs:
+      pros:
+        - "30-60% discount vs. on-demand pricing"
+        - "Predictable monthly cost for baseline capacity"
+        - "Flexible payment options (no upfront to all upfront)"
+        - "Savings plans offer more flexibility than classic RIs"
+      cons:
+        - "1 or 3 year commitment — stranded capacity if needs change"
+        - "Limited to specific instance family, region (RIs)"
+        - "Upfront payment impacts cash flow"
+        - "Savings require careful planning to avoid waste"
+
+    implementation:
+      guidelines:
+        - "Cover 60-80% of baseline capacity with reserved/comitted; use on-demand/spot for the rest"
+        - "Start with 1-year terms for newer workloads; 3-year for stable workloads"
+        - "Use savings plans (AWS) or committed use (Azure/GCP) for more flexibility"
+        - "Monitor coverage regularly — adjust as baseline changes"
+        - "Set expiration alerts to renew before expiry"
+        - "Use reserved for database and cache instances too, not just compute"
+
+      common_errors:
+        - error: "Buying 3-year RIs for unstable workloads"
+          impact: "Workload decommissioned or migrated; RI is stranded — paying for unused capacity"
+          fix: "Start with 1-year RIs or savings plans; commit longer only for proven stable workloads"
+        - error: "Over-committing — buying RIs for full capacity instead of baseline"
+          impact: "Paying for reserved capacity that sits idle during low-traffic periods"
+          fix: "Cover baseline (minimum) capacity with RIs; use spot/on-demand for variable traffic"
+        - error: "Not tracking RI expiry dates"
+          impact: "RI expires; next month bill spikes 30-60% for same capacity"
+          fix: "Set renewal alerts 90 days before expiry; review and renew proactively"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: AWS Savings Plans
+        type: practice
+        role: "Flexible compute pricing model"
+        status: recommended
+      - name: Azure Reserved VM Instances
+        type: practice
+        role: "Azure committed use pricing"
+        status: recommended
+
+  - id: tagging_chargeback_showback
+    name: Tagging + Chargeback/Showback
+    description: >
+        Cost allocation strategy where cloud resources are tagged with
+        metadata (team, project, environment, service) and costs are
+        attributed back to the consuming teams. Showback displays costs
+        without charging; chargeback invoices the consuming team's
+        budget directly.
+
+    use_when:
+      - "Multiple teams or projects share cloud infrastructure"
+      - "Need cost accountability at team or service level"
+      - "Federated or hybrid team structure"
+      - "Want to incentivize cost-efficient behavior"
+
+    avoid_when:
+      - "Single team with single application — tagging overhead not justified"
+      - "No tooling or process for cost allocation"
+      - "Team culture not ready for cost accountability"
+
+    tradeoffs:
+      pros:
+        - "Clear cost attribution — teams see their cloud spend"
+        - "Drives cost-conscious behavior and ownership"
+        - "Enables budget vs. actual tracking per team"
+        - "Supports showback and chargeback models"
+      cons:
+        - "Requires disciplined tagging governance"
+        - "Untagged resources create uncategorized cost bucket"
+        - "Some costs (networking, support) are hard to allocate"
+        - "Chargeback can create friction if not implemented thoughtfully"
+
+    implementation:
+      guidelines:
+        - "Define mandatory tags: cost_center, environment, team, service, project"
+        - "Enforce tagging via policy-as-code (AWS Service Catalog, Azure Policy)"
+        - "Report on untagged resources and chase down owners"
+        - "Start with showback (visibility) before moving to chargeback (invoicing)"
+        - "Tag all resources at creation — retroactive tagging is difficult"
+        - "Use cloud-native cost tools (Cost Explorer, Cost Management)"
+        - "Regularly review and clean up orphaned or unused resources"
+
+      common_errors:
+        - error: "No enforcement of tagging standards"
+          impact: "50% of resources untagged; cost allocation report is useless"
+          fix: "Enforce tags at deployment; block untagged resource creation; audit regularly"
+        - error: "Implementing chargeback before showback"
+          impact: "Teams distrust cost data disputes over allocation methodology"
+          fix: "Start with showback for 3 months; validate allocation methodology; then move to chargeback"
+        - error: "Tagging only compute resources"
+          impact: "Network, storage, backup, and data transfer costs are unallocated — 30%+ of bill"
+          fix: "Tag all resources (compute, storage, network, database, backup); allocate shared costs too"
+
+    maturity:
+      level: advanced
+
+    standards:
+      - name: Cloud Provider Tagging Best Practices
+        type: practice
+        role: "Standardized resource tagging for cost allocation"
+        status: recommended
+
+examples:
+  - id: rightsizing_analysis
+    title: "Rightsizing an Over-Provisioned Instance"
+    context: "EC2 instance with 15% CPU and 25% memory utilization"
+    correct: |
+      # Before: m5.4xlarge (16 vCPU, 64GB RAM) — $0.768/hr
+      # Utilization: CPU 15%, Memory 25%, Network 10%
+      # Annual cost: $6,727
+
+      # After: m5.xlarge (4 vCPU, 16GB RAM) — $0.192/hr
+      # Utilization projected: CPU 60%, Memory 100%, Network 40%
+      # Annual cost: $1,682
+
+      # Savings: 75% ($5,045/year) — same workload, right-sized instance
+      # Recommendation: Right-size to m5.xlarge, monitor for 2 weeks
+    incorrect: |
+      # WRONG: Keeping over-provisioned instance "just in case"
+      # m5.4xlarge running at 15% CPU for 3 years
+      # Wasted: $5,045/year for unused capacity
+    explanation: >
+      Rightsizing from m5.4xlarge to m5.xlarge saves 75% while maintaining
+      adequate capacity. The incorrect version keeps paying for idle compute.
+      Always validate rightsizing recommendations with monitoring data.
+
+  - id: spot_and_reserved_mix
+    title: "Optimal Spot + Reserved Capacity Mix"
+    context: "Web application with steady baseline and variable traffic"
+    correct: |
+      # Capacity plan for web service:
+      # Baseline traffic: 10 instances 24/7 → Reserved (60% discount)
+      # Normal peak: 5 additional → On-demand
+      # Burst/overflow: 10 additional → Spot (80% discount)
+      # DR/emergency: 5 additional → On-demand
+
+      # 10 Reserved instances @ $0.10/hr = $1.00/hr
+      # 5 On-demand @ $0.25/hr = $1.25/hr
+      # 10 Spot @ $0.05/hr = $0.50/hr
+      # Total: $2.75/hr (vs $6.25/hr all on-demand)
+
+      # Savings: 56% vs all on-demand
+    incorrect: |
+      # WRONG: All on-demand, no spot, no reserved
+      # 30 on-demand instances @ $0.25/hr = $7.50/hr
+      # No optimization — paying maximum price for every instance
+    explanation: >
+      A mixed strategy covers baseline with reserved instances, handles
+      normal peaks with on-demand, and handles bursts with spot. This
+      achieves 56% savings over the all-on-demand approach.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Cost and billing APIs accessed over TLS with authenticated IAM roles"
+      - "Cost data exports encrypted in transit to analytics tools"
+  data_protection:
+    requirements:
+      - "Cost reports exclude sensitive resource identifiers (PII in resource names)"
+      - "Budget alert notifications sent over secure channels"
+  access_control:
+    requirements:
+      - "Billing console access restricted to finance and cloud admins only"
+      - "Cost and usage report access controlled via IAM"
+      - "Budget creation and modification requires elevated privileges"
+  input_output:
+    requirements:
+      - "Tag values sanitized to prevent injection in cost allocation reports"
+      - "Cost anomalies validated before generating alerts"
+  secrets:
+    requirements:
+      - "Cloud provider credentials for billing APIs stored in secrets manager"
+      - "Cost data export encryption keys managed by KMS"
+  monitoring:
+    requirements:
+      - "Budget alerts configured at 50%, 80%, 90%, and 100% of monthly budget"
+      - "Cost anomaly detection enabled with automated notifications"
+      - "Unused and orphaned resource reporting automated"
+
+compliance:
+  standards:
+    - name: "FinOps Foundation Framework"
+      relevance: "Industry standard for cloud financial management"
+      reference: "https://www.finops.org/"
+    - name: "SOX"
+      relevance: "Cloud cost allocation and reporting may fall under financial controls"
+
+  requirements_mapping:
+    - control: cost_allocation
+      description: "All cloud costs allocated to teams/projects via tags"
+      maps_to:
+        - "FinOps Allocation Best Practice"
+    - control: budget_tracking
+      description: "Monthly budgets tracked with alerts at thresholds"
+      maps_to:
+        - "FinOps Budget Management"
+    - control: cost_optimization
+      description: "Rightsizing review completed at least quarterly"
+      maps_to:
+        - "FinOps Continuous Optimization"
+
+prompt_recipes:
+  - id: greenfield_cost_optimization
+    scenario: greenfield
+    description: "Design cost optimization strategy for a new workload"
+    prompt: |
+      Design a cost optimization strategy for a new workload.
+
+      Context:
+      - Monthly budget: [strict/moderate/flexible]
+      - Workload type: [steady_state/bursty/batch/mission_critical]
+      - Scaling pattern: [stable/seasonal/unpredictable/growing_rapidly]
+      - Team structure: [centralized/federated/hybrid]
+
+      Requirements:
+      1. Choose cost optimization patterns (rightsizing, spot, reserved, chargeback)
+      2. Estimate baseline and peak capacity for reserved/spot mix
+      3. Design tagging strategy for cost allocation
+      4. Set budget thresholds and alerting
+      5. Schedule quarterly cost review cadence
+      6. Define cost KPIs: cost per transaction, cost per user, utilization
+
+  - id: audit_cost
+    scenario: audit
+    description: "Audit cloud cost optimization practices"
+    prompt: |
+      Audit cloud cost optimization:
+
+      1. Are resources right-sized (utilization >40%)?
+      2. Is spot/preemptible used for fault-tolerant workloads?
+      3. Are reserved instances/savings plans covering baseline?
+      4. Is tagging enforced with governance (mandatory tags)?
+      5. Are budgets configured with alert thresholds?
+      6. Are unused and orphaned resources cleaned up?
+      7. Is there a regular rightsizing review process?
+      8. Is cost allocation visible to teams (showback)?
+
+  - id: migration_cost
+    scenario: migration
+    description: "Reduce cloud cost through optimization initiatives"
+    prompt: |
+      Plan cloud cost reduction initiative.
+
+      Current: {monthly_spend} across {provider} {services}
+      Target: {target_spend} ({percentage}% reduction)
+
+      Plan:
+      1. Rightsizing: identify top 20% spenders; right-size underutilized resources
+      2. Spot: move CI/CD, batch, and stateless services to spot/preemptible
+      3. Reserved: buy 1-year savings plans for baseline capacity
+      4. Cleanup: remove unattached volumes, idle load balancers, orphaned snapshots
+      5. Tagging: implement mandatory tagging with cost allocation
+
+      Track: monthly savings report with before/after comparison.
+
+  - id: debugging_cost_spike
+    scenario: debugging
+    description: "Debug unexpected cloud cost spike"
+    prompt: |
+      Debug a sudden 3x cost increase.
+
+      Investigation:
+      1. Check recent deployments (new resources, scaled up services)
+      2. Check for data transfer spikes (usually the unknown cost driver)
+      3. Check for unused resources (stale environments, orphaned volumes)
+      4. Review cost by service (compute, storage, network, database)
+      5. Check for misconfigured auto-scaling (over-scaling)
+
+      Fixes:
+      1. Identify and remove or downsize the cost driver
+      2. Add budget alerts and anomaly detection
+      3. Implement auto-stop for non-production environments
+      4. Document root cause and prevention strategy
+
+  - id: high_security_cost
+    scenario: architecture
+    description: "Design cost optimization for regulated financial workload"
+    prompt: |
+      Design cost optimization for a regulated workload.
+
+      Constraints:
+      - Mission-critical with strict uptime SLAs (cannot use spot for core)
+      - Audit trail of all cost allocation
+      - Cost allocation by business unit for P&L reporting
+      - Compliance with SOX financial controls
+
+      Design:
+      1. Reserved instances for baseline mission-critical capacity
+      2. Spot only for non-critical batch jobs with interruption handling
+      3. Comprehensive tagging: business_unit, cost_center, application, environment
+      4. Automated cost reporting with allocation to business units
+      5. Budget alerts with approval gates for overspend
+
+anti_patterns:
+  - name: "Not Rightsizing Before Other Optimizations"
+    description: >
+      Buying reserved instances or adding spot capacity without first
+      rightsizing existing resources. Committed to pay for capacity
+      that is itself over-provisioned, locking in waste for 1-3 years.
+    fix: "Right-size all resources first; then optimize with spot and reserved for the remaining baseline"
+    severity: high
+    related_pattern: resource_rightsizing
+
+  - name: "Single Instance Type or Region for Spot"
+    description: >
+      Relying on a single instance type or region for spot capacity.
+      When that type becomes unavailable, the workload cannot scale
+      or fails entirely.
+    fix: "Diversify spot allocation across 3-5 instance types and multiple regions"
+    severity: high
+    related_pattern: spot_preemptible_usage
+
+  - name: "Buying 3-Year RIs for Unstable Workloads"
+    description: >
+      Committing to 3-year reserved instances for workloads that are
+      experimental, may be migrated, or have uncertain future capacity
+      needs. Stranded capacity after decommissioning.
+    fix: "Use 1-year RIs or savings plans for new workloads; 3-year only for proven stable workloads"
+    severity: high
+    related_pattern: reserved_instances
+
+  - name: "Chargeback Without Governance or Showback Phase"
+    description: >
+      Implementing chargeback (invoicing teams) without first establishing
+      tagging compliance or a showback (visibility) phase. Teams dispute
+      costs because allocation methodology is unclear and untested.
+    fix: "Start with showback for 3 months; validate allocation; resolve disputes; then move to chargeback"
+    severity: medium
+    related_pattern: tagging_chargeback_showback
+
+checklist:
+  - id: FIN-01
+    category: performance
+    description: "Compute resources right-sized (utilization >40%)"
+    severity: high
+    verified_by: resource_rightsizing
+
+  - id: FIN-02
+    category: performance
+    description: "Storage volumes right-sized and unattached volumes removed"
+    severity: high
+    verified_by: resource_rightsizing
+
+  - id: FIN-03
+    category: design
+    description: "Spot/preemptible instances used for fault-tolerant workloads"
+    severity: medium
+    verified_by: spot_preemptible_usage
+
+  - id: FIN-04
+    category: design
+    description: "Reserved instances or savings plans cover baseline capacity"
+    severity: high
+    verified_by: reserved_instances
+
+  - id: FIN-05
+    category: design
+    description: "Mandatory tagging enforced for cost allocation"
+    severity: high
+    verified_by: tagging_chargeback_showback
+
+  - id: FIN-06
+    category: compliance
+    description: "Monthly budgets configured with alert thresholds (50/80/90/100%)"
+    severity: high
+    verified_by: tagging_chargeback_showback
+
+  - id: FIN-07
+    category: observability
+    description: "Cost anomaly detection enabled with notifications"
+    severity: medium
+    verified_by: tagging_chargeback_showback
+
+  - id: FIN-08
+    category: design
+    description: "Quarterly rightsizing review process established"
+    severity: medium
+    verified_by: resource_rightsizing
+
+  - id: FIN-09
+    category: maintainability
+    description: "Orphaned resources (volumes, IPs, snapshots) cleaned up monthly"
+    severity: medium
+    verified_by: resource_rightsizing
+
+  - id: FIN-10
+    category: design
+    description: "Spot interruption handling implemented in application"
+    severity: high
+    verified_by: spot_preemptible_usage
+
+  - id: FIN-11
+    category: performance
+    description: "Reserved instance coverage between 60-80% of baseline"
+    severity: medium
+    verified_by: reserved_instances
+
+  - id: FIN-12
+    category: security
+    description: "Billing API access restricted and audited"
+    severity: high
+    verified_by: tagging_chargeback_showback

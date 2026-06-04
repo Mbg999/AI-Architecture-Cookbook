@@ -1,0 +1,663 @@
+# =============================================================================
+# AI Architecture Cookbook — Native Mobile Architecture
+# Schema: v3 | Domain: native-mobile-architecture
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: native-mobile-architecture
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Native mobile application architecture patterns covering cross-platform
+    frameworks (React Native, Flutter), native bridge architecture for
+    platform-specific features, push notification integration, deep linking,
+    OTA updates and code push, app store deployment strategies, and mobile-specific
+    considerations for performance, battery, and offline behavior.
+
+  tags:
+    - mobile
+    - react-native
+    - flutter
+    - native
+    - push-notifications
+    - deep-links
+    - app-store
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - id: frontend-component-architecture
+      reason: "Mobile UI follows component composition patterns with platform-specific rendering"
+    - id: api-design
+      reason: "Mobile apps consume APIs with specific constraints: batching, pagination, offline caching"
+    - id: responsive-mobile-first
+      reason: "Mobile architecture must handle varying screen sizes, densities, and orientations"
+
+  related_standards:
+    - id: frontend-component-architecture
+      relationship: complementary
+      context: "Component patterns extend to mobile with native rendering differences"
+    - id: pwa-offline-first
+      relationship: alternative
+      context: "PWA is an alternative to native mobile when full platform access is not needed"
+    - id: api-design
+      relationship: complementary
+      context: "Mobile-specific API considerations: network efficiency, offline, background sync"
+
+context_inputs:
+  - name: platform_target
+    type: enum
+    description: "Target mobile platforms"
+    required: true
+    default: both
+    enum_values:
+      - ios_only
+      - android_only
+      - both
+
+  - name: performance_requirements
+    type: enum
+    description: "Application performance sensitivity"
+    required: true
+    default: standard
+    enum_values:
+      - standard
+      - high_performance
+      - real_time
+
+  - name: native_api_usage
+    type: enum
+    description: "Need for platform-specific native APIs"
+    required: true
+    default: moderate
+    enum_values:
+      - minimal
+      - moderate
+      - extensive
+
+  - name: team_expertise
+    type: enum
+    description: "Mobile development team composition"
+    required: true
+    default: cross_platform
+    enum_values:
+      - ios_native
+      - android_native
+      - cross_platform
+
+decision_tree:
+  - id: cross_platform_react_native
+    priority: 1
+    if:
+      - platform_target == both
+      - team_expertise == cross_platform
+      - performance_requirements in [standard, high_performance]
+    then:
+      pattern: cross_platform_react_native
+      notes: >
+        React Native is the best fit for cross-platform teams targeting both
+        iOS and Android with standard to high-performance needs. It allows code
+        sharing while retaining native rendering and the ability to drop into
+        native code for platform-specific features.
+
+  - id: cross_platform_flutter
+    priority: 2
+    if:
+      - platform_target == both
+      - performance_requirements in [high_performance, real_time]
+      - native_api_usage == minimal
+    then:
+      pattern: cross_platform_flutter
+      notes: >
+        Flutter excels at high-performance and real-time applications on both
+        platforms. Its custom rendering engine provides consistent 60fps across
+        platforms with minimal native API needs.
+
+  - id: native_bridge
+    priority: 3
+    if:
+      - native_api_usage in [moderate, extensive]
+      - platform_target == both
+    then:
+      pattern: native_bridge_architecture
+      notes: >
+        Extensive native API usage requires a solid native bridge architecture.
+        Whether using React Native or Flutter, the bridge layer must be designed
+        for type safety, error handling, and minimal transport overhead.
+
+  - id: ota_updates
+    priority: 4
+    if:
+      - platform_target in [ios_only, both]
+      - performance_requirements in [standard, high_performance]
+    then:
+      pattern: ota_updates_codepush
+      notes: >
+        OTA updates enable rapid iteration without app store review cycles.
+        Essential for React Native apps and available via Codepush or
+        Flutter's Shorebird. Use for JS bundle/asset updates, not native code.
+
+  - id: native_only
+    priority: 5
+    if:
+      - platform_target in [ios_only, android_only]
+      - team_expertise in [ios_native, android_native]
+      - performance_requirements == real_time
+    then:
+      pattern: native_bridge_architecture
+      notes: >
+        Single-platform real-time applications with native team expertise
+        should use native development with Swift/SwiftUI or Kotlin/Jetpack
+        Compose. Cross-platform frameworks add unnecessary abstraction.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: cross_platform_react_native
+    description: "React Native is the most broadly applicable cross-platform framework"
+
+patterns:
+  - id: cross_platform_react_native
+    name: "Cross-Platform with React Native"
+    description: >
+      React Native enables cross-platform mobile development using React and
+      JavaScript/TypeScript. Code is shared between iOS and Android, with
+      native rendering via platform-specific views. The architecture includes
+      the JavaScript engine (Hermes), the bridge for native module
+      communication, and Fabric renderer for synchronous native UI updates.
+    use_when:
+      - "Targeting both iOS and Android with a single codebase"
+      - "Team already has React/web experience"
+      - "Need moderate native API access (camera, location, biometrics)"
+      - "OTA updates are desired for rapid iteration"
+    avoid_when:
+      - "Real-time performance-critical applications (AR, high-fps gaming)"
+      - "Extensive native API usage with complex platform-specific code"
+    tradeoffs:
+      pros:
+        - "Large ecosystem and community (npm, libraries, tools)"
+        - "Code sharing between iOS and Android (60-90% shared)"
+        - "Hot reload for fast development iteration"
+        - "Existing web developers can transition easily"
+      cons:
+        - "JavaScript bridge adds overhead for complex native interactions"
+        - "Native module development requires platform expertise"
+        - "Larger app bundle size compared to fully native"
+        - "UI rendering is native view-based (can hit limitations)"
+    implementation:
+      guidelines:
+        - "Use Hermes engine for improved startup time and reduced memory"
+        - "Adopt the New Architecture (Fabric + TurboModules) for synchronous native calls"
+        - "Co-locate platform-specific code in .ios.tsx and .android.tsx extensions"
+        - "Use react-native-navigation or expo-router for navigation"
+        - "Implement platform-specific styling with StyleSheet.create and Platform.select"
+        - "Use TypeScript strict mode for bridge type safety"
+        - "Prefer expo-dev-client over bare React Native for managed workflows"
+        - "Implement Error Boundaries at navigation and screen level"
+      common_errors:
+        - error: "Unmanaged third-party native module conflicts"
+          impact: "Build failures, runtime crashes from incompatible native library versions"
+          fix: "Pin library versions; use expo-dev-client to test native builds; maintain a compatibility matrix"
+        - error: "Blocking the JS thread with synchronous native calls"
+          impact: "UI jank, dropped frames, poor user experience on animations"
+          fix: "Use TurboModules for synchronous calls; move heavy work to native threads via worklets"
+    maturity:
+      level: standard
+    standards:
+      - name: "React Native (New Architecture)"
+        type: framework
+        role: "Cross-platform mobile framework with native rendering"
+        status: recommended
+      - name: "Expo SDK"
+        type: framework
+        role: "Managed React Native development toolchain and library"
+        status: recommended
+
+  - id: cross_platform_flutter
+    name: "Cross-Platform with Flutter"
+    description: >
+      Flutter uses the Dart language and a custom rendering engine (Skia/Impeller)
+      to paint UI pixels directly, providing consistent 120fps performance across
+      iOS and Android. The architecture comprises the Dart framework, the engine,
+      and platform channels for native communication. UI is built as a widget tree
+      with composable, immutable widgets.
+    use_when:
+      - "High-performance UI with complex animations needed"
+      - "Targeting both iOS and Android with a single codebase"
+      - "Minimal to moderate native API usage"
+      - "Custom UI designs that differ from platform defaults"
+    avoid_when:
+      - "Extensive native API usage with platform-channels overhead"
+      - "Team has no Dart experience and tight deadlines"
+    tradeoffs:
+      pros:
+        - "Consistent 120fps performance across platforms"
+        - "Custom rendering — same pixels on every device"
+        - "Hot reload for fast development"
+        - "Strong widget composability and theming system"
+      cons:
+        - "Larger app binary than React Native or native"
+        - "Custom UI may feel non-native on each platform"
+        - "Dart ecosystem is smaller than JS/TS ecosystem"
+        - "Platform channels add latency for native communication"
+    implementation:
+      guidelines:
+        - "Use Provider, Riverpod, or Bloc for state management"
+        - "Implement platform channels with Pigeon for type-safe native communication"
+        - "Use GoRouter for declarative navigation with deep link support"
+        - "Adopt Material 3 or Cupertino widgets for platform-authentic feel"
+        - "Use Dart FFI for CPU-intensive work instead of platform channels"
+        - "Implement proper widget rebuild optimization (const constructors, RepaintBoundary)"
+        - "Use shader compilation warmup to prevent jank on first frame"
+      common_errors:
+        - error: "Deep widget trees causing rebuild performance issues"
+          impact: "Excessive widget rebuilds degrade frame rate and battery"
+          fix: "Use const constructors; extract sub-widgets; use RepaintBoundary for heavy subtrees"
+        - error: "Platform channel calls on the main thread blocking UI"
+          impact: "UI stutters during native API calls (camera, sensors)"
+          fix: "Dispatch long-running native calls to background isolates; use event channels for streaming"
+    maturity:
+      level: standard
+    standards:
+      - name: "Flutter SDK"
+        type: framework
+        role: "Cross-platform UI toolkit with custom rendering engine"
+        status: recommended
+      - name: "Pigeon"
+        type: tool
+        role: "Type-safe platform channel code generator for Flutter"
+        status: recommended
+
+  - id: native_bridge_architecture
+    name: "Native Bridge Architecture"
+    description: >
+      A structured bridge layer between JavaScript/Dart and native platform
+      code (Kotlin/Swift). The bridge provides type-safe communication,
+      error handling, and resource lifecycle management. Platform modules
+      expose native functionality to the cross-platform layer while the
+      bridge abstracts platform differences behind a unified interface.
+    use_when:
+      - "Extensive native API usage (Bluetooth, NFC, health sensors)"
+      - "Existing native libraries to integrate into cross-platform app"
+      - "Performance-sensitive native operations (image processing, ML inference)"
+      - "Platform-specific UI components for native-feeling interactions"
+    avoid_when:
+      - "Minimal native API needs (standard bridge overhead not justified)"
+      - "Pure cross-platform functionality (camera, location have standard packages)"
+    tradeoffs:
+      pros:
+        - "Full access to platform APIs and existing native libraries"
+        - "Performance-critical code runs natively, not in JS/Dart VM"
+        - "Abstracted platform differences behind unified interface"
+        - "Progressive enhancement: cross-platform core + native extensions"
+      cons:
+        - "Increased development and maintenance cost"
+        - "Bridge debugging is complex (two language runtimes)"
+        - "Memory management across bridge boundaries (object references)"
+        - "Version synchronization between native and cross-platform layers"
+    implementation:
+      guidelines:
+        - "Define a clear interface contract between cross-platform and native layers"
+        - "Use code generation (Pigeon for Flutter, TurboModules for RN) for type safety"
+        - "Handle all native errors and propagate them as typed errors to the app layer"
+        - "Manage native resource lifecycle: allocate on demand, release on dispose"
+        - "Serialize complex objects as typed maps or protobuf — avoid JSON string round-trips"
+        - "Use event channels or streams for continuous data (sensor readings, location)"
+        - "Test bridge in isolation: unit test native modules, integration test the bridge boundary"
+      common_errors:
+        - error: "Synchronous bridge calls blocking the UI thread"
+          impact: "Frame drops, 60fps animations stutter during bridge calls"
+          fix: "Use async bridge methods; move heavy native work to background threads; report results via callbacks"
+        - error: "Memory leaks from unreleased native resources"
+          impact: "App memory grows unbounded; app killed by OS or crashes"
+          fix: "Implement reference counting or dispose pattern; release native resources when JS/Dart object is GC'd"
+    maturity:
+      level: advanced
+    standards:
+      - name: "React Native TurboModules"
+        type: framework
+        role: "Synchronous, type-safe native bridge for React Native"
+        status: recommended
+      - name: "Flutter Pigeon"
+        type: tool
+        role: "Type-safe platform channel code generator"
+        status: recommended
+
+  - id: ota_updates_codepush
+    name: "OTA Updates / Code Push"
+    description: >
+      Over-the-air (OTA) updates allow pushing JavaScript bundle, asset, and
+      Dart code changes directly to users without going through app store
+      review. Used for bug fixes, UI changes, and content updates. Native
+      code changes still require app store submission. React Native uses
+      CodePush (via expo-updates or Microsoft CodePush); Flutter uses Shorebird.
+    use_when:
+      - "Frequent updates without app store review cycle delay"
+      - "Rapid iteration on A/B tests or staged rollouts"
+      - "Critical bug fixes that cannot wait for app store approval"
+    avoid_when:
+      - "Native code or dependency changes (must go through app store)"
+      - "Compliance requires full app store review for all changes"
+    tradeoffs:
+      pros:
+        - "Skip 1-7 day app store review cycle"
+        - "Phased rollouts with instant rollback capability"
+        - "Update subsets of users for A/B testing"
+        - "Fix critical bugs within hours instead of days"
+      cons:
+        - "Cannot update native code (Swift, Kotlin, native libraries)"
+        - "Apple may reject apps that use OTA to change app behavior significantly"
+        - "Update delivery not guaranteed (user must open app)"
+        - "Version fragmentation: different users on different OTA versions"
+    implementation:
+      guidelines:
+        - "Use expo-updates (React Native) or Shorebird (Flutter) for OTA infrastructure"
+        - "Implement update channel strategy: dev, staging, production, canary"
+        - "Configure mandatory vs optional updates at the metadata level"
+        - "Roll out updates incrementally: 5%, 25%, 50%, 100%"
+        - "Monitor crash rate after each update rollout stage"
+        - "Provide fallback: if an update fails, fall back to the previous version"
+        - "Keep native updates to a minimum — batch them into quarterly releases"
+        - "Test OTA update flow thoroughly: what happens when update is interrupted?"
+      common_errors:
+        - error: "Pushing OTA updates that break compatibility with native code"
+          impact: "JS bundle expects APIs not in the installed native version; crashes on launch"
+          fix: "Version native and JS layer together; OTA only for JS/Dart changes, never native API calls"
+        - error: "No rollback capability for failed OTA updates"
+          impact: "Users stuck on broken version until next OTA push or app store reinstall"
+          fix: "Store previous bundle locally; auto-rollback on crash loop detection (3+ crashes on launch)"
+    maturity:
+      level: advanced
+    standards:
+      - name: "expo-updates"
+        type: framework
+        role: "OTA update system for Expo and bare React Native"
+        status: recommended
+
+examples:
+  - id: react_native_bridge
+    title: "React Native Native Module — Camera Permission"
+    context: "Exposing native camera permission check via TurboModule"
+    correct: |
+      // TYPE-SAFE BRIDGE: TurboModule with typed interface
+      // NativeCameraModule.ts — TypeScript interface
+      import { TurboModule, TurboModuleRegistry } from "react-native"
+
+      export interface Spec extends TurboModule {
+        readonly checkCameraPermission: () => Promise<"granted" | "denied" | "undetermined">
+        readonly requestCameraPermission: () => Promise<"granted" | "denied">
+      }
+
+      export default TurboModuleRegistry.get<Spec>("NativeCameraModule")
+    incorrect: |
+      // WRONG: Direct native module with no type safety
+      // No TurboModule — uses legacy native module bridge
+      // No TypeScript interface — callers must know the API by convention
+      // No error handling — promise may reject with cryptic native error
+      import { NativeModules } from "react-native"
+
+      const { CameraModule } = NativeModules
+      CameraModule.checkPermission()  // unknown return type, may crash
+    explanation: >
+      The correct version uses TurboModules with a typed Spec interface,
+      providing type-safe method signatures with known return types and
+      explicit error handling. The incorrect version uses the legacy native
+      module bridge with no TypeScript typing, making it fragile and hard
+      to refactor safely.
+
+  - id: flutter_platform_channel
+    title: "Flutter Platform Channel — Biometric Auth"
+    context: "Calling native biometric authentication from Flutter"
+    correct: |
+      // TYPE-SAFE CHANNEL: Using Pigeon for code generation
+      // biometric_api.dart — Generated interface
+      @HostApi()
+      abstract class BiometricApi {
+        bool canAuthenticate();
+        Future<AuthResult> authenticate({required String reason});
+      }
+
+      // Usage in app code
+      Future<bool> loginWithBiometrics() async {
+        try {
+          final api = BiometricApi();
+          if (!api.canAuthenticate()) return false;
+          final result = await api.authenticate(reason: "Log in to your account");
+          return result == AuthResult.success;
+        } on PlatformException catch (e) {
+          // Typed error handling for specific biometric failures
+          logError("Biometric auth failed", e);
+          return false;
+        }
+      }
+    incorrect: |
+      // WRONG: Raw MethodChannel with string-based protocol
+      // Error-prone: channel names, method names, and argument types must match
+      // exactly between Dart and native; no compile-time checking
+      static const platform = MethodChannel('com.example/auth');
+      final result = await platform.invokeMethod('authenticate', {'reason': 'Login'});
+      // Returns dynamic — must cast manually
+      // No typed errors — PlatformException is generic
+    explanation: >
+      The correct version uses Pigeon code generation for type-safe platform
+      channels with explicit interfaces, typed return values, and structured
+      error handling. The incorrect version uses raw MethodChannels with
+      string-based method names and dynamic types prone to runtime failures.
+
+security_hardening:
+  transport:
+    requirements:
+      - "TLS 1.2+ enforced for all API and OTA update server connections"
+      - "Certificate pinning for API endpoints in production builds"
+      - "Disable cleartext HTTP in Android manifest"
+  data_protection:
+    requirements:
+      - "Sensitive data stored in iOS Keychain or Android EncryptedSharedPreferences"
+      - "App group containers used for data sharing between app and extensions"
+      - "No sensitive data logged or persisted in crash reports"
+  access_control:
+    requirements:
+      - "Biometric authentication for sensitive operations"
+      - "App sandbox restrictions respected; no inter-app data sharing without intent"
+  input_output:
+    requirements:
+      - "Deep link URLs validated before navigation"
+      - "Push notification payloads sanitized — treat all data as untrusted"
+      - "WebView content restricted to allowed domains"
+  secrets:
+    requirements:
+      - "No API keys or tokens in client-side code or bundled assets"
+      - "Tokens stored in secure platform storage (Keychain, Keystore)"
+      - "OTA update manifests signed and verified before application"
+  monitoring:
+    requirements:
+      - "Crash reporting integrated (Sentry, Crashlytics) with breadcrumbs"
+      - "Performance monitoring for startup time, frame rate, and network"
+      - "User-facing error logs with opt-in consent"
+
+compliance:
+  standards:
+    - name: "OWASP Mobile Security Top 10 (MSTG)"
+      relevance: "Mobile-specific security threats and countermeasures"
+      reference: "https://owasp.org/www-project-mobile-security-testing-guide/"
+    - name: "Apple App Store Review Guidelines"
+      relevance: "Compliance requirements for iOS app distribution"
+    - name: "Google Play Store Developer Policy"
+      relevance: "Compliance requirements for Android app distribution"
+
+  requirements_mapping:
+    - control: secure_data_storage
+      description: "Sensitive data stored in platform-specific secure storage"
+      maps_to:
+        - "OWASP MSTG MSTG-STORAGE-1-15"
+        - "PCI DSS 3.4"
+    - control: secure_communication
+      description: "TLS 1.2+ with certificate pinning for API communication"
+      maps_to:
+        - "OWASP MSTG MSTG-NETWORK-1-6"
+        - "PCI DSS 4.1"
+    - control: code_quality
+      description: "No secrets in source code; runtime injection of configuration"
+      maps_to:
+        - "OWASP MSTG MSTG-CODE-1-12"
+
+prompt_recipes:
+  - id: mobile_architecture_design
+    scenario: greenfield
+    description: "Design mobile app architecture from scratch"
+    prompt: |
+      Design the mobile application architecture.
+
+      Context:
+      - Platforms: [iOS/Android/both]
+      - Performance needs: [standard/high-performance/real-time]
+      - Native API usage: [minimal/moderate/extensive]
+      - Team expertise: [native/cross-platform]
+
+      Requirements:
+      - Framework selection (React Native / Flutter / native)
+      - State management approach
+      - Navigation and routing
+      - API layer design
+      - Offline and caching strategy
+      - Push notification integration
+      - Deep linking configuration
+      - Build and deployment pipeline
+
+  - id: mobile_bridge_module
+    scenario: architecture
+    description: "Design a native bridge module for cross-platform app"
+    prompt: |
+      Design a native bridge module for the mobile app.
+
+      Native feature: [camera/Bluetooth/biometrics/sensors/etc.]
+      Framework: [React Native / Flutter]
+
+      Requirements:
+      - Type-safe interface between JS/Dart and native code
+      - Error handling strategy (typed errors, fallbacks)
+      - Resource lifecycle management (initialize, use, dispose)
+      - Thread management (background for heavy operations)
+      - Testing strategy for the bridge boundary
+      - Platform-specific behaviors (iOS vs Android differences)
+
+  - id: ota_rollout_plan
+    scenario: operations
+    description: "Plan OTA update rollout strategy"
+    prompt: |
+      Plan the OTA update rollout strategy.
+
+      Platform: [expo-updates / Shorebird]
+      App: [app name]
+
+      Plan:
+      1. Update channel configuration (dev, staging, canary, production)
+      2. Staged rollout percentages and criteria
+      3. Monitoring during rollout (crash rate, error rate, user feedback)
+      4. Rollback triggers and process
+      5. Update metadata (mandatory vs optional, release notes)
+      6. Testing OTA updates in CI/CD pipeline
+      7. Communication plan for users about updates
+
+  - id: mobile_app_security_review
+    scenario: high-security
+    description: "Review mobile app security posture"
+    prompt: |
+      Review the mobile app's security posture.
+
+      Checklist:
+      1. Is TLS 1.2+ enforced with certificate pinning?
+      2. Is sensitive data stored in platform secure storage (Keychain/Keystore)?
+      3. Are deep links validated — no open redirect or URL injection?
+      4. Is root/jailbreak detection implemented for sensitive apps?
+      5. Are API keys and tokens injected at runtime, not in the bundle?
+      6. Is app transport security configured to block cleartext?
+      7. Are WebView's restricted to safe allowlists?
+      8. Is crash reporting implemented with PII redaction?
+      9. Is the OTA update manifest signed and verified?
+      10. Are push notification payloads sanitized before processing?
+
+anti_patterns:
+  - name: "One-Size-Fits-All Cross-Platform"
+    description: >
+      Using a single cross-platform framework for every feature including
+      platform-specific interactions. Complex native features (ARKit, Camera2,
+      HealthKit) are forced through a leaky abstraction, resulting in poor
+      performance, limited functionality, and brittle bridge code.
+    fix: "Use cross-platform for shared business logic; implement platform-specific features natively with well-defined bridge interfaces"
+    severity: medium
+    related_pattern: native_bridge_architecture
+
+  - name: "No OTA Rollback Strategy"
+    description: >
+      Pushing OTA updates without maintaining previous versions or implementing
+      automatic rollback. A broken update leaves users stranded until the next
+      successful push, which is especially critical for mandatory updates that
+      may crash on launch.
+    fix: "Always keep the previous working bundle locally; implement crash-loop detection for automatic rollback"
+    severity: high
+    related_pattern: ota_updates_codepush
+
+  - name: "Hardcoded Secrets in App Bundle"
+    description: >
+      Bundling API keys, tokens, or other secrets in the mobile app binary or
+      JavaScript bundle. These can be extracted via static analysis of the IPA
+      or APK. Compromised keys can be used to abuse backend services.
+    fix: "Inject secrets at runtime via a secure config service; use platform secure storage for cached tokens"
+    severity: critical
+    related_pattern: cross_platform_react_native
+
+checklist:
+  - id: MOB-01
+    category: design
+    description: "Navigation and routing architecture defined"
+    severity: high
+    verified_by: cross_platform_react_native
+  - id: MOB-02
+    category: security
+    description: "TLS 1.2+ with certificate pinning enforced"
+    severity: critical
+    verified_by: cross_platform_flutter
+  - id: MOB-03
+    category: security
+    description: "No secrets in app bundle or source code"
+    severity: critical
+    verified_by: cross_platform_react_native
+  - id: MOB-04
+    category: security
+    description: "Sensitive data stored in platform secure storage"
+    severity: high
+    verified_by: native_bridge_architecture
+  - id: MOB-05
+    category: reliability
+    description: "Deep link URLs validated before navigation"
+    severity: high
+    verified_by: cross_platform_react_native
+  - id: MOB-06
+    category: reliability
+    description: "OTA update with rollback capability"
+    severity: high
+    verified_by: ota_updates_codepush
+  - id: MOB-07
+    category: reliability
+    description: "Crash reporting integrated with breadcrumbs"
+    severity: high
+    verified_by: cross_platform_flutter
+  - id: MOB-08
+    category: performance
+    description: "Bridge calls asynchronous to avoid UI thread blocking"
+    severity: high
+    verified_by: native_bridge_architecture
+  - id: MOB-09
+    category: security
+    description: "Push notification payloads sanitized"
+    severity: medium
+    verified_by: cross_platform_react_native
+  - id: MOB-10
+    category: maintainability
+    description: "Platform-specific code separated via extension files"
+    severity: medium
+    verified_by: cross_platform_react_native

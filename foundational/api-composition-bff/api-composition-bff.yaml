@@ -1,0 +1,639 @@
+# =============================================================================
+# AI Architecture Cookbook — API Composition & BFF
+# Schema: v3 | Domain: api-composition-bff
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: api-composition-bff
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    API composition and Backend-for-Frontend patterns for aggregating data from
+    multiple services and tailoring responses to specific client types. Covers
+    BFF per client type, API gateway composition, federated GraphQL, and
+    server-side composition.
+
+  tags:
+    - bff
+    - api-gateway
+    - composition
+    - graphql-federation
+    - backend-for-frontend
+
+  categories:
+    - foundational
+
+  prerequisites:
+    - api-design
+    - api-gateway-edge-security
+    - authentication
+
+  related_standards:
+    - id: api-design
+      relationship: complementary
+      context: "BFF and composition patterns build on top of API design fundamentals"
+    - id: api-gateway-edge-security
+      relationship: complementary
+      context: "API gateways host composition logic and enforce edge security"
+    - id: micro-frontends
+      relationship: complementary
+      context: "BFF per micro-frontend compartmentalizes frontend ownership"
+
+context_inputs:
+  - name: client_types
+    type: enum
+    description: "Primary client types consuming the API"
+    required: true
+    default: web
+    enum_values:
+      - mobile
+      - web
+      - third_party
+
+  - name: aggregation_complexity
+    type: enum
+    description: "How many services need aggregation for a single client view?"
+    required: true
+    default: moderate
+    enum_values:
+      - low
+      - moderate
+      - high
+
+  - name: client_specific_needs
+    type: boolean
+    description: "Do different client types need significantly different data shapes?"
+    required: true
+    default: false
+
+  - name: team_ownership
+    type: enum
+    description: "How is backend service ownership distributed?"
+    required: true
+    default: single_team
+    enum_values:
+      - single_team
+      - multiple_teams
+      - federated_teams
+
+decision_tree:
+  - id: different_data_shapes_require_bff
+    priority: 1
+    if:
+      - client_specific_needs == true
+    then:
+      pattern: bff_per_client
+      standards:
+        - "Backend-for-Frontend Pattern (Sam Newman)"
+      notes: "Different data shapes per client type are best served by dedicated BFF layers"
+
+  - id: high_aggregation_with_multiple_teams_uses_federation
+    priority: 2
+    if:
+      - aggregation_complexity == high
+      - team_ownership in [multiple_teams, federated_teams]
+    then:
+      pattern: federated_graphql
+      standards:
+        - "GraphQL Federation (Apollo)"
+      notes: "High aggregation across team boundaries benefits from federated GraphQL"
+
+  - id: moderate_aggregation_uses_gateway
+    priority: 3
+    if:
+      - team_ownership == single_team
+      - aggregation_complexity in [low, moderate]
+    then:
+      pattern: api_gateway_composition
+      standards:
+        - "API Gateway Pattern"
+      notes: "Single-team backend with moderate aggregation is well-served by API gateway composition"
+
+  - id: mobile_web_with_distinct_needs_uses_bff
+    priority: 4
+    if:
+      - client_types in [mobile, web]
+      - client_specific_needs == true
+    then:
+      pattern: bff_per_client
+      standards:
+        - "BFF Pattern"
+      notes: "Mobile and web clients have fundamentally different data and performance requirements"
+
+  - id: low_aggregation_third_party_uses_server_composition
+    priority: 5
+    if:
+      - client_types == third_party
+      - aggregation_complexity == low
+    then:
+      pattern: server_side_composition
+      standards:
+        - "Backend-for-Frontend Pattern"
+      notes: "Third-party clients with low aggregation needs are served by minimal server-side composition"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: api_gateway_composition
+    description: "API gateway composition is the safest default for most API aggregation needs"
+
+patterns:
+  - id: bff_per_client
+    name: "BFF per Client Type"
+    description: >
+      Dedicated backend service for each client type (mobile BFF, web BFF, etc.).
+      Each BFF owns the API contract for its client, aggregating data from
+      downstream services and returning client-optimized responses.
+    use_when:
+      - "Different client types need different data shapes"
+      - "Mobile and web have fundamentally different performance profiles"
+      - "Each client type evolves independently"
+      - "Frontend teams want backend ownership aligned with their domain"
+    avoid_when:
+      - "Single client type only — BFF adds unnecessary complexity"
+      - "Backend is simple CRUD with no aggregation needed"
+      - "Small team cannot maintain multiple BFF services"
+    tradeoffs:
+      pros:
+        - "Client-optimized responses — no over/under-fetching"
+        - "Frontend and BFF evolve together as a unit"
+        - "Mobile BFF can optimize for bandwidth and battery"
+        - "Isolated failure domains — one BFF failure doesn't affect other clients"
+      cons:
+        - "Duplicate logic across BFFs if not managed carefully"
+        - "More services to deploy and maintain"
+        - "Additional network hop between client and BFF"
+        - "BFF service discovery and routing complexity"
+    implementation:
+      guidelines:
+        - "Each BFF owns its data model — share DTOs, not internal schemas"
+        - "Mobile BFF should minimize payload size and number of round-trips"
+        - "Web BFF can include HATEOAS links and richer metadata"
+        - "Implement caching per BFF with client-appropriate TTLs"
+        - "Use feature flags in BFFs for gradual rollouts per client type"
+      common_errors:
+        - error: "BFFs sharing the same monolithic codebase"
+          impact: "Changing one BFF risks breaking another; deployment coupling"
+          fix: "Maintain separate deployable units per BFF with independent CI/CD"
+        - error: "BFF leaking downstream service schemas to the client"
+          impact: "Client coupled to backend schema changes; BFF no longer provides abstraction"
+          fix: "BFF transforms downstream data into a client-specific DTO — never pass raw downstream responses"
+        - error: "BFF contains business logic instead of just composition"
+          impact: "Duplicate business rules across BFFs; inconsistency between clients"
+          fix: "Keep business rules in domain services; BFF handles only data shaping and aggregation"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Backend-for-Frontend (Sam Newman)"
+        type: pattern
+        role: "Original BFF pattern for client-specific backends"
+        status: recommended
+
+  - id: api_gateway_composition
+    name: "API Gateway Composition"
+    description: >
+      Single API gateway that routes requests to backend services and composes
+      responses from multiple services. Gateway handles cross-cutting concerns
+      (auth, rate limiting, logging) and response aggregation.
+    use_when:
+      - "Moderate aggregation needs — composing 2-5 services per view"
+      - "Single team owns the backend services"
+      - "Need central point for cross-cutting concerns"
+      - "Client types are similar in their data needs"
+    avoid_when:
+      - "Very different data shapes per client type (use BFF instead)"
+      - "High aggregation complexity across team boundaries"
+      - "Gateway becomes a bottleneck or god component"
+    tradeoffs:
+      pros:
+        - "Single entry point simplifies client configuration"
+        - "Centralized cross-cutting concerns (auth, rate limiting, logging)"
+        - "Response composition reduces client-side orchestration"
+        - "Protocol translation — clients use REST while services use gRPC"
+      cons:
+        - "Gateway can become a bottleneck and single point of failure"
+        - "Risk of god gateway — too much logic in one place"
+        - "Gateway team becomes bottleneck for all service changes"
+        - "Hard to scale if gateway does heavy composition"
+    implementation:
+      guidelines:
+        - "Use asynchronous composition (Promise.all) for parallel service calls"
+        - "Implement circuit breakers for each downstream service"
+        - "Avoid business logic in the gateway — composition only"
+        - "Cache downstream responses with service-appropriate TTLs"
+        - "Use gateway as a routing layer, not a service mesh replacement"
+      common_errors:
+        - error: "Gateway does sequential composition when parallel is possible"
+          impact: "Response latency = sum of all service latencies instead of max"
+          fix: "Identify independent calls and execute them in parallel with Promise.all"
+        - error: "Gateway tightly coupled to downstream service schemas"
+          impact: "Downstream schema changes break the gateway"
+          fix: "Transform downstream responses in the gateway; version gateway independently"
+        - error: "No timeout per downstream call"
+          impact: "One slow service delays the entire composed response"
+          fix: "Set per-service timeouts with circuit breaker fallbacks"
+    maturity:
+      level: standard
+    standards:
+      - name: "API Gateway Pattern"
+        type: pattern
+        role: "Core API gateway composition pattern"
+        status: recommended
+
+  - id: federated_graphql
+    name: "Federated GraphQL"
+    description: >
+      Distributed GraphQL architecture where multiple services each expose a
+      partial GraphQL schema. A federation gateway composes these into a single
+      unified graph. Each team owns their part of the graph independently.
+    use_when:
+      - "Multiple teams own different backend services"
+      - "High aggregation complexity across service boundaries"
+      - "Clients benefit from a single unified graph"
+      - "Teams are autonomous and need independent deployment"
+    avoid_when:
+      - "Single team owns all services — simpler alternatives work"
+      - "Clients are third-party APIs preferring REST"
+      - "Team lacks GraphQL experience and federation tooling"
+    tradeoffs:
+      pros:
+        - "Each team owns their schema subgraph independently"
+        - "Clients query one unified graph with client-driven data selection"
+        - "No N+1 composition calls — resolver batching in the gateway"
+        - "Independent deployment per subgraph"
+      cons:
+        - "Federation complexity — gateway, subgraph coordination, schema registry"
+        - "Subgraph evolution requires careful schema compatibility checks"
+        - "Debugging cross-subgraph resolvers is complex"
+        - "Higher infrastructure overhead than REST composition"
+    implementation:
+      guidelines:
+        - "Define entity types with @key directive for cross-subgraph references"
+        - "Use Apollo Federation or GraphQL Mesh for gateway implementation"
+        - "Validate subgraph schema compatibility on every deployment"
+        - "Implement reference resolvers for entity types defined in other subgraphs"
+        - "Monitor gateway query cost and subgraph resolver latency"
+      common_errors:
+        - error: "Subgraphs returning supersets of data for all clients"
+          impact: "Over-fetching from each subgraph defeats federation's purpose"
+          fix: "Subgraphs should return only the fields the caller requests via the query context"
+        - error: "Circular references between subgraphs"
+          impact: "Infinitely nested resolvers; gateway crashes on entity resolution"
+          fix: "Break circular references; entities reference each other by ID only"
+        - error: "Schema drift between subgraphs"
+          impact: "Breaking changes in one subgraph break cross-graph queries"
+          fix: "Use schema registry with validation gates; run composition checks in CI"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Apollo Federation"
+        type: spec
+        role: "GraphQL federation specification"
+        status: recommended
+        reference: "https://www.apollographql.com/docs/federation/"
+      - name: "GraphQL Mesh"
+        type: tool
+        role: "Alternative federation gateway implementation"
+        status: emerging
+
+  - id: server_side_composition
+    name: "Server-Side Composition (BFF Tier)"
+    description: >
+      Lightweight server-side composition layer that aggregates data from upstream
+      services into client-ready responses. Lighter than a full BFF — ideal for
+      third-party APIs and simple web backends.
+    use_when:
+      - "Third-party API consumers with predictable data needs"
+      - "Simple to moderate aggregation — stitching 2-3 services"
+      - "Existing backend needs minimal restructuring"
+      - "Team prefers simple backend patterns over dedicated BFF services"
+    avoid_when:
+      - "Multiple distinct client types with different needs"
+      - "Complex, nested aggregation requiring multiple service hops"
+      - "Client needs real-time or streamed responses"
+    tradeoffs:
+      pros:
+        - "Simpler than dedicated BFF — minimal new infrastructure"
+        - "Single service to deploy and maintain"
+        - "Adds composition without full microservices overhead"
+        - "Easy to add caching and rate limiting at the composition layer"
+      cons:
+        - "Tight coupling between composition tier and client API"
+        - "Can become a bottleneck as client count grows"
+        - "Less flexible than BFF for client-specific optimizations"
+        - "Service becomes thick as aggregation complexity increases"
+    implementation:
+      guidelines:
+        - "Keep the composition tier stateless for horizontal scaling"
+        - "Implement caching for slow or expensive downstream aggregations"
+        - "Use stub/timeout patterns for non-critical data in aggregations"
+        - "Version the composition API independently from downstream services"
+        - "Log composition metrics per endpoint (calls, latency, error rate)"
+      common_errors:
+        - error: "Composition tier makes N+1 downstream calls per request"
+          impact: "Each client request triggers cascading service calls"
+          fix: "Batch downstream requests; use parallel composition pattern"
+        - error: "Composition tier fails entirely when one downstream is slow"
+          impact: "Full degradation instead of graceful partial response"
+          fix: "Implement per-service timeouts and graceful degradation — return partial data"
+        - error: "Composition logic duplicated outside the composition tier"
+          impact: "Inconsistent aggregation behavior; harder to debug"
+          fix: "Keep all composition logic in the composition tier — never in clients"
+    maturity:
+      level: standard
+    standards:
+      - name: "Backend-for-Frontend Pattern"
+        type: pattern
+        role: "Server-side composition design"
+        status: recommended
+
+examples:
+  - id: bff_response_shaping
+    title: "BFF Response Shaping for Mobile vs Web"
+    context: "Different API responses for mobile and web clients"
+    correct: |
+      # Mobile BFF — optimized for bandwidth
+      # /api/mobile/products/{id}
+      {
+        "id": "prod_123",
+        "name": "Wireless Headphones",
+        "price": 79.99,
+        "in_stock": true
+      }
+
+      # Web BFF — richer response for desktop
+      # /api/web/products/{id}
+      {
+        "id": "prod_123",
+        "name": "Wireless Headphones",
+        "price": 79.99,
+        "currency": "USD",
+        "description": "Noise-canceling wireless...",
+        "variants": [...],
+        "reviews": {...},
+        "_links": {
+          "related": "/api/web/products/related/123"
+        }
+      }
+    incorrect: |
+      # Same response for both clients
+      # Both mobile and web get the web-optimized payload
+      # Mobile pays for bandwidth it doesn't use
+    explanation: >
+      Mobile BFF returns minimal data for bandwidth optimization; web BFF includes
+      full data with hypermedia links. Same data, client-optimized presentation.
+
+  - id: gateway_fallback
+    title: "API Gateway with Fallback Data"
+    context: "Graceful degradation when one downstream service fails"
+    correct: |
+      // Gateway composes product detail page
+      async function getProductDetail(productId) {
+          const [product, inventory, reviews] = await Promise.allSettled([
+              fetchProduct(productId),           // Required
+              fetchInventory(productId),          // Required
+              fetchReviews(productId, {timeout: 200}) // Optional — graceful if slow
+          ]);
+
+          return {
+              product: product.value,
+              stock: inventory.value?.stock ?? "unavailable",
+              reviews: reviews.value ?? { error: "Reviews unavailable" }
+          };
+      }
+    incorrect: |
+      // No fallback — one failure kills the entire response
+      async function getProductDetail(productId) {
+          const product = await fetchProduct(productId);
+          const inventory = await fetchInventory(productId);
+          const reviews = await fetchReviews(productId);
+          // If reviews service is down, this endpoint is entirely broken
+          return { product, inventory, reviews };
+      }
+    explanation: >
+      Using Promise.allSettled with per-service fallbacks ensures the gateway
+      returns partial data gracefully instead of failing entirely.
+
+security_hardening:
+  transport:
+    requirements:
+      - "TLS 1.2+ for all BFF-to-client and BFF-to-service communication"
+      - "mTLS between BFF and downstream services in production"
+      - "Gateway terminates TLS for external clients; re-encrypts for internal services"
+  data_protection:
+    requirements:
+      - "BFFs receive only the data needed for their client — data minimization per client type"
+      - "Sensitive fields stripped before forwarding to third-party clients"
+      - "PII fields filtered at the composition layer before reaching mobile/web BFFs"
+  access_control:
+    requirements:
+      - "Authentication token validated at the gateway before passing to BFF"
+      - "BFF enforces client-scoped authorization — mobile BFF cannot call admin endpoints"
+      - "Service-to-service authentication between BFF and downstream services"
+  input_output:
+    requirements:
+      - "All client inputs validated at the gateway before reaching backend services"
+      - "Response size limits enforced per BFF endpoint"
+      - "Third-party client responses sanitized — no internal schema leakage"
+  secrets:
+    requirements:
+      - "Downstream service credentials stored in secrets manager, not BFF config"
+      - "Gateway API keys rotated independently per client type"
+      - "No secrets in BFF response headers or error messages"
+  monitoring:
+    requirements:
+      - "Per-service composition metrics tracked (latency, error rate per downstream)"
+      - "Alert on gateway composition timeouts and partial response rates"
+      - "Log client type and version for capacity planning"
+
+compliance:
+  standards:
+    - name: "OWASP API Security Top 10"
+      relevance: "BFF and gateways are API attack surfaces requiring security controls"
+      reference: "https://owasp.org/www-project-api-security/"
+    - name: "PCI DSS"
+      relevance: "BFF for payment processing must handle card data per PCI requirements"
+
+  requirements_mapping:
+    - control: data_minimization_per_client
+      description: "Each BFF receives only data relevant to its client type"
+      maps_to:
+        - "GDPR — Article 5(1)(c) Data Minimization"
+    - control: edge_authentication
+      description: "Authentication validated at gateway before reaching services"
+      maps_to:
+        - "OWASP API2:2023 Broken Authentication"
+
+prompt_recipes:
+  - id: bff_greenfield
+    scenario: greenfield
+    description: "Design BFF architecture for a new multi-client application"
+    prompt: |
+      Design a BFF architecture for {application_name}.
+
+      Client types: {client_types}
+      Aggregation complexity: {aggregation_complexity}
+      Client-specific needs: {client_specific_needs}
+      Team ownership: {team_ownership}
+
+      1. Choose composition pattern for each client type
+      2. Define BFF service boundaries per client
+      3. Design data shaping strategy per client type
+      4. Plan caching strategy per BFF
+      5. Design authentication token flow through BFFs
+
+  - id: bff_audit
+    scenario: audit
+    description: "Audit BFF implementation for coupling and resilience"
+    prompt: |
+      Audit this BFF implementation:
+
+      {bff_details}
+
+      Check for:
+      1. Does the BFF leak downstream service schemas to clients?
+      2. Is there business logic in the BFF that should be in domain services?
+      3. Are downstream calls parallelized where possible?
+      4. Is there graceful degradation for optional data?
+      5. Is caching per-BFF configured appropriately?
+      6. Are timeouts set on all downstream calls?
+      7. Are BFFs independently deployable?
+
+  - id: bff_migration
+    scenario: migration
+    description: "Migrate from monolith to BFF-based architecture"
+    prompt: |
+      Plan migration from monolithic API to BFF-based architecture.
+
+      Current: {current_api_description}
+      Target: BFF per client type ({client_types})
+
+      Migration plan:
+      1. Identify data shapes needed per client type
+      2. Extract first BFF (usually web BFF) alongside monolith
+      3. Route web traffic to new BFF, other clients stay on monolith
+      4. Extract mobile BFF with optimized responses
+      5. Gradually retire monolith API routes
+      6. Monitor for regression in per-client performance
+
+  - id: bff_edge_case
+    scenario: edge-case
+    description: "Handle BFF partial failure and graceful degradation"
+    prompt: |
+      Design graceful degradation for a BFF when downstream services fail.
+
+      BFF type: {bff_type}
+      Downstream services: {downstream_services}
+
+      Design:
+      1. Classify each downstream call as required or optional
+      2. Implement Promise.allSettled with per-call fallback values
+      3. Add per-call timeouts with circuit breaker thresholds
+      4. Return partial response with degradation status headers
+      5. Log degradation for monitoring and alerting
+
+  - id: bff_high_security
+    scenario: high-security
+    description: "Harden BFF for sensitive data handling"
+    prompt: |
+      Harden this BFF for handling sensitive client data.
+
+      BFF type: {bff_type}
+      Data sensitivity: {data_sensitivity}
+
+      Controls needed:
+      1. Data minimization — BFF fields limited to client needs
+      2. Field-level filtering for sensitive data
+      3. Authentication validation at BFF boundary
+      4. Response size and content headers
+      5. Audit logging per client request
+
+anti_patterns:
+  - name: "God Gateway"
+    description: >
+      Single API gateway that handles routing, composition, authentication,
+      business logic, and protocol translation for every client. Becomes an
+      unmaintainable monolith and a single point of failure.
+    fix: "Split into per-client BFFs or federated subgraphs; gateway handles only cross-cutting concerns"
+    severity: high
+    related_pattern: api_gateway_composition
+
+  - name: "BFF as Just a Proxy"
+    description: >
+      BFF passes downstream service responses directly to the client without
+      any transformation or client-specific shaping. Adds latency without value.
+    fix: "BFF must transform data into client-optimized format and aggregate multiple sources"
+    severity: medium
+    related_pattern: bff_per_client
+
+  - name: "Shared BFF for All Clients"
+    description: >
+      One BFF service handling mobile, web, and third-party clients with the
+      same response format. Clients get suboptimal data shapes and the BFF
+      accumulates client-specific conditionals.
+    fix: "Deploy separate BFF per client type; each BFF optimizes for its client"
+    severity: high
+    related_pattern: bff_per_client
+
+checklist:
+  - id: BFF-01
+    category: design
+    description: "BFF or composition pattern chosen based on client types and needs"
+    severity: high
+    verified_by: bff_per_client
+
+  - id: BFF-02
+    category: design
+    description: "BFF transforms downstream data into client-specific DTOs"
+    severity: critical
+    verified_by: bff_per_client
+
+  - id: BFF-03
+    category: reliability
+    description: "Downstream calls parallelized with Promise.all/mergeMap"
+    severity: high
+    verified_by: api_gateway_composition
+
+  - id: BFF-04
+    category: reliability
+    description: "Per-call timeouts and circuit breakers configured for all downstream calls"
+    severity: critical
+    verified_by: api_gateway_composition
+
+  - id: BFF-05
+    category: design
+    description: "No business logic in BFF or gateway — composition only"
+    severity: high
+    verified_by: bff_per_client
+
+  - id: BFF-06
+    category: reliability
+    description: "Graceful degradation with partial responses on downstream failures"
+    severity: high
+    verified_by: api_gateway_composition
+
+  - id: BFF-07
+    category: security
+    description: "Sensitive fields filtered at composition layer per client type"
+    severity: critical
+    verified_by: bff_per_client
+
+  - id: BFF-08
+    category: security
+    description: "Authentication validated at gateway before BFF routing"
+    severity: critical
+    verified_by: api_gateway_composition
+
+  - id: BFF-09
+    category: performance
+    description: "Caching per downstream service with appropriate TTLs"
+    severity: medium
+    verified_by: api_gateway_composition
+
+  - id: BFF-10
+    category: observability
+    description: "Per-service composition metrics tracked for latency and errors"
+    severity: medium
+    verified_by: server_side_composition

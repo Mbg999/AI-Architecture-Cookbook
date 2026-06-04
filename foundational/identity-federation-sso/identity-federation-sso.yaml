@@ -1,0 +1,455 @@
+# =============================================================================
+# AI Architecture Cookbook — Identity Federation & SSO
+# Schema: v3 | Domain: identity-federation-sso
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: identity-federation-sso
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Identity federation and SSO patterns: OIDC/OAuth 2.0 federation,
+    SAML 2.0 for enterprise, SCIM provisioning for user lifecycle,
+    and multi-IdP strategies. Token exchange, identity brokering,
+    and secure cross-domain authentication.
+
+  tags:
+    - sso
+    - saml
+    - oidc
+    - okta
+    - keycloak
+    - scim
+    - identity-federation
+
+  categories:
+    - foundational
+
+  prerequisites:
+    - authentication
+    - authorization
+    - secrets-management
+
+  related_standards:
+    - id: authentication
+      relationship: complementary
+      context: "Federation extends authentication across boundaries"
+    - id: authorization
+      relationship: complementary
+      context: "Federated identity provides claims for authorization"
+    - id: secrets-management
+      relationship: complementary
+      context: "IdP credentials and signing keys need secure management"
+
+context_inputs:
+  - name: identity_providers
+    type: enum
+    description: "Identity provider landscape"
+    required: true
+    default: single_idp
+    enum_values: [single_idp, multiple_idp, multi_tenant_bring_your_own, social_login]
+
+  - name: federation_protocol
+    type: enum
+    description: "Preferred federation protocol"
+    required: true
+    default: oidc
+    enum_values: [oidc, saml, both, not_sure]
+
+  - name: user_provisioning
+    type: enum
+    description: "User provisioning method"
+    required: true
+    default: manual
+    enum_values: [manual, just_in_time, scim_automated]
+
+  - name: org_type
+    type: enum
+    description: "Organization type"
+    required: true
+    default: b2c
+    enum_values: [b2c, b2b, enterprise_internal, mixed]
+
+  - name: multi_tenant_idp
+    type: boolean
+    description: "Allow tenants to bring their own IdP?"
+    required: false
+    default: false
+
+decision_tree:
+  - id: oidc_modern
+    priority: 1
+    if:
+      - federation_protocol in [oidc, not_sure]
+      - org_type in [b2c, b2b, mixed]
+    then:
+      pattern: oidc_oauth_federation
+      standards: ["OpenID Connect", "OAuth 2.0"]
+      notes: "OIDC is the modern choice: JWT tokens, mobile/SPA support, simpler than SAML."
+
+  - id: saml_enterprise
+    priority: 2
+    if:
+      - org_type == enterprise_internal
+      - federation_protocol in [saml, both]
+    then:
+      pattern: saml_federation
+      standards: ["SAML 2.0"]
+      notes: "SAML 2.0 dominates enterprise. Many orgs already have Okta, Azure AD, ADFS with SAML support."
+
+  - id: scim_automation
+    priority: 3
+    if:
+      - user_provisioning == scim_automated
+    then:
+      pattern: scim_provisioning
+      standards: ["SCIM 2.0"]
+      notes: "SCIM automates user lifecycle: create, update, deactivate. Essential for multi-IdP and enterprise."
+
+  - id: multi_idp_broker
+    priority: 4
+    if:
+      - identity_providers == multiple_idp
+      - multi_tenant_idp == true
+    then:
+      pattern: multi_idp_strategy
+      standards: ["OIDC Federation"]
+      notes: "Multi-tenant BYOIdP requires an identity broker that translates protocols."
+
+  - id: social_login
+    priority: 5
+    if:
+      - identity_providers == social_login
+      - user_provisioning == just_in_time
+    then:
+      pattern: oidc_oauth_federation
+      notes: "Social login uses OIDC/OAuth 2.0 with JIT provisioning."
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: critical
+  fallback:
+    pattern: oidc_oauth_federation
+    description: "OIDC/OAuth 2.0 is the safest default for most federation needs"
+
+patterns:
+  - id: oidc_oauth_federation
+    name: "OIDC / OAuth 2.0 Federation"
+    description: >
+      Modern federation using OpenID Connect on OAuth 2.0. IdP issues
+      ID token (JWT with user claims) and access token. Supports auth
+      code flow with PKCE for mobile/SPA, client credentials for services.
+    use_when:
+      - "New federation deployments (preferred over SAML)"
+      - "Mobile apps and SPAs"
+      - "Social login (Google, GitHub, Apple)"
+      - "Microservice intra-service auth"
+    avoid_when:
+      - "Enterprise-only SAML-mandated environment"
+      - "Legacy SAML-only applications"
+    tradeoffs:
+      pros: ["JWT-based — lightweight, easy validation", "Mobile/SPA/Web/service support", "Well-defined flows per client type"]
+      cons: ["JWT revocation hard (valid until expiry)", "OAuth complexity: multiple grants/scopes", "Token size large with many claims"]
+    implementation:
+      guidelines:
+        - "Use auth code + PKCE for all public clients"
+        - "Use client credentials for service-to-service"
+        - "Validate ID token signature, issuer, audience, expiry"
+        - "Short-lived access tokens (15-60 min) with refresh"
+        - "Use scopes for fine-grained access control"
+      common_errors:
+        - error: "Implicit flow in SPAs without PKCE"
+          impact: "Token in URL fragment; leakage via browser history"
+          fix: "Use auth code flow with PKCE for all public clients"
+        - error: "Not validating token signature"
+          impact: "Anyone forges tokens; auth bypass"
+          fix: "Validate signature against JWKS on every request"
+    maturity:
+      level: standard
+    standards:
+      - name: "OpenID Connect Core 1.0"
+        type: spec
+        role: "Identity on top of OAuth 2.0"
+        status: recommended
+      - name: "OAuth 2.0 (RFC 6749)"
+        type: rfc
+        role: "Authorization framework"
+        status: recommended
+      - name: "PKCE (RFC 7636)"
+        type: rfc
+        role: "PKCE for public clients"
+        status: recommended
+
+  - id: saml_federation
+    name: "SAML 2.0 Federation"
+    description: >
+      Enterprise SSO using SAML 2.0 assertions (XML signed). Supports
+      IdP-initiated and SP-initiated SSO. Mature industry standard.
+    use_when:
+      - "Enterprise with existing SAML IdP (ADFS, Okta)"
+      - "Government/regulated requiring SAML 2.0"
+      - "B2B integrations requiring SAML"
+    avoid_when:
+      - "Mobile/SPA apps (OIDC better suited)"
+      - "New deployments (OIDC simpler)"
+    tradeoffs:
+      pros: ["Deep enterprise integration", "Mature standard", "Rich attribute exchange"]
+      cons: ["XML verbose and complex", "No mobile profile", "Certificate rotation needs SP coordination"]
+    implementation:
+      guidelines:
+        - "Use HTTP-POST binding (more secure than redirect)"
+        - "Validate SAML response signatures"
+        - "Check NotBefore/NotOnOrAfter for timeliness"
+        - "Set 5-min assertion validity window"
+        - "Rotate certificates with overlap period"
+      common_errors:
+        - error: "No signature validation on assertions"
+          impact: "Attacker forges assertions; impersonates any user"
+          fix: "Always validate signature against IdP certificate"
+        - error: "Wide assertion validity window"
+          impact: "Stolen assertions replayed for hours"
+          fix: "Set NotOnOrAfter to 5 min; implement replay detection"
+    maturity:
+      level: advanced
+    standards:
+      - name: "SAML 2.0 (OASIS)"
+        type: standard
+        role: "Enterprise SSO protocol"
+        status: recommended
+
+  - id: scim_provisioning
+    name: "SCIM Provisioning"
+    description: >
+      SCIM 2.0 automates user/group provisioning between identity domains.
+      REST API with JSON schema for create, update, deactivate operations.
+    use_when:
+      - "Automated provisioning across apps"
+      - "Large org with frequent onboarding/offboarding"
+      - "Compliance requiring timely deprovisioning"
+    avoid_when:
+      - "Small team; manual suffices"
+      - "JIT provisioning via OIDC/SAML sufficient"
+    tradeoffs:
+      pros: ["Automated lifecycle (create, update, deactivate)", "Group sync for authorization", "Standardized REST API"]
+      cons: ["Application must implement SCIM server", "Schema differences need attribute mapping", "Bulk sync rate limiting"]
+    implementation:
+      guidelines:
+        - "Implement /Users and /Groups SCIM 2.0 endpoints"
+        - "Support PATCH for partial updates"
+        - "Implement idempotent operations"
+        - "Set active=false on deprovisioning, not delete"
+        - "Log all SCIM operations for audit"
+      common_errors:
+        - error: "Not supporting PATCH for partial updates"
+          impact: "Race conditions on concurrent updates"
+          fix: "Support SCIM PATCH for partial attribute changes"
+        - error: "SCIM deletion instead of deactivation"
+          impact: "Lost audit trail; orphaned references"
+          fix: "Set active=false; retain record with deactivation timestamp"
+    maturity:
+      level: advanced
+    standards:
+      - name: "SCIM 2.0 (RFC 7642-7644)"
+        type: rfc
+        role: "Cross-domain identity management"
+        status: recommended
+
+  - id: multi_idp_strategy
+    name: "Multi-IdP Strategy"
+    description: >
+      Identity broker (Keycloak, Okta, Auth0) translating between protocols
+      and normalizing identity tokens. Supports multi-tenant BYOIdP,
+      enterprise mergers, and gradual IdP migration.
+    use_when:
+      - "Multi-tenant app where tenants bring their IdP"
+      - "Enterprise merger with multiple existing IdPs"
+      - "Gradual migration between IdPs"
+    avoid_when:
+      - "Single IdP for small org"
+    tradeoffs:
+      pros: ["Protocol translation (SAML↔OIDC)", "Unified identity layer", "Multi-tenant IdP support"]
+      cons: ["Broker is SPOF (needs HA)", "Latency per authentication", "Broker configuration complexity"]
+    implementation:
+      guidelines:
+        - "Deploy broker in HA (multi-instance, load balanced)"
+        - "Implement email-domain IdP routing"
+        - "Normalize claims: map IdP-specific to canonical"
+        - "Handle broker failure: maintenance page, preserve existing sessions"
+        - "Log all authentication attempts for audit"
+      common_errors:
+        - error: "Broker as SPOF without HA"
+          impact: "All auth blocked on broker outage"
+          fix: "Deploy HA; design for failure with cached sessions"
+        - error: "No IdP discovery or user selection"
+          impact: "Users don't know which IdP to choose"
+          fix: "Email-domain routing or branded IdP selection page"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Keycloak"
+        type: framework
+        role: "Open-source IAM with multi-IdP"
+        status: recommended
+
+examples:
+  - id: sso_oidc_setup
+    title: "OIDC SSO Integration"
+    context: "Adding SSO to a web application"
+    correct: |
+      // CORRECT: OIDC with PKCE
+      const config = {
+        authority: "https://auth.company.com",
+        clientId: "web-app",
+        redirectUri: window.location.origin + "/callback",
+        responseType: "code",
+        scope: "openid profile email",
+      }
+      const userManager = new UserManager(config)
+      // Login redirects to IdP, callback exchanges code for tokens
+      // Tokens validated: signature, issuer, audience, expiry
+    incorrect: |
+      // WRONG: Implicit flow — no PKCE, access token in URL
+      const config = {
+        authority: "https://auth.company.com",
+        clientId: "web-app",
+        responseType: "token", // Token in URL fragment!
+        scope: "openid",
+      }
+    explanation: >
+      OIDC with authorization code flow + PKCE is the standard. The
+      incorrect version uses implicit flow which exposes the access
+      token in the URL.
+
+security_hardening:
+  transport:
+    requirements:
+      - "TLS 1.2+ for all IdP and federation endpoints"
+      - "SAML assertions over HTTP-POST binding"
+  data_protection:
+    requirements:
+      - "Encrypted SAML assertions for sensitive attributes"
+      - "Minimal claims in ID tokens"
+  access_control:
+    requirements:
+      - "SCIM endpoint authenticated via OAuth 2.0 bearer"
+      - "IdP configuration changes require approval"
+  input_output:
+    requirements:
+      - "Validate SAML assertions against XML schema"
+      - "Reject malformed JWTs"
+  secrets:
+    requirements:
+      - "SAML certs and JWT keys in HSM/secret manager"
+      - "Rotate IdP credentials regularly"
+  monitoring:
+    requirements:
+      - "Monitor federation auth success/failure rates"
+      - "Alert on SAML replay detection"
+
+compliance:
+  standards:
+    - name: "NIST SP 800-63 (Digital Identity)"
+      relevance: "Identity assurance levels for federated auth"
+    - name: "FedRAMP (Identity)"
+      relevance: "Federal identity requirements for cloud services"
+
+  requirements_mapping:
+    - control: federated_authentication
+      description: "Users authenticate at home IdP; SP trusts issued tokens"
+      maps_to: ["NIST SP 800-63 AAL2", "FedRAMP IA-2"]
+    - control: automated_provisioning
+      description: "User lifecycle automated via SCIM"
+      maps_to: ["FedRAMP AC-2"]
+
+prompt_recipes:
+  - id: sso_greenfield
+    scenario: greenfield
+    description: "Design identity federation"
+    prompt: |
+      Design federation: providers=[single/multiple/BYOIdP/social], protocol=[OIDC/SAML],
+      provisioning=[manual/JIT/SCIM], org=[B2C/B2B/enterprise].
+      Components: IdP selection, federation protocol, token validation, session management.
+
+  - id: sso_migration
+    scenario: migration
+    description: "Migrate SAML to OIDC"
+    prompt: |
+      1. Deploy broker accepting SAML and issuing OIDC 2. Migrate apps one by one
+      3. Add OIDC native IdP 4. Decommission SAML IdP. Broker as intermediary.
+
+  - id: sso_audit
+    scenario: audit
+    description: "Audit federation security"
+    prompt: |
+      SAML: signatures validated? NotOnOrAfter <5min? Replay detection? Certificate rotation?
+      OIDC: signature validated? Issuer/audience checked? PKCE for public clients?
+      General: TLS? Keys in HSM? SCIM provision auth? Audit logs?
+
+  - id: sso_multi_tenant
+    scenario: architecture
+    description: "Design multi-tenant SSO"
+    prompt: |
+      Per-tenant IdP config in broker. Email-domain routing. JIT provisioning.
+      Attribute mapping: tenant roles → app roles. Tenant admin portal for IdP self-service.
+
+anti_patterns:
+  - name: "SAML for Mobile Apps"
+    description: "SAML has no mobile profile; requires fragile WebView workarounds."
+    fix: "Use OIDC with PKCE for mobile and SPA applications"
+    severity: high
+    related_pattern: oidc_oauth_federation
+
+  - name: "Ignoring Token Validation"
+    description: "Accepting tokens without signature, issuer, or audience validation."
+    fix: "Always validate signature, issuer, audience, and expiry"
+    severity: critical
+    related_pattern: oidc_oauth_federation
+
+  - name: "SCIM Without Deprovisioning"
+    description: "SCIM for onboarding only; terminated users retain access."
+    fix: "Implement SCIM deactivation (active=false) in offboarding workflow"
+    severity: critical
+    related_pattern: scim_provisioning
+
+checklist:
+  - id: IDP-01
+    category: security
+    description: "ID token signature validated against JWKS"
+    severity: critical
+    verified_by: oidc_oauth_federation
+  - id: IDP-02
+    category: security
+    description: "SAML response signature validated"
+    severity: critical
+    verified_by: saml_federation
+  - id: IDP-03
+    category: security
+    description: "PKCE enforced for public OIDC clients"
+    severity: high
+    verified_by: oidc_oauth_federation
+  - id: IDP-04
+    category: security
+    description: "SAML assertion validity window under 5 min"
+    severity: high
+    verified_by: saml_federation
+  - id: IDP-05
+    category: security
+    description: "SCIM provisioning endpoints authenticated"
+    severity: high
+    verified_by: scim_provisioning
+  - id: IDP-06
+    category: security
+    description: "SCIM deactivation (active=false) for offboarding"
+    severity: critical
+    verified_by: scim_provisioning
+  - id: IDP-07
+    category: reliability
+    description: "IdP deployed in HA"
+    severity: high
+    verified_by: multi_idp_strategy
+  - id: IDP-08
+    category: security
+    description: "SAML/OIDC signing keys in HSM/secret manager"
+    severity: critical
+    verified_by: saml_federation

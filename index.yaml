@@ -6,13 +6,13 @@
 schema_version: 1
 name: AI Architecture Cookbook
 description: Architectural standards and decision frameworks for AI code assistants
-total_entries: 48
+total_entries: 82
 categories:
 - id: foundational
   name: Foundational Standards
   description: Core cross-cutting concerns every system needs
   path: foundational/
-  entry_count: 11
+  entry_count: 15
   entries:
   - domain: api-design
     path: foundational/api-design/api-design.yaml
@@ -171,11 +171,54 @@ categories:
     prerequisites:
     - encryption
     - authentication
+  - domain: api-composition-bff
+    path: foundational/api-composition-bff/api-composition-bff.yaml
+    version: 1.0.0
+    description: "API composition and BFF patterns for aggregating, transforming, and tailoring backend services to the needs of specific client types including web, mobile, and third-party consumers."
+    tags:
+    - bff
+    - api-gateway-composition
+    prerequisites:
+    - api-design
+    - api-gateway-edge-security
+  - domain: caching-strategies
+    path: foundational/caching-strategies/caching-strategies.yaml
+    version: 1.0.0
+    description: "Caching strategies covering write-through, write-behind, cache-aside, content delivery, and distributed cache invalidation. Addresses cache stampede prevention and consistency models."
+    tags:
+    - caching
+    - cache-stampede
+    - distributed-cache
+    prerequisites:
+    - data-persistence
+    - performance-optimization
+  - domain: api-governance-portals
+    path: foundational/api-governance-portals/api-governance-portals.yaml
+    version: 1.0.0
+    description: "API governance and portal patterns for managing API lifecycle, discovery, versioning, documentation, and developer onboarding through self-service portals and standardized policies."
+    tags:
+    - api-governance
+    - graphql-federation
+    prerequisites:
+    - api-design
+    - api-gateway-edge-security
+  - domain: identity-federation-sso
+    path: foundational/identity-federation-sso/identity-federation-sso.yaml
+    version: 1.0.0
+    description: "Identity federation and single sign-on patterns covering SAML, OpenID Connect, SCIM provisioning, cross-domain identity management, and social login integration."
+    tags:
+    - sso
+    - saml
+    - keycloak
+    - scim
+    prerequisites:
+    - authentication
+    - authorization
 - id: application-architecture
   name: Application Architecture
   description: Structural and design patterns for applications
   path: application-architecture/
-  entry_count: 10
+  entry_count: 28
   entries:
   - domain: ai-agent-architecture
     path: application-architecture/ai-agent-architecture/ai-agent-architecture.yaml
@@ -325,11 +368,256 @@ categories:
     prerequisites:
     - configuration-management
     - logging-observability
+  - domain: frontend-component-architecture
+    path: application-architecture/frontend-component-architecture/frontend-component-architecture.yaml
+    version: 1.0.0
+    description: "Frontend component patterns: atomic design, compound components, composition, headless UI, component libraries"
+    tags:
+    - frontend
+    - components
+    - react
+    - vue
+    - angular
+    - composition
+    - design-system
+    prerequisites:
+    - api-design
+    - input-validation
+    - accessibility
+  - domain: micro-frontends
+    path: application-architecture/micro-frontends/micro-frontends.yaml
+    version: 1.0.0
+    description: "Micro-frontend patterns: module federation, Web Components, iframe, server composition, Single SPA"
+    tags:
+    - micro-frontends
+    - module-federation
+    - web-components
+    - single-spa
+    - frontend
+    - decomposition
+    - composition
+    prerequisites:
+    - api-design
+    - ci-cd
+    - frontend-component-architecture
+  - domain: frontend-state-management
+    path: application-architecture/frontend-state-management/frontend-state-management.yaml
+    version: 1.0.0
+    description: "Frontend state management: server state, global stores, URL state, form state, atomic state"
+    tags:
+    - state-management
+    - frontend
+    - react
+    - vue
+    - redux
+    - zustand
+    - query
+    prerequisites:
+    - api-design
+    - error-handling
+    - frontend-component-architecture
+  - domain: styling-design-systems
+    path: application-architecture/styling-design-systems/styling-design-systems.yaml
+    version: 1.0.0
+    description: "Styling and design systems: CSS methodology, design tokens, utility-first CSS, multi-theme, a11y visual"
+    tags:
+    - styling
+    - css
+    - design-system
+    - tailwind
+    - css-in-js
+    - theming
+    - design-tokens
+    prerequisites:
+    - accessibility
+    - frontend-component-architecture
+    - frontend-build-performance
+  - domain: responsive-mobile-first
+    path: application-architecture/responsive-mobile-first/responsive-mobile-first.yaml
+    version: 1.0.0
+    description: "Responsive and mobile-first design: breakpoints, fluid grids, adaptive layouts, touch targets, mobile UX"
+    tags:
+    - responsive
+    - mobile-first
+    - css
+    - layout
+    - pwa
+    - touch
+    - breakpoints
+    prerequisites:
+    - accessibility
+    - styling-design-systems
+    - frontend-component-architecture
+  - domain: form-handling-patterns
+    path: application-architecture/form-handling-patterns/form-handling-patterns.yaml
+    version: 1.0.0
+    description: "Form handling patterns: validation UX, wizards, autosave, form state, field arrays, accessibility"
+    tags:
+    - forms
+    - validation
+    - frontend
+    - react-hook-form
+    - formkit
+    - accessibility
+    prerequisites:
+    - input-validation
+    - frontend-component-architecture
+    - frontend-state-management
+  - domain: internationalization-i18n
+    path: application-architecture/internationalization-i18n/internationalization-i18n.yaml
+    version: 1.0.0
+    description: "Internationalization: i18n frameworks, RTL support, SEO localization, translation management, ICU messages"
+    tags:
+    - i18n
+    - internationalization
+    - localization
+    - rtl
+    - translation
+    - locale
+    prerequisites:
+    - frontend-component-architecture
+    - frontend-state-management
+  - domain: frontend-build-performance
+    path: application-architecture/frontend-build-performance/frontend-build-performance.yaml
+    version: 1.0.0
+    description: "Frontend build and performance: bundling, code splitting, tree shaking, vendor optimization, Core Web Vitals"
+    tags:
+    - build
+    - performance
+    - bundler
+    - vite
+    - webpack
+    - code-splitting
+    - core-web-vitals
+    prerequisites:
+    - performance-optimization
+    - ci-cd
+  - domain: pwa-offline-first
+    path: application-architecture/pwa-offline-first/pwa-offline-first.yaml
+    version: 1.0.0
+    description: "PWA and offline-first: service workers, caching strategies, background sync, app shell, install prompts"
+    tags:
+    - pwa
+    - offline
+    - service-worker
+    - caching
+    - progressive-web-app
+    - background-sync
+    prerequisites:
+    - frontend-build-performance
+    - responsive-mobile-first
+  - domain: real-time-frontend
+    path: application-architecture/real-time-frontend/real-time-frontend.yaml
+    version: 1.0.0
+    description: "Real-time frontend: WebSocket, SSE, polling, resilient reconnection, message buffering, state sync"
+    tags:
+    - real-time
+    - websocket
+    - sse
+    - polling
+    - collaboration
+    - live-updates
+    prerequisites:
+    - messaging-events
+    - frontend-state-management
+    - error-handling
+  - domain: webassembly-frontend
+    path: application-architecture/webassembly-frontend/webassembly-frontend.yaml
+    version: 1.0.0
+    description: "WebAssembly frontend: compute-intensive tasks, large data processing, Wasm module design, JS interop"
+    tags:
+    - webassembly
+    - wasm
+    - performance
+    - rust
+    - assemblyscript
+    - compilation
+    prerequisites:
+    - frontend-build-performance
+    - performance-optimization
+  - domain: prompt-engineering-patterns
+    path: application-architecture/prompt-engineering-patterns/prompt-engineering-patterns.yaml
+    version: 1.0.0
+    description: "Prompt engineering patterns for structuring prompts, chain-of-thought reasoning, few-shot learning, output formatting, and systematic prompt optimization for LLM-powered features."
+    tags:
+    - llm
+    - chain-of-thought
+    prerequisites:
+    - llm-integration
+  - domain: multi-tenancy
+    path: application-architecture/multi-tenancy/multi-tenancy.yaml
+    version: 1.0.0
+    description: "Multi-tenancy architecture patterns for isolating tenants at database, schema, or row level. Covers tenant-aware routing, resource pooling, and per-tenant customization strategies."
+    tags:
+    - multi-tenant
+    - saas
+    - tenant-isolation
+    prerequisites:
+    - layered-architecture
+    - data-persistence
+  - domain: workflow-orchestration
+    path: application-architecture/workflow-orchestration/workflow-orchestration.yaml
+    version: 1.0.0
+    description: "Workflow orchestration patterns for modeling long-running business processes, saga transactions, compensation actions, and stateful workflows using Temporal, Camunda, or custom engines."
+    tags:
+    - workflow
+    - orchestration
+    - saga
+    - temporal
+    - camunda
+    prerequisites:
+    - messaging-events
+    - error-handling
+  - domain: event-sourcing-cqrs
+    path: application-architecture/event-sourcing-cqrs/event-sourcing-cqrs.yaml
+    version: 1.0.0
+    description: "Event sourcing and CQRS patterns for capturing state changes as an append-only event log, separating read and write models, building projections, and enabling audit trails."
+    tags:
+    - event-sourcing
+    - cqrs
+    - projections
+    prerequisites:
+    - data-persistence
+    - messaging-events
+  - domain: native-mobile-architecture
+    path: application-architecture/native-mobile-architecture/native-mobile-architecture.yaml
+    version: 1.0.0
+    description: "Native mobile architecture patterns for iOS and Android covering platform-specific UI, navigation, offline storage, push notifications, and cross-platform frameworks like React Native and Flutter."
+    tags:
+    - native-mobile
+    - react-native
+    - flutter
+    prerequisites:
+    - api-design
+    - authentication
+    - data-persistence
+  - domain: desktop-application-architecture
+    path: application-architecture/desktop-application-architecture/desktop-application-architecture.yaml
+    version: 1.0.0
+    description: "Desktop application architecture patterns for Electron, Tauri, and native frameworks covering IPC, window management, auto-update, native OS integration, and cross-platform packaging."
+    tags:
+    - desktop-app
+    - electron
+    - tauri
+    prerequisites:
+    - api-design
+    - security-monitoring
+  - domain: monorepo-architecture
+    path: application-architecture/monorepo-architecture/monorepo-architecture.yaml
+    version: 1.0.0
+    description: "Monorepo architecture patterns for managing multi-package repositories with shared tooling, dependency management, build orchestration, and incremental builds using Nx, Turborepo, or Lerna."
+    tags:
+    - monorepo
+    - nx
+    - turborepo
+    prerequisites:
+    - ci-cd
+    - dependency-injection
 - id: infrastructure
   name: Infrastructure & Deployment
   description: Container, orchestration, CI/CD, and cloud patterns
   path: infrastructure/
-  entry_count: 8
+  entry_count: 12
   entries:
   - domain: ci-cd
     path: infrastructure/ci-cd/ci-cd.yaml
@@ -449,11 +737,55 @@ categories:
     - orchestration
     - cloud-architecture
     - performance-optimization
+  - domain: serverless-functions
+    path: infrastructure/serverless-functions/serverless-functions.yaml
+    version: 1.0.0
+    description: "Serverless function patterns covering function decomposition, cold start optimization, stateless design, event triggers, orchestration via Step Functions, and observability for lambda-based architectures."
+    tags:
+    - serverless
+    - lambda
+    - step-functions
+    prerequisites:
+    - cloud-architecture
+    - api-design
+  - domain: edge-computing
+    path: infrastructure/edge-computing/edge-computing.yaml
+    version: 1.0.0
+    description: "Edge computing patterns for running compute close to users using Cloudflare Workers, AWS Lambda@Edge, and similar platforms. Covers edge KV storage, Durable Objects, and global request routing."
+    tags:
+    - edge-computing
+    - cloudflare-workers
+    prerequisites:
+    - cloud-architecture
+    - api-gateway-edge-security
+  - domain: disaster-recovery-backup
+    path: infrastructure/disaster-recovery-backup/disaster-recovery-backup.yaml
+    version: 1.0.0
+    description: "Disaster recovery and backup patterns covering RPO/RTO definitions, backup strategies, replication topologies, failover/failback procedures, and DR testing for multi-region resilience."
+    tags:
+    - disaster-recovery
+    - backup
+    - rpo
+    - rto
+    prerequisites:
+    - cloud-architecture
+    - data-persistence
+  - domain: finops-cost-optimization
+    path: infrastructure/finops-cost-optimization/finops-cost-optimization.yaml
+    version: 1.0.0
+    description: "FinOps and cost optimization patterns for cloud resource right-sizing, reserved instances, spot instances, resource tagging, cost allocation, and continuous waste elimination across multi-cloud environments."
+    tags:
+    - finops
+    - cost-optimization
+    - rightsizing
+    prerequisites:
+    - cloud-architecture
+    - containerization
 - id: security-quality
   name: Security & Quality
   description: Security hardening, testing, and quality assurance
   path: security-quality/
-  entry_count: 10
+  entry_count: 14
   entries:
   - domain: accessibility
     path: security-quality/accessibility/accessibility.yaml
@@ -602,11 +934,61 @@ categories:
     prerequisites:
     - logging-observability
     - authentication
+  - domain: frontend-testing
+    path: security-quality/frontend-testing/frontend-testing.yaml
+    version: 1.0.0
+    description: "Frontend testing: component tests, E2E, visual regression, accessibility testing, mocking, testing pyramid"
+    tags:
+    - testing
+    - frontend
+    - vitest
+    - playwright
+    - testing-library
+    - visual-regression
+    - e2e
+    prerequisites:
+    - testing-strategies
+    - frontend-component-architecture
+  - domain: zero-trust-networking
+    path: security-quality/zero-trust-networking/zero-trust-networking.yaml
+    version: 1.0.0
+    description: "Zero trust networking patterns covering mTLS enforcement, micro-segmentation, identity-aware proxies, beyondCorp/Zero Trust architectures, and continuous verification for internal service communication."
+    tags:
+    - zero-trust-networking
+    - mtls
+    - micro-segmentation
+    prerequisites:
+    - encryption
+    - authentication
+  - domain: observability-sre
+    path: security-quality/observability-sre/observability-sre.yaml
+    version: 1.0.0
+    description: "Site reliability engineering and observability patterns for defining SLIs, SLOs, error budgets, on-call practices, runbooks, and reliability measurement across distributed systems."
+    tags:
+    - sre
+    - sli
+    - slo
+    - error-budget
+    - on-call
+    prerequisites:
+    - logging-observability
+    - performance-optimization
+  - domain: threat-modeling
+    path: security-quality/threat-modeling/threat-modeling.yaml
+    version: 1.0.0
+    description: "Threat modeling patterns using STRIDE, DREAD, and attack tree methodologies for identifying, categorizing, and mitigating security threats during system design and code review."
+    tags:
+    - threat-modeling
+    - stride
+    prerequisites:
+    - encryption
+    - authentication
+    - secure-sdlc
 - id: integration-data
   name: Integration & Data
   description: External integrations, data pipelines, and versioning
   path: integration-data/
-  entry_count: 9
+  entry_count: 13
   entries:
   - domain: data-transformation
     path: integration-data/data-transformation/data-transformation.yaml
@@ -758,6 +1140,53 @@ categories:
     - authentication
     - input-validation
     - messaging-events
+  - domain: real-time-streaming
+    path: integration-data/real-time-streaming/real-time-streaming.yaml
+    version: 1.0.0
+    description: "Real-time data streaming patterns using Apache Kafka, Flink, and Pulsar for event ingestion, stream processing, exactly-once semantics, and scalable message brokering in event-driven architectures."
+    tags:
+    - real-time-streaming
+    - kafka
+    - flink
+    - pulsar
+    prerequisites:
+    - messaging-events
+    - data-transformation
+  - domain: data-resharding-partitioning
+    path: integration-data/data-resharding-partitioning/data-resharding-partitioning.yaml
+    version: 1.0.0
+    description: "Data sharding and re-sharding patterns for horizontal scaling including consistent hashing, range-based sharding, rebalancing strategies, and handling cross-shard queries in distributed databases."
+    tags:
+    - sharding
+    - consistent-hashing
+    - re-sharding
+    prerequisites:
+    - data-persistence
+    - performance-optimization
+  - domain: data-engineering-pipelines
+    path: integration-data/data-engineering-pipelines/data-engineering-pipelines.yaml
+    version: 1.0.0
+    description: "Data engineering pipeline patterns covering batch and streaming workflows with dbt, Airflow, and modern data stack tools for data transformation, quality checks, and orchestration."
+    tags:
+    - data-engineering
+    - dbt
+    - airflow
+    prerequisites:
+    - data-transformation
+    - data-persistence
+  - domain: mlops-lifecycle
+    path: integration-data/mlops-lifecycle/mlops-lifecycle.yaml
+    version: 1.0.0
+    description: "MLOps lifecycle management patterns covering experiment tracking with MLflow, model versioning, feature stores, model registry, deployment strategies, monitoring, and drift detection for production ML systems."
+    tags:
+    - mlops
+    - mlflow
+    - experiment-tracking
+    - drift-detection
+    prerequisites:
+    - model-serving-inference
+    - data-transformation
+    - ci-cd
 tag_index:
   a11y:
   - accessibility
@@ -819,6 +1248,7 @@ tag_index:
   - data-persistence
   - performance-optimization
   - llm-integration
+  - caching-strategies
   callbacks:
   - webhooks
   cdn:
@@ -851,8 +1281,10 @@ tag_index:
   - testing-strategies
   cost-optimization:
   - llm-integration
+  - finops-cost-optimization
   cqrs:
   - state-management
+  - event-sourcing-cqrs
   creational:
   - design-patterns
   cryptography:
@@ -876,6 +1308,7 @@ tag_index:
   - domain-driven-design
   decomposition:
   - service-architecture
+  - micro-frontends
   dependency-injection:
   - dependency-injection
   deployment:
@@ -898,6 +1331,7 @@ tag_index:
   - rate-limiting
   e2e:
   - testing-strategies
+  - frontend-testing
   elasticsearch:
   - search
   elt:
@@ -918,6 +1352,7 @@ tag_index:
   - webhooks
   event-sourcing:
   - state-management
+  - event-sourcing-cqrs
   event-store:
   - data-persistence
   event-storming:
@@ -1020,6 +1455,7 @@ tag_index:
   llm:
   - rag-architecture
   - llm-integration
+  - prompt-engineering-patterns
   logging:
   - logging-observability
   maintainability:
@@ -1039,6 +1475,7 @@ tag_index:
   - versioning
   mlops:
   - model-serving-inference
+  - mlops-lifecycle
   model-integration:
   - llm-integration
   model-serving:
@@ -1076,6 +1513,7 @@ tag_index:
   - performance-optimization
   orchestration:
   - orchestration
+  - workflow-orchestration
   performance:
   - performance-optimization
   persistence:
@@ -1094,6 +1532,7 @@ tag_index:
   - performance-optimization
   prompt-engineering:
   - llm-integration
+  - prompt-engineering-patterns
   pub-sub:
   - messaging-events
   pulumi:
@@ -1175,6 +1614,7 @@ tag_index:
   - layered-architecture
   serverless:
   - cloud-architecture
+  - serverless-functions
   service-locator:
   - dependency-injection
   service-mesh:
@@ -1323,6 +1763,7 @@ tag_index:
   - client-platform-security
   mtls:
   - api-gateway-edge-security
+  - zero-trust-networking
   permissions:
   - authorization
   pii:
@@ -1374,3 +1815,229 @@ tag_index:
   - secrets-management
   zero-downtime:
   - database-migration
+  angular:
+  - frontend-component-architecture
+  components:
+  - frontend-component-architecture
+  composition:
+  - frontend-component-architecture
+  design-system:
+  - frontend-component-architecture
+  frontend:
+  - frontend-component-architecture
+  react:
+  - frontend-component-architecture
+  vue:
+  - frontend-component-architecture
+  micro-frontends:
+  - micro-frontends
+  module-federation:
+  - micro-frontends
+  single-spa:
+  - micro-frontends
+  redux:
+  - frontend-state-management
+  zustand:
+  - frontend-state-management
+  query:
+  - frontend-state-management
+  styling:
+  - styling-design-systems
+  tailwind:
+  - styling-design-systems
+  css-in-js:
+  - styling-design-systems
+  theming:
+  - styling-design-systems
+  design-tokens:
+  - styling-design-systems
+  responsive:
+  - responsive-mobile-first
+  mobile-first:
+  - responsive-mobile-first
+  layout:
+  - responsive-mobile-first
+  breakpoints:
+  - responsive-mobile-first
+  forms:
+  - form-handling-patterns
+  i18n:
+  - internationalization-i18n
+  internationalization:
+  - internationalization-i18n
+  localization:
+  - internationalization-i18n
+  rtl:
+  - internationalization-i18n
+  locale:
+  - internationalization-i18n
+  translation:
+  - internationalization-i18n
+  build:
+  - frontend-build-performance
+  bundler:
+  - frontend-build-performance
+  code-splitting:
+  - frontend-build-performance
+  core-web-vitals:
+  - frontend-build-performance
+  pwa:
+  - pwa-offline-first
+  offline:
+  - pwa-offline-first
+  service-worker:
+  - pwa-offline-first
+  progressive-web-app:
+  - pwa-offline-first
+  background-sync:
+  - pwa-offline-first
+  real-time:
+  - real-time-frontend
+  sse:
+  - real-time-frontend
+  polling:
+  - real-time-frontend
+  collaboration:
+  - real-time-frontend
+  live-updates:
+  - real-time-frontend
+  webassembly:
+  - webassembly-frontend
+  wasm:
+  - webassembly-frontend
+  rust:
+  - webassembly-frontend
+  assemblyscript:
+  - webassembly-frontend
+  compilation:
+  - webassembly-frontend
+  vitest:
+  - frontend-testing
+  playwright:
+  - frontend-testing
+  testing-library:
+  - frontend-testing
+  visual-regression:
+  - frontend-testing
+  formkit:
+  - form-handling-patterns
+  chain-of-thought:
+  - prompt-engineering-patterns
+  multi-tenant:
+  - multi-tenancy
+  saas:
+  - multi-tenancy
+  tenant-isolation:
+  - multi-tenancy
+  workflow:
+  - workflow-orchestration
+  saga:
+  - workflow-orchestration
+  temporal:
+  - workflow-orchestration
+  camunda:
+  - workflow-orchestration
+  projections:
+  - event-sourcing-cqrs
+  bff:
+  - api-composition-bff
+  api-gateway-composition:
+  - api-composition-bff
+  cache-stampede:
+  - caching-strategies
+  distributed-cache:
+  - caching-strategies
+  sharding:
+  - data-resharding-partitioning
+  consistent-hashing:
+  - data-resharding-partitioning
+  re-sharding:
+  - data-resharding-partitioning
+  disaster-recovery:
+  - disaster-recovery-backup
+  backup:
+  - disaster-recovery-backup
+  rpo:
+  - disaster-recovery-backup
+  rto:
+  - disaster-recovery-backup
+  finops:
+  - finops-cost-optimization
+  rightsizing:
+  - finops-cost-optimization
+  real-time-streaming:
+  - real-time-streaming
+  kafka:
+  - real-time-streaming
+  flink:
+  - real-time-streaming
+  pulsar:
+  - real-time-streaming
+  zero-trust-networking:
+  - zero-trust-networking
+  micro-segmentation:
+  - zero-trust-networking
+  sre:
+  - observability-sre
+  sli:
+  - observability-sre
+  slo:
+  - observability-sre
+  error-budget:
+  - observability-sre
+  on-call:
+  - observability-sre
+  lambda:
+  - serverless-functions
+  step-functions:
+  - serverless-functions
+  edge-computing:
+  - edge-computing
+  cloudflare-workers:
+  - edge-computing
+  data-engineering:
+  - data-engineering-pipelines
+  dbt:
+  - data-engineering-pipelines
+  airflow:
+  - data-engineering-pipelines
+  mlflow:
+  - mlops-lifecycle
+  experiment-tracking:
+  - mlops-lifecycle
+  drift-detection:
+  - mlops-lifecycle
+  monorepo:
+  - monorepo-architecture
+  nx:
+  - monorepo-architecture
+  turborepo:
+  - monorepo-architecture
+  api-governance:
+  - api-governance-portals
+  graphql-federation:
+  - api-governance-portals
+  sso:
+  - identity-federation-sso
+  saml:
+  - identity-federation-sso
+  keycloak:
+  - identity-federation-sso
+  scim:
+  - identity-federation-sso
+  threat-modeling:
+  - threat-modeling
+  stride:
+  - threat-modeling
+  native-mobile:
+  - native-mobile-architecture
+  react-native:
+  - native-mobile-architecture
+  flutter:
+  - native-mobile-architecture
+  desktop-app:
+  - desktop-application-architecture
+  electron:
+  - desktop-application-architecture
+  tauri:
+  - desktop-application-architecture

@@ -1,0 +1,432 @@
+# =============================================================================
+# AI Architecture Cookbook — API Governance and Portals
+# Schema: v3 | Domain: api-governance-portals
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: api-governance-portals
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    API governance patterns: GraphQL Federation for distributed schemas,
+    API portal and catalog for discoverability, breaking change detection
+    for safe evolution, and consumer-driven contracts for multi-team
+    API development.
+
+  tags:
+    - api-governance
+    - graphql-federation
+    - api-portal
+    - schema-stitching
+    - contract-testing
+    - breaking-changes
+
+  categories:
+    - foundational
+
+  prerequisites:
+    - api-design
+    - api-gateway-edge-security
+
+  related_standards:
+    - id: api-design
+      relationship: complementary
+      context: "Governance enforces design standards across APIs"
+    - id: api-gateway-edge-security
+      relationship: complementary
+      context: "Gateway enforces governance policies"
+    - id: service-architecture
+      relationship: complementary
+      context: "Microservices need governance for API consistency"
+
+context_inputs:
+  - name: api_count
+    type: enum
+    description: "Number of managed APIs"
+    required: true
+    default: few
+    enum_values: [few, many, enterprise]
+
+  - name: architecture
+    type: enum
+    description: "API architecture style"
+    required: true
+    default: rest
+    enum_values: [rest, graphql, grpc, mixed]
+
+  - name: governance_maturity
+    type: enum
+    description: "Current governance maturity"
+    required: true
+    default: none
+    enum_values: [none, documentation_only, lint_automated, full_governance]
+
+  - name: team_distribution
+    type: enum
+    description: "Team organization relative to APIs"
+    required: true
+    default: single_team
+    enum_values: [single_team, multiple_teams, many_teams, external_consumers]
+
+  - name: need_federation
+    type: boolean
+    description: "Multiple GraphQL services needing unified schema?"
+    required: false
+    default: false
+
+decision_tree:
+  - id: federation_multi_team
+    priority: 1
+    if:
+      - architecture == graphql
+      - need_federation == true
+      - team_distribution in [multiple_teams, many_teams]
+    then:
+      pattern: graphql_federation
+      standards: ["Apollo Federation"]
+      notes: "GraphQL Federation lets teams own subgraphs that compose into a unified supergraph."
+
+  - id: portal_for_many_apis
+    priority: 2
+    if:
+      - api_count in [many, enterprise]
+      - team_distribution in [multiple_teams, many_teams, external_consumers]
+    then:
+      pattern: api_portal_catalog
+      standards: ["OpenAPI", "Backstage"]
+      notes: "API portal provides central discoverability when APIs outgrow tribal knowledge."
+
+  - id: breaking_change_ci
+    priority: 3
+    if:
+      - governance_maturity in [lint_automated, full_governance]
+    then:
+      pattern: breaking_change_detection
+      standards: ["OpenAPI Diff", "GraphQL Inspector"]
+      notes: "Automated breaking change detection in CI prevents accidental consumer breakage."
+
+  - id: consumer_driven_contracts
+    priority: 4
+    if:
+      - team_distribution in [multiple_teams, many_teams, external_consumers]
+      - governance_maturity in [lint_automated, full_governance]
+    then:
+      pattern: consumer_driven_contracts
+      standards: ["Pact", "Spring Cloud Contract"]
+      notes: "Consumer-driven contracts: providers must verify consumer expectations before deployment."
+
+  - id: governance_foundation
+    priority: 5
+    if:
+      - governance_maturity == none
+    then:
+      pattern: api_portal_catalog
+      notes: "Start by publishing all APIs to a centralized portal. Visibility is the prerequisite for governance."
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: api_portal_catalog
+    description: "API portal with catalog is the foundation for all governance"
+
+patterns:
+  - id: graphql_federation
+    name: "GraphQL Federation"
+    description: >
+      Distributed GraphQL where subgraphs (per team) compose into a single
+      supergraph. Apollo Federation 2 provides the spec and gateway.
+      Each subgraph declares types; the gateway composes them.
+    use_when:
+      - "Multiple teams own distinct GraphQL services"
+      - "Clients need a single GraphQL endpoint"
+      - "Team autonomy over schema without central coordination"
+    avoid_when:
+      - "Single GraphQL service (no federation needed)"
+      - "Team lacks GraphQL expertise"
+    tradeoffs:
+      pros: ["Team autonomy over subgraphs", "Unified schema for consumers", "Incremental adoption"]
+      cons: ["Gateway complexity and ops", "Cross-subgraph performance (N+1)", "Supergraph composition failures"]
+    implementation:
+      guidelines:
+        - "Use Apollo Federation 2 specification"
+        - "Define @key for cross-subgraph type references"
+        - "Run composition check in CI before deploying subgraph changes"
+        - "Use @requires sparingly — creates runtime dependencies"
+        - "Version supergraph schema for consumer stability"
+      common_errors:
+        - error: "Breaking subgraph change without composition check"
+          impact: "Supergraph composition fails; all consumers lose API access"
+          fix: "Run composition check in CI; fail deployment if composition breaks"
+        - error: "Excessive cross-subgraph @requires"
+          impact: "Queries hit multiple subgraphs; latency multiplies"
+          fix: "Design entity boundaries for single-subgraph resolution"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Apollo Federation 2"
+        type: spec
+        role: "GraphQL federation specification"
+        status: recommended
+
+  - id: api_portal_catalog
+    name: "API Portal and Catalog"
+    description: >
+      Centralized platform for API discovery, documentation, testing,
+      and access management. SwaggerHub, Stoplight, or Backstage catalogs
+      all APIs with specs, interactive consoles, and SDK generation.
+    use_when:
+      - "Multiple APIs by different teams"
+      - "External developers consume APIs"
+      - "Documentation scattered across wikis"
+    avoid_when:
+      - "Single internal API with one consumer"
+    tradeoffs:
+      pros: ["Single source of truth", "Interactive API consoles", "API key management"]
+      cons: ["Portal maintenance cost", "Spec drift if not automated", "Spec source of truth discipline needed"]
+    implementation:
+      guidelines:
+        - "Automate spec ingestion from CI"
+        - "Enforce spec quality: fail CI on invalid specs"
+        - "Categorize APIs by domain, team, lifecycle"
+        - "Generate client SDKs from specs"
+        - "Track deprecation in portal with sunset dates"
+      common_errors:
+        - error: "Spec updated but portal not synced"
+          impact: "Consumers rely on outdated docs; integration failures"
+          fix: "Automate spec syncing from CI on every deployment"
+        - error: "No deprecation tracking"
+          impact: "Consumers use deprecated endpoints indefinitely"
+          fix: "Track sunset dates in spec; enforce deprecation policy"
+    maturity:
+      level: standard
+    standards:
+      - name: "OpenAPI 3.x"
+        type: spec
+        role: "API specification format"
+        status: recommended
+      - name: "Backstage"
+        type: framework
+        role: "Developer portal with API catalog"
+        status: recommended
+
+  - id: breaking_change_detection
+    name: "Breaking Change Detection"
+    description: >
+      Automated detection of breaking API changes in CI. REST: OpenAPI Diff
+      flags removed endpoints, fields, or required params. GraphQL: Schema
+      Inspector detects breaking schema changes.
+    use_when:
+      - "APIs with external or multiple internal consumers"
+      - "CI/CD pipeline already in place"
+      - "Need to prevent accidental breaking changes"
+    avoid_when:
+      - "Rapid prototyping with frequent changes"
+    tradeoffs:
+      pros: ["Catches breaks before production", "Clear change categorization", "Integrates with CI"]
+      cons: ["False positives possible", "Cannot detect semantic breaks", "Spec-first discipline needed"]
+    implementation:
+      guidelines:
+        - "Run breaking change detection as required CI check"
+        - "Compare against last published spec, not local file"
+        - "Define policy: break = version bump required"
+        - "Generate diff reports in PR comments"
+        - "Review dangerous changes manually"
+      common_errors:
+        - error: "Comparing against wrong baseline"
+          impact: "No diff detected; breaking change reaches production"
+          fix: "Compare against published spec from registry"
+        - error: "Ignoring breaking change warnings"
+          impact: "Consumer integrations break in production"
+          fix: "Make detection a required CI check with branch protection"
+    maturity:
+      level: advanced
+    standards:
+      - name: "OpenAPI Diff"
+        type: tool
+        role: "Breaking change detection for OpenAPI"
+        status: recommended
+      - name: "GraphQL Inspector"
+        type: tool
+        role: "Schema diffing for GraphQL"
+        status: recommended
+
+  - id: consumer_driven_contracts
+    name: "Consumer-Driven Contracts"
+    description: >
+      API consumers define expectations in executable contracts (Pact).
+      Providers verify all consumer contracts before deployment. Drives
+      API evolution from consumer needs.
+    use_when:
+      - "Multiple consumers with different usage patterns"
+      - "Separate provider and consumer teams"
+      - "Need confidence that provider changes don't break consumers"
+    avoid_when:
+      - "Single consumer coordinating directly with provider"
+      - "Rapid prototyping (contract overhead slows iteration)"
+    tradeoffs:
+      pros: ["Provider deploys confidently", "Clear consumer expectations", "Decoupled team evolution"]
+      cons: ["Contract maintenance overhead", "Versioning complexity", "Provider iteration slowed by verifications"]
+    implementation:
+      guidelines:
+        - "Use Pact for HTTP and message contracts"
+        - "Store contracts in Pact Broker for provider verification"
+        - "Consumers define contracts in their test suites"
+        - "Provider CI verifies all consumer contracts"
+        - "Use can-i-deploy tooling for deployment decisions"
+      common_errors:
+        - error: "Consumer contract too specific (over-specifying)"
+          impact: "Contracts break on trivial provider changes"
+          fix: "Use matchers for dynamic fields (dates, IDs)"
+        - error: "Provider doesn't verify contracts before deploy"
+          impact: "Provider breaks consumer expectations"
+          fix: "Make contract verification a required CI gate"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Pact"
+        type: framework
+        role: "Consumer-driven contract testing"
+        status: recommended
+
+examples:
+  - id: openapi_diff_ci
+    title: "Breaking Change Detection in CI"
+    context: "CI pipeline diffing OpenAPI specs"
+    correct: |
+      - run: npx openapi-diff --base=current.yaml --head=proposed.yaml --format=markdown > diff.md
+      - run: if grep -q "Breaking" diff.md; then echo "Version bump required"; exit 1; fi
+      - run: gh pr comment $PR --body "$(cat diff.md)"
+    incorrect: |
+      - run: npm run deploy  # No diff check
+    explanation: "CI compares spec against published version, blocks breaking changes without version bump, and posts diff as PR comment."
+
+security_hardening:
+  transport:
+    requirements:
+      - "TLS for all portal and registry access"
+      - "TLS for federation gateway to subgraphs"
+  data_protection:
+    requirements:
+      - "API specs contain no secrets or internal infra details"
+      - "Consumer API keys hashed in portal database"
+  access_control:
+    requirements:
+      - "Portal admin restricted to governance team"
+      - "Subgraph registration requires approval"
+  input_output:
+    requirements:
+      - "Validate OpenAPI specs against schema before publishing"
+      - "Sanitize spec descriptions for XSS prevention"
+  secrets:
+    requirements:
+      - "No API keys in OpenAPI spec examples"
+      - "Federation gateway keys rotated regularly"
+  monitoring:
+    requirements:
+      - "Monitor portal and spec sync health"
+      - "Alert on federation composition failures"
+
+compliance:
+  standards:
+    - name: "SOC 2 (Change Management)"
+      relevance: "Governance ensures changes reviewed and backward-compatible"
+    - name: "OpenAPI Specification"
+      relevance: "Standard API contract format enabling automated governance"
+
+  requirements_mapping:
+    - control: api_change_control
+      description: "Breaking changes detected and reviewed before deployment"
+      maps_to: ["SOC 2 CC8.1"]
+    - control: api_access_governance
+      description: "API consumers authenticated and authorized"
+      maps_to: ["SOC 2 CC6.2"]
+
+prompt_recipes:
+  - id: governance_greenfield
+    scenario: greenfield
+    description: "Design API governance program"
+    prompt: |
+      Design governance: API count=[few/many/enterprise], arch=[REST/GraphQL/gRPC],
+      teams=[single/multiple/external], maturity=[none/docs-only/automated].
+      Phase 1: Centralize specs in portal. Phase 2: CI linting + breaking detection.
+      Phase 3: Federation for distributed teams. Phase 4: Consumer contracts.
+
+  - id: governance_audit
+    scenario: audit
+    description: "Audit governance implementation"
+    prompt: |
+      Audit: 1. All APIs in centralized portal? 2. Specs auto-synced from CI? 3. Breaking change detection in CI?
+      4. Consumer contracts verified before deploy? 5. Federation composition checked? 6. Deprecations tracked?
+
+  - id: federation_setup
+    scenario: greenfield
+    description: "Set up GraphQL Federation"
+    prompt: |
+      Setup: 1. Identify subgraph boundaries 2. Define @key entities 3. Deploy federation gateway
+      4. Subgraph CI with composition check 5. Supergraph publishing 6. Federated tracing.
+
+  - id: contract_testing_adoption
+    scenario: migration
+    description: "Adopt consumer-driven contracts"
+    prompt: |
+      1. Identify pairs with frequent breakage 2. Consumers write Pact contracts
+      3. Store in Pact Broker 4. Add provider verification to CI 5. Make required CI gate
+      6. Add can-i-deploy check. Measure: breaking incidents before vs after.
+
+anti_patterns:
+  - name: "Federation Without Governance"
+    description: "No composition checks; any subgraph deploy can break the supergraph."
+    fix: "Enforce composition checks in CI for every subgraph"
+    severity: critical
+    related_pattern: graphql_federation
+
+  - name: "Spec as Artifact, Not Contract"
+    description: "Specs written after implementation; spec and implementation diverge."
+    fix: "Adopt spec-first development; verify implementation matches spec"
+    severity: high
+    related_pattern: breaking_change_detection
+
+  - name: "Ignoring Consumer Contracts"
+    description: "Contracts exist but are not enforced; consumers discover breaks in production."
+    fix: "Make contract verification a mandatory CI gate"
+    severity: critical
+    related_pattern: consumer_driven_contracts
+
+checklist:
+  - id: GOV-01
+    category: maintainability
+    description: "All APIs documented in centralized portal"
+    severity: high
+    verified_by: api_portal_catalog
+  - id: GOV-02
+    category: correctness
+    description: "Breaking change detection in CI for all APIs"
+    severity: critical
+    verified_by: breaking_change_detection
+  - id: GOV-03
+    category: correctness
+    description: "Federation composition check in CI per subgraph"
+    severity: critical
+    verified_by: graphql_federation
+  - id: GOV-04
+    category: correctness
+    description: "Consumer contracts verified before provider deployment"
+    severity: high
+    verified_by: consumer_driven_contracts
+  - id: GOV-05
+    category: security
+    description: "API key management with consumer authentication"
+    severity: high
+    verified_by: api_portal_catalog
+  - id: GOV-06
+    category: design
+    description: "API deprecation tracked with sunset dates"
+    severity: medium
+    verified_by: api_portal_catalog
+  - id: GOV-07
+    category: compliance
+    description: "Spec-first development; spec is source of truth"
+    severity: high
+    verified_by: breaking_change_detection

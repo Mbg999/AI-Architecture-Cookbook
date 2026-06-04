@@ -1,0 +1,471 @@
+# =============================================================================
+# AI Architecture Cookbook — Responsive & Mobile-First Design
+# Schema: v3 | Domain: responsive-mobile-first
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: responsive-mobile-first
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Responsive and mobile-first design patterns covering breakpoint strategies,
+    fluid vs fixed layouts, adaptive vs responsive approaches, touch targets,
+    viewport handling, PWA display modes, and mobile-specific UX considerations.
+
+  tags:
+    - responsive
+    - mobile-first
+    - css
+    - layout
+    - pwa
+    - touch
+    - breakpoints
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - id: accessibility
+      reason: "Touch targets, font sizing, and mobile UX are accessibility concerns"
+    - id: styling-design-systems
+      reason: "Breakpoint and spacing tokens are defined in the design system"
+    - id: frontend-component-architecture
+      reason: "Responsive component patterns depend on component architecture"
+
+  related_standards:
+    - id: pwa-offline-first
+      relationship: complementary
+      context: "PWA display modes and mobile installation are part of mobile strategy"
+
+context_inputs:
+  - name: primary_viewports
+    type: enum
+    description: "Which viewport sizes the app primarily targets"
+    required: true
+    default: all
+    enum_values:
+      - mobile_only
+      - desktop_only
+      - all
+
+  - name: layout_strategy
+    type: enum
+    description: "How content adapts to different viewports"
+    required: false
+    default: responsive
+    enum_values:
+      - responsive
+      - adaptive
+      - hybrid
+
+  - name: content_complexity
+    type: enum
+    description: "How much content changes between mobile and desktop"
+    required: false
+    default: same
+    enum_values:
+      - same
+      - restructured
+      - completely_different
+
+  - name: touch_target
+    type: boolean
+    description: "Whether the app uses touch interactions"
+    required: false
+    default: true
+
+decision_tree:
+  - id: mobile_only
+    priority: 1
+    if:
+      - primary_viewports == mobile_only
+    then:
+      pattern: mobile_first_approach
+      notes: "Mobile-only apps should design for small screens first with touch-optimized interactions"
+
+  - id: desktop_only
+    priority: 2
+    if:
+      - primary_viewports == desktop_only
+    then:
+      pattern: desktop_first_approach
+      notes: "Desktop-only apps should optimize for large screens, mouse, and keyboard"
+
+  - id: different_content
+    priority: 3
+    if:
+      - content_complexity == completely_different
+    then:
+      pattern: adaptive_design
+      notes: "When content differs significantly by viewport, adaptive design with separate templates is appropriate"
+
+  - id: responsive_default
+    priority: 4
+    if:
+      - primary_viewports == all
+      - layout_strategy == responsive
+    then:
+      pattern: responsive_design
+      notes: "Responsive design is the standard approach for multi-viewport applications"
+
+  - id: hybrid
+    priority: 5
+    if:
+      - content_complexity == restructured
+    then:
+      pattern: adaptive_design
+      notes: "When content restructures significantly, adaptive breakpoints provide more control"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: low
+  fallback:
+    pattern: responsive_design
+    description: "Responsive design is the safe default for most applications"
+
+patterns:
+  - id: mobile_first_approach
+    name: "Mobile-First Development"
+    description: >
+      Design and develop for the smallest viewport first, then progressively
+      enhance for larger screens using min-width media queries. Ensures core
+      functionality works on all devices. Touch targets are 44x44px minimum.
+      Content prioritization: critical content first on mobile.
+    use_when:
+      - "Primary audience is mobile users"
+      - "Building a PWA with mobile installation"
+      - "Touch interactions are primary input method"
+    avoid_when:
+      - "Desktop-only enterprise/internal tools"
+      - "Complex data-heavy dashboards better on large screens"
+    tradeoffs:
+      pros:
+        - "Core experience works on all devices"
+        - "Better performance (smaller initial payload for mobile)"
+        - "Google Mobile-First Indexing (SEO benefit)"
+      cons:
+        - "Desktop experience can feel sparse if not enhanced properly"
+        - "More effort to design responsive enhancements for each breakpoint"
+    implementation:
+      guidelines:
+        - "Write CSS mobile-first: base styles for mobile, min-width queries for larger screens"
+        - "Use viewport meta tag: <meta name='viewport' content='width=device-width, initial-scale=1'>"
+        - "Set all touch targets to minimum 44x44px"
+        - "Use semantic HTML for content hierarchy independent of layout"
+        - "Test on real devices, not just browser DevTools"
+        - "Optimize images per viewport with srcset and sizes"
+        - "Use CSS Grid and Flexbox for fluid layouts"
+      common_errors:
+        - error: "Designing desktop-first and squeezing content into mobile"
+          impact: "Poor mobile UX, hidden content, tiny touch targets"
+          fix: "Reverse the process: design mobile layout first, enhance for desktop"
+    maturity:
+      level: standard
+
+  - id: responsive_design
+    name: "Responsive Design (Fluid Grids)"
+    description: >
+      Fluid grids, flexible images, and media queries create layouts that
+      respond to any viewport size. CSS Grid, Flexbox, and container queries
+      provide the foundation. Content reflows naturally. Standard for most
+      web applications targeting all devices.
+    use_when:
+      - "App targets multiple viewport sizes"
+      - "Content is the same across viewports (layout only changes)"
+      - "Standard web application with diverse user devices"
+    avoid_when:
+      - "Mobile and desktop versions have completely different content"
+      - "Performance-critical on very old browsers"
+    tradeoffs:
+      pros:
+        - "Single codebase for all viewports"
+        - "Future-proof: works on any screen size, not just predefined breakpoints"
+        - "Better SEO (single URL, no separate mobile site)"
+      cons:
+        - "Complex layouts can have edge cases at weird breakpoints"
+        - "Testing matrix expands with more breakpoints"
+        - "Heavy desktop content loads on mobile (performance concern)"
+    implementation:
+      guidelines:
+        - "Use CSS Grid for page-level layout, Flexbox for component-level alignment"
+        - "Set breakpoints based on content, not device sizes"
+        - "Use container queries (container-type, @container) for component-level responsiveness"
+        - "Use clamp() for fluid typography: font-size: clamp(1rem, 2.5vw, 2rem)"
+        - "Use aspect-ratio for responsive media scaling"
+        - "Avoid fixed widths; use %, max-width, or grid fractions"
+        - "Test at every breakpoint interval, not just common device sizes"
+      common_errors:
+        - error: "Fixed-width breakpoints that don't account for content"
+          impact: "Layout breaks at in-between screen sizes"
+          fix: "Use container queries or content-based breakpoints, not device-based"
+    maturity:
+      level: standard
+    standards:
+      - name: "CSS Grid Layout"
+        type: spec
+        role: "Two-dimensional grid-based layout system"
+        status: recommended
+      - name: "CSS Container Queries"
+        type: spec
+        role: "Component-level responsive queries based on container size"
+        status: recommended
+
+  - id: adaptive_design
+    name: "Adaptive Design (Distinct Layouts)"
+    description: >
+      Serve different HTML templates or component structures for predefined
+      viewport ranges. Unlike responsive (fluid), adaptive design has fixed
+      layout snapshots at each breakpoint. Useful when content structure
+      changes fundamentally between mobile and desktop.
+    use_when:
+      - "Content structure differs significantly between mobile and desktop"
+      - "Navigation pattern changes fundamentally (hamburger menu vs top nav)"
+      - "Tables rearrange to cards on mobile"
+      - "Separate mobile team maintaining the mobile version"
+    avoid_when:
+      - "Content is the same across viewports (responsive is simpler)"
+      - "Small team maintaining multiple layouts"
+    tradeoffs:
+      pros:
+        - "Optimized UX per viewport (not just reflowed content)"
+        - "Can serve different assets per viewport"
+        - "Clear design boundaries per breakpoint"
+      cons:
+        - "Multiple templates to maintain"
+        - "Edge cases: what happens at exact breakpoint?"
+        - "More code, more testing surface"
+    implementation:
+      guidelines:
+        - "Define clear breakpoint ranges with distinct layout templates"
+        - "Use matchMedia in JS for template selection when SSR is not used"
+        - "Detect viewport on server (user-agent or client hints) for SSR adaptive"
+        - "Provide a smooth transition at breakpoints (no jarring layout shift)"
+        - "Use CSS media queries for hiding/showing adaptive elements"
+        - "Test each breakpoint range separately"
+      common_errors:
+        - error: "Adaptive breakpoint too narrow causing layout shift on resize"
+          impact: "Unpleasant UX when resizing browser window"
+          fix: "Add CSS transition or a brief debounce on layout switch"
+    maturity:
+      level: standard
+    standards:
+      - name: "matchMedia API"
+        type: spec
+        role: "JavaScript API for media query evaluation"
+        status: recommended
+      - name: "Client Hints"
+        type: spec
+        role: "HTTP client hints for viewport-aware server rendering"
+        status: emerging
+
+  - id: desktop_first_approach
+    name: "Desktop-First Development"
+    description: >
+      Design for large screens first with max-width media queries for smaller
+      viewports. Suitable for complex data applications, dashboards, and
+      internal tools where the primary usage is on desktop. Content may be
+      hidden or simplified on mobile.
+    use_when:
+      - "Primary users are on desktop/laptop"
+      - "Complex dashboards, data tables, or design tools"
+      - "Internal enterprise tools"
+    avoid_when:
+      - "Public-facing consumer applications"
+      - "Primary mobile usage"
+    tradeoffs:
+      pros:
+        - "Optimized for the primary use case"
+        - "Simpler initial development for complex layouts"
+      cons:
+        - "Mobile experience is an afterthought"
+        - "Performance: desktop-sized assets load on mobile"
+    implementation:
+      guidelines:
+        - "Use max-width media queries for smaller screen overrides"
+        - "Start with the full desktop layout as the base"
+        - "Prioritize content differently on mobile: hide secondary content"
+        - "Simplify navigation for mobile (hamburger, bottom nav)"
+        - "Optimize images and assets for mobile even if desktop-first"
+      common_errors:
+        - error: "Not testing mobile at all"
+          impact: "Broken mobile experience, tiny text, overlapping elements"
+          fix: "Test on at least one mobile device before shipping"
+    maturity:
+      level: standard
+
+examples:
+  - id: responsive_vs_adaptive
+    title: "Responsive vs Adaptive Layout"
+    context: "Product listing page"
+    correct: |
+      /* CORRECT: Responsive — fluid grid with container queries */
+      .product-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 1rem;
+      }
+
+      .product-card {
+        container-type: inline-size;
+      }
+
+      @container (min-width: 400px) {
+        .product-card {
+          display: grid;
+          grid-template-columns: 1fr 2fr;
+        }
+      }
+    incorrect: |
+      /* WRONG: Fixed breakpoints, no fluid scaling */
+      .product-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      @media (min-width: 1024px) {
+        .product-grid {
+          grid-template-columns: 1fr 1fr 1fr;
+        }
+      }
+
+      @media (min-width: 768px) and (max-width: 1023px) {
+        .product-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+      /* No mobile styles — falls back to single column */
+    explanation: >
+      The correct version uses auto-fill with minmax for fluid columns and
+      container queries for component-level responsiveness. The incorrect
+      version hardcodes breakpoints to specific pixel ranges and will have
+      layout gaps at intermediate sizes.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All communication uses HTTPS"
+  data_protection:
+    requirements:
+      - "Viewport and device data not persisted without consent"
+  access_control:
+    requirements:
+      - "Responsive breakpoints do not expose unauthorized features"
+  input_output:
+    requirements:
+      - "Viewport detection on server does not leak sensitive device info"
+  secrets:
+    requirements:
+      - "No secrets in client-side responsive layouts"
+  monitoring:
+    requirements:
+      - "Track viewport distribution for responsive testing coverage"
+
+compliance:
+  standards:
+    - name: "WCAG 2.1 AA"
+      relevance: "Responsive design affects reflow (1.4.10), target size (2.5.5)"
+  requirements_mapping:
+    - control: reflow
+      description: "Content reflows without loss of functionality at 400% zoom"
+      maps_to:
+        - "WCAG 2.1 AA: 1.4.10 Reflow"
+
+prompt_recipes:
+  - id: responsive_audit
+    scenario: audit
+    description: "Audit app for responsive issues"
+    prompt: |
+      Audit {app_name} for responsive design issues.
+
+      Checklist:
+      1. Test at 320px, 768px, 1024px, 1440px
+      2. Check that no content is cut off or overlapping
+      3. Verify touch targets ≥44x44px on mobile
+      4. Check text is readable without zooming
+      5. Verify navigation works one-handed on mobile
+
+  - id: implement_responsive
+    scenario: greenfield
+    description: "Implement responsive layout"
+    prompt: |
+      Implement responsive layout for {app_name}.
+
+      Context:
+      - Strategy: responsive/adaptive/mobile-first
+      - Breakpoints: {breakpoints}
+      - Layout: grid/flex/combination
+
+      Plan:
+      1. Define CSS Grid page layout with auto-fill/minmax
+      2. Set up container queries for component responsiveness
+      3. Implement fluid typography with clamp()
+      4. Set up responsive images with srcset
+      5. Test at each breakpoint range
+
+  - id: mobile_first_conversion
+    scenario: migration
+    description: "Convert desktop-first to mobile-first"
+    prompt: |
+      Convert {app_name} from desktop-first to mobile-first approach.
+
+      Steps:
+      1. Audit current CSS for max-width breakpoints
+      2. Invert media queries to min-width
+      3. Define mobile base styles first
+      4. Enhance progressively for larger viewports
+      5. Ensure touch targets are 44x44px minimum
+      6. Test core flows on mobile first
+
+  - id: breakpoint_optimization
+    scenario: audit
+    description: "Optimize breakpoint strategy"
+    prompt: |
+      Optimize breakpoint strategy for {app_name}.
+
+      Tasks:
+      1. Audit current breakpoint usage
+      2. Check for content-based vs device-based breakpoints
+      3. Identify breakpoints causing layout breaks
+      4. Consolidate overlapping media queries
+      5. Add container queries for component-level responsiveness
+      6. Test at every breakpoint interval
+
+anti_patterns:
+  - name: "Tiny Touch Targets on Mobile"
+    description: "Buttons and links smaller than 44x44px on mobile devices. Users struggle to tap accurately."
+    fix: "Set minimum touch target size to 44x44px per WCAG 2.5.5. Add padding around interactive elements."
+    severity: high
+    related_pattern: mobile_first_approach
+  - name: "Horizontal Scroll on Mobile"
+    description: "Content wider than the viewport causes horizontal scroll on mobile. Common with fixed-width tables or images."
+    fix: "Use max-width: 100% on images, overflow-x: auto on tables, and avoid fixed widths."
+    severity: medium
+    related_pattern: responsive_design
+  - name: "Desktop-Only Testing"
+    description: "Shipping features tested only on desktop. Mobile users encounter broken layouts and tiny text."
+    fix: "Test every feature on at least one mobile device and one tablet viewport before deployment."
+    severity: high
+    related_pattern: responsive_design
+
+checklist:
+  - id: RF-01
+    category: design
+    description: "Touch targets ≥44x44px on interactive elements"
+    severity: critical
+    verified_by: mobile_first_approach
+  - id: RF-02
+    category: design
+    description: "No horizontal scroll at any viewport width"
+    severity: high
+    verified_by: responsive_design
+  - id: RF-03
+    category: correctness
+    description: "Content reflows without loss at 400% zoom"
+    severity: high
+    verified_by: responsive_design
+  - id: RF-04
+    category: performance
+    description: "Responsive images with srcset for appropriate sizes"
+    severity: medium
+    verified_by: responsive_design

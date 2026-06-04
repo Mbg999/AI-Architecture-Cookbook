@@ -33,3 +33,15 @@ entries:
   vector-databases:
     path: vector-databases/vector-databases.yaml
     description: "Vector database selection: index types, sharding, hybrid search, and provider comparison"
+  real-time-streaming:
+    path: real-time-streaming/real-time-streaming.yaml
+    description: "Real-time data streaming: Apache Kafka, streaming pipelines, event processing, and stream analytics"
+  data-resharding-partitioning:
+    path: data-resharding-partitioning/data-resharding-partitioning.yaml
+    description: "Data resharding and partitioning: horizontal sharding, consistent hashing, rebalancing, and partition management"
+  data-engineering-pipelines:
+    path: data-engineering-pipelines/data-engineering-pipelines.yaml
+    description: "Data engineering pipelines: ETL/ELT orchestration, data quality, schema management, and workflow scheduling"
+  mlops-lifecycle:
+    path: mlops-lifecycle/mlops-lifecycle.yaml
+    description: "MLOps lifecycle: model versioning, experiment tracking, model registry, A/B testing, and deployment automation"

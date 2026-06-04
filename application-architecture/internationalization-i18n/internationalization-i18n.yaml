@@ -1,0 +1,385 @@
+# =============================================================================
+# AI Architecture Cookbook — Internationalization (i18n)
+# Schema: v3 | Domain: internationalization-i18n
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: internationalization-i18n
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Internationalization (i18n) patterns covering framework integration
+    (react-i18next, vue-i18n, FormatJS), locale negotiation, RTL support,
+    translation file management, lazy-loaded translations, ICU message
+    syntax, pluralization, date/number/currency formatting, and SEO
+    localization for SSR apps.
+
+  tags:
+    - i18n
+    - internationalization
+    - localization
+    - rtl
+    - translation
+    - locale
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - id: frontend-component-architecture
+      reason: "Components consume translations via hooks/HOCs"
+    - id: frontend-state-management
+      reason: "Locale preference is persisted client-side state"
+
+  related_standards:
+    - id: responsive-mobile-first
+      relationship: complementary
+      context: "RTL support affects layout responsiveness"
+
+context_inputs:
+  - name: locale_count
+    type: integer
+    description: "Number of supported locales"
+    required: true
+    default: 2
+
+  - name: translation_management
+    type: enum
+    description: "How translations are managed"
+    required: true
+    default: manual
+    enum_values:
+      - manual
+      - cms
+      - crowdin
+      - automated
+
+  - name: rtl_support
+    type: boolean
+    description: "Whether RTL languages are supported"
+    required: false
+    default: false
+
+  - name: seo_requirement
+    type: boolean
+    description: "Whether localized URLs/SEO is needed"
+    required: false
+    default: false
+
+decision_tree:
+  - id: multi_locale_crowdin
+    priority: 1
+    if:
+      - locale_count > 5
+    then:
+      pattern: multi_locale_architecture
+      notes: "5+ locales requires automated translation management, lazy loading, and structured workflows"
+
+  - id: rtl_required
+    priority: 2
+    if:
+      - rtl_support == true
+    then:
+      pattern: rtl_layout_support
+      notes: "RTL support needs CSS logical properties, flipped layouts, and test coverage"
+
+  - id: seo_localization
+    priority: 3
+    if:
+      - seo_requirement == true
+    then:
+      pattern: seo_localized_routing
+      notes: "Localized URLs (domain.com/es/) and hreflang tags for SEO"
+
+  - id: standard_i18n
+    priority: 4
+    if:
+      - locale_count >= 1
+    then:
+      pattern: standard_i18n_framework
+      notes: "Most apps use a standard i18n framework with JSON translation files"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: low
+  fallback:
+    pattern: standard_i18n_framework
+    description: "Standard i18n framework is the default for internationalization"
+
+patterns:
+  - id: standard_i18n_framework
+    name: "Standard i18n Framework"
+    description: >
+      Use an i18n library (react-i18next, vue-i18n, FormatJS/Intl) with
+      JSON translation files. Each locale has one or more JSON files with
+      key-value pairs. The library provides hooks, components, and ICU
+      message syntax for interpolation, pluralization, and formatting.
+    use_when:
+      - "2-5 locales"
+      - "Simple to moderate translation needs"
+      - "Translations managed manually or via translation management system"
+    avoid_when:
+      - "5+ locales with complex workflows"
+      - "Real-time translation updates needed without redeploy"
+    tradeoffs:
+      pros:
+        - "Well-established ecosystem and tooling"
+        - "ICU message syntax for plurals, gender, select"
+        - "Lazy loading per locale (split bundles)"
+      cons:
+        - "Translations bundled in the app (require redeploy to update)"
+        - "JSON files can grow large with many translations"
+    implementation:
+      guidelines:
+        - "Use ICU message syntax for pluralization and interpolation"
+        - "Split translation files by domain (auth.json, checkout.json) for lazy loading"
+        - "Use TypeScript for type-safe translation keys"
+        - "Detect user locale from Accept-Language, cookie, or user preference"
+        - "Persist locale preference in localStorage or user profile"
+        - "Load fallback locale (en) on translation key miss"
+        - "Use numeric key namespacing (auth.login.title) for organization"
+      common_errors:
+        - error: "No fallback locale configured"
+          impact: "Missing translations show as key names in the UI"
+          fix: "Always configure fallback locale (usually en)"
+    maturity:
+      level: standard
+    standards:
+      - name: "react-i18next"
+        type: framework
+        role: "React i18n with hooks, HOCs, and ICU support"
+        status: recommended
+      - name: "vue-i18n"
+        type: framework
+        role: "Vue i18n with composition API support"
+        status: recommended
+      - name: "FormatJS / react-intl"
+        type: framework
+        role: "Format-based i18n with ICU message syntax"
+        status: recommended
+
+  - id: multi_locale_architecture
+    name: "Multi-Locale Architecture"
+    description: >
+      Architecture for 5+ locales with automated translation pipelines
+      (Crowdin, Lokalise), lazy-loaded translation bundles, translation
+      memory, and quality assurance workflows. Each locale's translations
+      are loaded on demand to keep initial bundle small.
+    use_when:
+      - "5+ locales"
+      - "Automated translation workflows (Crowdin, Lokalise)"
+      - "Translations managed outside the codebase"
+      - "Multiple languages with different scripts (Latin, CJK, Arabic)"
+    avoid_when:
+      - "Few locales with simple translation needs"
+    tradeoffs:
+      pros:
+        - "Scalable translation management"
+        - "Translations can be updated without app redeploy"
+        - "Translation memory reduces cost for repeated phrases"
+      cons:
+        - "Complex build pipeline for translation extraction and sync"
+        - "Translation management tooling cost"
+    implementation:
+      guidelines:
+        - "Integrate with Crowdin/Lokalise API for automated translation sync"
+        - "Lazy-load translation JSON files per locale"
+        - "Use translation keys consistently across all locales"
+        - "Implement translation review workflow (machine → review → approve)"
+        - "Monitor translation coverage per locale"
+        - "Automatically detect missing translations in CI"
+      common_errors:
+        - error: "Loading all locales on initial page load"
+          impact: "5+ locale files increase bundle size significantly"
+          fix: "Lazy-load locale JSON files; only load the detected locale"
+    maturity:
+      level: enterprise
+
+  - id: rtl_layout_support
+    name: "RTL Layout Support"
+    description: >
+      Support right-to-left languages (Arabic, Hebrew, Persian, Urdu) using
+      CSS logical properties (margin-inline-start instead of margin-left),
+      framework RTL utilities (Tailwind: rtl: prefix), and flipped layout
+      components. All layout should work in both directions without
+      duplicating styles.
+    use_when:
+      - "Arabic, Hebrew, Persian, or Urdu locales are supported"
+      - "Application layout must flip for RTL languages"
+    avoid_when:
+      - "No RTL languages in the target locales"
+    tradeoffs:
+      pros:
+        - "Single CSS source works for LTR and RTL"
+        - "CSS logical properties are the standard approach"
+      cons:
+        - "Testing matrix doubles (LTR + RTL per layout)"
+        - "Some CSS properties have no logical equivalent"
+    implementation:
+      guidelines:
+        - "Use CSS logical properties (margin-inline, padding-inline, inset-inline)"
+        - "Use Tailwind rtl/ltr prefixes for directional utilities"
+        - "Test all layouts flipped: navigation, modals, tables, forms"
+        - "Flip icons and directional arrows for RTL"
+        - "Set dir='rtl' on the HTML element for the locale"
+        - "Translate text-align: left/right with logical values"
+      common_errors:
+        - error: "Hardcoded left/right values in CSS instead of logical properties"
+          impact: "RTL layout shows left-aligned elements that should be right-aligned"
+          fix: "Replace margin-left/right with margin-inline-start/end"
+    maturity:
+      level: advanced
+
+  - id: seo_localized_routing
+    name: "SEO Localized Routing"
+    description: >
+      Localized URL structures for multi-language sites: subdomain
+      (es.example.com), subdirectory (example.com/es/), or domain per
+      locale (example.es). Uses hreflang tags for search engine
+      language targeting. Each locale has its own sitemap.
+    use_when:
+      - "Public-facing multi-language website needs SEO"
+      - "Different content per locale"
+    avoid_when:
+      - "Single-locale application"
+    tradeoffs:
+      pros:
+        - "Correct SEO indexing per language"
+        - "Separate analytics per locale"
+      cons:
+        - "More complex routing and redirect logic"
+    implementation:
+      guidelines:
+        - "Choose URL strategy: /locale/ prefix is simplest"
+        - "Add hreflang tags to <head> for each locale variant"
+        - "Generate separate sitemaps per locale"
+        - "Implement 301 redirects for locale detection"
+        - "Canonical URL per locale to avoid duplicate content"
+      common_errors:
+        - error: "Missing hreflang tags causing duplicate content SEO penalty"
+          impact: "Search engines index the same content under multiple URLs"
+          fix: "Add self-referencing hreflang and x-default tags"
+    maturity:
+      level: standard
+
+examples:
+  - id: i18n_implementation
+    title: "i18n with Pluralization"
+    context: "Notification count display"
+    correct: |
+      // CORRECT: ICU message with pluralization
+      // en.json: { "notifications": "{count} {count, plural, one {notification} other {notifications}}" }
+      // es.json: { "notifications": "{count} {count, plural, one {notificaci\u00f3n} other {notificaciones}}" }
+
+      function NotificationBadge({ count }) {
+        const { t } = useTranslation()
+        return <span>{t("notifications", { count })}</span>
+      }
+    incorrect: |
+      // WRONG: String concatenation — doesn't translate
+      function NotificationBadge({ count }) {
+        return <span>{count} {count === 1 ? "notification" : "notifications"}</span>
+      }
+    explanation: >
+      The correct version uses ICU pluralization syntax in the translation
+      file. The translator provides the correct plural forms per locale
+      (English: one/other, Arabic: zero/one/two/few/many/other). The
+      incorrect version hardcodes English plural rules.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All communication uses HTTPS"
+  data_protection:
+    requirements:
+      - "Sensitive data not exposed in client-visible state"
+  access_control:
+    requirements:
+      - "Feature-based access control enforced"
+  input_output:
+    requirements:
+      - "All user input sanitized"
+  secrets:
+    requirements:
+      - "No secrets in client-side code"
+  monitoring:
+    requirements:
+      - "Errors logged with context for debugging"
+
+compliance:
+  standards:
+    - name: "OWASP"
+      relevance: "Frontend security best practices"
+  requirements_mapping:
+    - control: secure_communication
+      description: "All frontend communication uses secure channels"
+      maps_to:
+        - "OWASP: secure communication"
+
+prompt_recipes:
+  - id: i18n_setup
+    scenario: greenfield
+    description: "Set up i18n for a new app"
+    prompt: "Set up i18n for {app_name} with {locale_count} locales.\n\nContext:\n- Framework: {framework}\n- RTL: yes/no\n- SEO: yes/no\n\nTasks:\n1. Choose i18n library\n2. Set up translation file structure\n3. Implement locale detection\n4. Add lazy loading per locale\n5. Set up RTL support if needed\n6. Add hreflang tags for SEO"
+  - id: i18n_migration
+    scenario: migration
+    description: "Add i18n to existing app"
+    prompt: "Add internationalization to {app_name}.\n\nPlan:\n1. Install i18n library\n2. Extract hardcoded strings from components\n3. Create translation keys\n4. Generate first locale translation file\n5. Replace strings with t() calls\n6. Add locale switcher UI\n7. Test all components in each locale"
+  - id: translation_workflow
+    scenario: greenfield
+    description: "Set up translation management workflow"
+    prompt: "Set up translation workflow for {app_name} with {locale_count} locales.\n\nSteps:\n1. Set up translation file structure (domain-split JSON)\n2. Configure extraction tool for translatable strings\n3. Integrate with translation platform (Crowdin/Lokalise)\n4. Set up CI sync of translation files\n5. Define translation review process\n6. Monitor translation coverage per locale"
+  - id: rtl_implementation
+    scenario: migration
+    description: "Add RTL support to existing app"
+    prompt: "Add RTL support to {app_name}.\n\nPlan:\n1. Audit existing layouts for hardcoded left/right values\n2. Replace with CSS logical properties\n3. Flip directional icons and arrows\n4. Set dir='rtl' on HTML for Arabic/Hebrew locales\n5. Test all components in RTL mode\n6. Add RTL test scenarios to test suite"
+
+anti_patterns:
+  - name: "Hardcoded Strings"
+    description: "Display strings hardcoded in components instead of using translation keys. Every string change requires a code deploy."
+    fix: "Extract all user-facing strings into translation files. Use t() function or translation component."
+    severity: high
+    related_pattern: standard_i18n_framework
+  - name: "No RTL Testing"
+    description: "Adding RTL support but not testing layouts, modals, and navigation in RTL mode. Broken alignment and layout issues."
+    fix: "Create RTL test scenarios. Use CSS logical properties. Test all components in RTL mode."
+    severity: high
+    related_pattern: rtl_layout_support
+  - name: "Loading All Locales on Initial Page Load"
+    description: "Importing translation files for all supported locales in the initial bundle. Slow initial load, wasted bandwidth."
+    fix: "Lazy-load translation files per locale. Only load the detected locale on initial page load."
+    severity: high
+    related_pattern: standard_i18n_framework
+
+checklist:
+  - id: INTL-01
+    category: correctness
+    description: "No hardcoded user-facing strings in components"
+    severity: high
+    verified_by: standard_i18n_framework
+  - id: INTL-02
+    category: correctness
+    description: "All locale URL paths have hreflang tags"
+    severity: high
+    verified_by: seo_localized_routing
+  - id: INTL-03
+    category: correctness
+    description: "Fallback locale configured for missing translations"
+    severity: high
+    verified_by: standard_i18n_framework
+  - id: INTL-04
+    category: maintainability
+    description: "Translation files split by domain for lazy loading"
+    severity: medium
+    verified_by: standard_i18n_framework
+  - id: INTL-05
+    category: maintainability
+    description: "RTL layouts use CSS logical properties, not hardcoded left/right"
+    severity: high
+    verified_by: rtl_layout_support
+  - id: INTL-06
+    category: correctness
+    description: "Pluralization uses ICU syntax, not string concatenation"
+    severity: high
+    verified_by: standard_i18n_framework

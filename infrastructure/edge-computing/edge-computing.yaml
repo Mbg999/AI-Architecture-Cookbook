@@ -1,0 +1,406 @@
+# =============================================================================
+# AI Architecture Cookbook — Edge Computing
+# Schema: v3 | Domain: edge-computing
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: edge-computing
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Edge computing patterns for low-latency compute and data close to users:
+    Edge Functions (Workers), Edge Caching/CDN, Edge Databases (D1, Turso, KV),
+    and Geo-Routing for multi-region deployments.
+
+  tags:
+    - edge
+    - cloudflare-workers
+    - vercel-edge
+    - lambda-edge
+    - edge-database
+    - geo-routing
+
+  categories:
+    - infrastructure
+
+  prerequisites:
+    - performance-optimization
+    - cloud-architecture
+    - api-gateway-edge-security
+
+  related_standards:
+    - id: serverless-functions
+      relationship: complementary
+      context: "Edge functions are serverless functions at CDN edge"
+    - id: api-gateway-edge-security
+      relationship: complementary
+      context: "Edge functions augment API gateway at the CDN layer"
+    - id: cloud-architecture
+      relationship: complementary
+      context: "Edge extends cloud architecture to the network edge"
+
+context_inputs:
+  - name: compute_location
+    type: enum
+    description: "Where computation runs relative to the user"
+    required: true
+    default: regional
+    enum_values: [centralized, regional, edge, hybrid]
+
+  - name: data_locality
+    type: enum
+    description: "Where data is stored and accessed"
+    required: true
+    default: regional_db
+    enum_values: [centralized_db, regional_db, edge_kv, edge_sql, hybrid]
+
+  - name: latency_requirement
+    type: enum
+    description: "Maximum acceptable latency"
+    required: true
+    default: standard
+    enum_values: [relaxed, standard, low_latency, real_time]
+
+  - name: geo_requirements
+    type: enum
+    description: "Geographic distribution requirements"
+    required: false
+    default: single_region
+    enum_values: [single_region, multi_region_active_active, multi_region_active_passive, global_anycast]
+
+decision_tree:
+  - id: edge_function_low_latency
+    priority: 1
+    if:
+      - latency_requirement in [low_latency, real_time]
+      - compute_location in [edge, hybrid]
+    then:
+      pattern: edge_functions
+      standards: ["WinterCG"]
+      notes: "Edge functions deployed on CDN nodes provide sub-10ms compute startup. Offload auth, personalization, and A/B testing to the edge."
+
+  - id: edge_db_for_local_data
+    priority: 2
+    if:
+      - data_locality in [edge_kv, edge_sql, hybrid]
+      - latency_requirement in [low_latency, real_time]
+    then:
+      pattern: edge_database
+      standards: ["D1 SQL", "Turso"]
+      notes: "Edge databases like D1 (SQLite at edge) or Turso (embedded replicas) provide sub-millisecond reads. Centralized DBs add 50-200ms."
+
+  - id: geo_routing
+    priority: 3
+    if:
+      - geo_requirements in [multi_region_active_active, multi_region_active_passive, global_anycast]
+    then:
+      pattern: geo_routing_multi_region
+      standards: ["Anycast DNS"]
+      notes: "Geo-routing directs users to the nearest region. Active-active requires CRDT conflict resolution; active-passive is simpler for stateful workloads."
+
+  - id: centralized_fallback
+    priority: 4
+    if:
+      - compute_location == centralized
+      - data_locality == centralized_db
+    then:
+      pattern: edge_functions
+      notes: "Even with centralized compute, edge functions provide value for geo-targeting, auth, and A/B testing at the CDN layer."
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: edge_functions
+    description: "Edge functions are the safest starting point for edge computing adoption"
+
+patterns:
+  - id: edge_functions
+    name: "Edge Functions (Workers)"
+    description: >
+      Serverless functions running at CDN edge locations worldwide in V8 isolates.
+      Sub-millisecond startup, global distribution, no cold-start overhead.
+      Platforms: Cloudflare Workers, Vercel Edge, Lambda@Edge, Deno Deploy.
+    use_when:
+      - "Request-level computation near the user"
+      - "Auth, A/B testing, geo-personalization at the edge"
+      - "API routing and transformation at CDN layer"
+      - "Eliminating cold starts common in regional serverless"
+    avoid_when:
+      - "Long-running compute (edge function CPU limits: 10-30s)"
+      - "Stateful workloads needing persistent memory or filesystem"
+      - "Heavy dependencies or native binaries (V8 isolate constraints)"
+    tradeoffs:
+      pros:
+        - "Global distribution at no extra cost"
+        - "Near-zero cold starts (microsecond startup)"
+        - "Scales to millions of requests automatically"
+      cons:
+        - "CPU time limits (10-30s max execution)"
+        - "No persistent filesystem or arbitrary network access"
+        - "Limited to JS/TS/WASM runtimes"
+    implementation:
+      guidelines:
+        - "Keep function runtime under 10ms for optimal performance"
+        - "Use platform KV store for session data and config"
+        - "Bundle dependencies to minimize deployment size"
+        - "Use environment variables for per-environment config"
+        - "Test with local emulators before deploying globally"
+      common_errors:
+        - error: "Exceeding CPU time limits with heavy computation"
+          impact: "Function terminates prematurely; user sees error"
+          fix: "Offload heavy work to regional serverless; edge handles lightweight orchestration"
+        - error: "Using global mutable state across requests"
+          impact: "State corruption — each request runs in a separate isolate"
+          fix: "Use edge KV store for persistent state; never rely on global variables"
+    maturity:
+      level: standard
+    standards:
+      - name: "WinterCG"
+        type: standard
+        role: "Web-interoperable runtime API standard"
+        status: recommended
+
+  - id: edge_database
+    name: "Edge Database (D1, Turso, KV)"
+    description: >
+      Databases for edge compute: Cloudflare D1 (global SQLite with read
+      replication), Turso (embedded libSQL replicas), Cloudflare KV
+      (global key-value). Optimized for low-latency reads at edge.
+    use_when:
+      - "Edge functions need data access without centralized DB round-trips"
+      - "Read-heavy workloads with occasional writes"
+      - "Session data, config, feature flags at edge"
+    avoid_when:
+      - "Strong consistency required on every read"
+      - "Complex relational queries with joins across shards"
+      - "Write-heavy workloads (edge DBs optimize for reads)"
+    tradeoffs:
+      pros:
+        - "Sub-millisecond reads from local edge replica"
+        - "Global replication built-in"
+        - "Eliminates network round-trip to centralized DB"
+      cons:
+        - "Eventual consistency (writes propagate in seconds)"
+        - "Limited query capabilities vs full PostgreSQL"
+        - "Write throughput limited by replication latency"
+    implementation:
+      guidelines:
+        - "Use KV for high-throughput key-value lookups (config, sessions)"
+        - "Use D1/Turso when SQL queries with read replicas needed"
+        - "Design for eventual consistency; avoid read-after-write patterns"
+        - "Route writes to primary; serve reads from nearest edge replica"
+      common_errors:
+        - error: "Read-after-write inconsistency bugs"
+          impact: "User writes then reads immediately; sees stale data from edge replica"
+          fix: "Route reads-after-write to primary; or accept eventual consistency with UI feedback"
+        - error: "Treating edge DB like traditional ACID database"
+          impact: "Transactions across regions fail; consistency weaker than expected"
+          fix: "Design for single-region writes with global read replicas; handle conflicts at application layer"
+    maturity:
+      level: advanced
+    standards:
+      - name: "D1 SQL"
+        type: framework
+        role: "Global SQLite for edge computing"
+        status: recommended
+      - name: "Turso"
+        type: tool
+        role: "Edge-hosted libSQL with embedded replicas"
+        status: recommended
+
+  - id: geo_routing_multi_region
+    name: "Geo-Routing and Multi-Region"
+    description: >
+      Route users to the nearest geographic deployment via anycast DNS,
+      latency probes, or IP geolocation. Active-active routes to all regions;
+      active-passive routes to primary with failover.
+    use_when:
+      - "Global user base across continents"
+      - "Compliance requiring data residency in specific regions"
+      - "High availability across geographic failures"
+    avoid_when:
+      - "Single-region user base (complexity not justified)"
+    tradeoffs:
+      pros:
+        - "Sub-50ms latency from nearest region"
+        - "Automatic failover on region outage"
+        - "Data sovereignty compliance"
+      cons:
+        - "Cross-region data replication complexity"
+        - "Active-active needs conflict resolution (CRDTs)"
+        - "Infrastructure cost per region"
+    implementation:
+      guidelines:
+        - "Use anycast DNS (Cloudflare, AWS Global Accelerator) for routing"
+        - "Implement health checks per region; remove unhealthy regions"
+        - "Route writes to primary; serve reads from all regions"
+        - "Test failover scenarios regularly with chaos experiments"
+      common_errors:
+        - error: "No conflict resolution for active-active writes"
+          impact: "Concurrent writes in different regions produce inconsistent state"
+          fix: "Use CRDTs or designate region of authority per data partition"
+        - error: "Geo-routing without per-region health checks"
+          impact: "Unhealthy region receives traffic; users see errors"
+          fix: "Implement health endpoints per region; automatic failover on health check failure"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Anycast DNS"
+        type: protocol
+        role: "Routing protocol for nearest-edge traffic direction"
+        status: recommended
+
+examples:
+  - id: edge_function_auth
+    title: "Edge Function JWT Validation"
+    context: "Validating JWT tokens at CDN edge before origin"
+    correct: |
+      async function handleRequest(request) {
+        const url = new URL(request.url);
+        if (url.pathname.startsWith("/api/")) {
+          const auth = request.headers.get("Authorization");
+          if (!auth || !auth.startsWith("Bearer "))
+            return new Response("Unauthorized", { status: 401 });
+          const payload = await verifyJWT(auth.slice(7), EDGE_JWT_SECRET);
+          if (!payload)
+            return new Response("Invalid token", { status: 401 });
+          request.headers.set("X-User-Id", payload.sub);
+        }
+        return fetch(request);
+      }
+    incorrect: |
+      // WRONG: All traffic forwarded to origin for auth
+      async function handleRequest(request) { return fetch(request); }
+    explanation: >
+      Edge validates tokens before origin receives traffic, blocking
+      unauthenticated requests at the edge. This reduces origin load
+      and prevents DDoS of auth endpoints.
+
+security_hardening:
+  transport:
+    requirements:
+      - "TLS 1.2+ between edge functions and origin"
+      - "mTLS for edge-to-origin identity verification"
+  data_protection:
+    requirements:
+      - "Edge KV values encrypted at rest"
+      - "No PII logged at edge layer"
+  access_control:
+    requirements:
+      - "Edge function deployment restricted to authorized CI/CD"
+      - "Environment variables for secrets; never hardcoded"
+  input_output:
+    requirements:
+      - "Validate all inputs at edge before forwarding to origin"
+      - "Rate limiting per IP at edge layer"
+  secrets:
+    requirements:
+      - "JWT signing keys in platform secret store"
+      - "No secrets in function bundles or source"
+  monitoring:
+    requirements:
+      - "Monitor edge function error rates and execution time"
+      - "Track cold start frequency and optimize warm-up"
+
+compliance:
+  standards:
+    - name: "GDPR (Data Residency)"
+      relevance: "Edge processes data at multiple locations; comply with data residency"
+    - name: "SOC 2 (Availability)"
+      relevance: "Edge distribution improves availability SLAs"
+
+  requirements_mapping:
+    - control: data_residency
+      description: "Data processed only in approved geographic regions"
+      maps_to: ["GDPR Article 44", "SOC 2 CC6.1"]
+    - control: data_at_edge
+      description: "Data cached at edge is encrypted and access-controlled"
+      maps_to: ["GDPR Article 32"]
+
+prompt_recipes:
+  - id: edge_greenfield
+    scenario: greenfield
+    description: "Design edge computing architecture"
+    prompt: |
+      Design edge architecture for a global application.
+      Compute location: [centralized/regional/edge/hybrid]
+      Data locality: [centralized_db/regional_db/edge_kv/edge_sql/hybrid]
+      Latency: [relaxed/standard/low_latency/real_time]
+      Requirements: edge function platform, caching strategy, edge DB choice, geo-routing.
+
+  - id: edge_migration
+    scenario: migration
+    description: "Migrate to edge computing"
+    prompt: |
+      Classify operations for edge migration:
+      1. Auth token validation → Edge (stateless, fast)
+      2. Geo-personalization → Edge (location-aware)
+      3. A/B testing → Edge (cookie-based)
+      4. API routing/transformation → Edge (header-based)
+      5. Complex business logic → Regional (needs data access)
+      6. Long-running compute → Central (CPU-intensive)
+
+  - id: edge_cache_audit
+    scenario: audit
+    description: "Audit edge caching"
+    prompt: |
+      Audit: 1. Cache-Control correct per resource? 2. stale-while-revalidate for dynamic? 3. User-specific marked private? 4. Static assets versioned? 5. Cache hit ratio >70%? 6. Purge strategy documented?
+
+  - id: edge_security_review
+    scenario: high-security
+    description: "Review edge security"
+    prompt: |
+      Review: 1. Edge functions authenticated? 2. Secrets in platform store? 3. Origin mTLS? 4. Rate limiting per IP? 5. Input validation at edge? 6. Cache purged on data deletion? 7. Deployments audit-logged?
+
+anti_patterns:
+  - name: "Edge Monolith"
+    description: "Deploying entire application at edge including heavy computation. Edge CPU limits cause timeouts."
+    fix: "Use edge for lightweight request logic; offload heavy work to regional serverless"
+    severity: high
+    related_pattern: edge_functions
+
+  - name: "Global State Assumptions"
+    description: "Writing edge functions assuming globally consistent state. Edge functions are independent across locations."
+    fix: "Design for eventual consistency; use edge KV for coordination; avoid distributed transactions"
+    severity: critical
+    related_pattern: edge_functions
+
+  - name: "Ignoring Cache Invalidation"
+    description: "Aggressive edge caching without invalidation strategy. Stale data persists across all CDN locations."
+    fix: "Use short TTLs with stale-while-revalidate; version assets with content hashes"
+    severity: high
+    related_pattern: edge_functions
+
+checklist:
+  - id: EDGE-01
+    category: performance
+    description: "Edge function execution time under 10ms"
+    severity: high
+    verified_by: edge_functions
+  - id: EDGE-02
+    category: security
+    description: "TLS 1.2+ between edge and origin"
+    severity: critical
+    verified_by: edge_functions
+  - id: EDGE-03
+    category: correctness
+    description: "Read-after-write consistency handled at application layer"
+    severity: high
+    verified_by: edge_database
+  - id: EDGE-04
+    category: security
+    description: "Secrets in platform store, not in function code"
+    severity: critical
+    verified_by: edge_functions
+  - id: EDGE-05
+    category: reliability
+    description: "Geo-routing health checks active per region"
+    severity: high
+    verified_by: geo_routing_multi_region
+  - id: EDGE-06
+    category: observability
+    description: "Edge function error rates monitored and alerted"
+    severity: high
+    verified_by: edge_functions

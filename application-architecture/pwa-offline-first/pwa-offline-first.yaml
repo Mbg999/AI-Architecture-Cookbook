@@ -1,0 +1,406 @@
+# =============================================================================
+# AI Architecture Cookbook — PWA & Offline-First
+# Schema: v3 | Domain: pwa-offline-first
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: pwa-offline-first
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Progressive Web App and offline-first patterns covering service workers,
+    caching strategies (Cache-First, Network-First, Stale-While-Revalidate),
+    background sync, offline fallbacks, app shell architecture, manifest
+    configuration, and install prompts.
+
+  tags:
+    - pwa
+    - offline
+    - service-worker
+    - caching
+    - progressive-web-app
+    - background-sync
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - id: frontend-build-performance
+      reason: "Service worker precaching depends on build-time asset manifest"
+    - id: responsive-mobile-first
+      reason: "PWA display modes and viewport handling are mobile-first concerns"
+
+  related_standards:
+    - id: caching-strategies
+      relationship: subset
+      context: "Service worker caching is a subset of broader caching strategies"
+
+context_inputs:
+  - name: offline_requirement
+    type: enum
+    description: "How critical is offline functionality"
+    required: true
+    default: optional
+    enum_values:
+      - critical
+      - important
+      - optional
+      - none
+
+  - name: content_type
+    type: enum
+    description: "Type of content the app serves"
+    required: false
+    default: dynamic
+    enum_values:
+      - static
+      - dynamic
+      - mixed
+
+  - name: sync_requirement
+    type: boolean
+    description: "Whether user actions must sync when online"
+    required: false
+    default: false
+
+decision_tree:
+  - id: offline_critical
+    priority: 1
+    if:
+      - offline_requirement == critical
+    then:
+      pattern: offline_first_architecture
+      notes: "Critical offline apps need full app shell + local data store + background sync"
+
+  - id: background_sync
+    priority: 2
+    if:
+      - sync_requirement == true
+    then:
+      pattern: background_sync_queue
+      notes: "Offline user actions queued with Background Sync API and replayed when online"
+
+  - id: static_content
+    priority: 3
+    if:
+      - content_type == static
+    then:
+      pattern: cache_first_static
+      notes: "Static content (docs, blogs, images) benefits from Cache-First strategy"
+
+  - id: standard_pwa
+    priority: 4
+    if:
+      - offline_requirement in [critical, important, optional, none]
+    then:
+      pattern: standard_pwa_setup
+      notes: "Service worker with Stale-While-Revalidate for most PWA content"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: standard_pwa_setup
+    description: "Standard PWA setup with Stale-While-Revalidate is the default"
+
+patterns:
+  - id: standard_pwa_setup
+    name: "Standard PWA Setup"
+    description: >
+      Basic PWA with service worker, manifest, Stale-While-Revalidate caching,
+      and install prompt. Caches app shell and static assets on first visit.
+      Dynamic content revalidates from network, falling back to cache when
+      offline.
+    use_when:
+      - "Offline is optional but nice to have"
+      - "Content changes moderately often"
+      - "First step before adding offline-first"
+    avoid_when:
+      - "Offline is critical (use offline-first)"
+      - "Static content only (Cache-First is better)"
+    tradeoffs:
+      pros:
+        - "Automatic caching of static assets"
+        - "Works offline to some degree"
+        - "Faster repeat visits (cached shell)"
+      cons:
+        - "Dynamic content only works when online"
+        - "Stale data shown until network responds"
+    implementation:
+      guidelines:
+        - "Generate service worker with Workbox (workbox-webpack-plugin or vite-plugin-pwa)"
+        - "Precache app shell (HTML, CSS, JS, fonts, icons)"
+        - "Use Stale-While-Revalidate for API responses"
+        - "Configure manifest.json with icons, name, theme color, display mode"
+        - "Register service worker on first visit (not before load)"
+        - "Provide offline fallback page"
+        - "Prompt user to install PWA (beforeinstallprompt event)"
+        - "Update service worker on content changes (skipWaiting on user confirmation)"
+      common_errors:
+        - error: "Registering service worker before page load"
+          impact: "Blocks initial render, hurts performance score"
+          fix: "Register after load event: window.addEventListener('load', () => registerSW())"
+    maturity:
+      level: standard
+    standards:
+      - name: "Workbox"
+        type: framework
+        role: "Service worker library with built-in caching strategies"
+        status: recommended
+      - name: "vite-plugin-pwa"
+        type: tool
+        role: "Zero-config PWA plugin for Vite"
+        status: recommended
+
+  - id: offline_first_architecture
+    name: "Offline-First Architecture"
+    description: >
+      Full offline capability: app shell cached aggressively, local data
+      store (IndexedDB), background sync for mutations, and optimistic UI.
+      Designed so that the app is fully functional without a network
+      connection. Data syncs when connectivity returns.
+    use_when:
+      - "Offline is critical (field workers, unstable networks)"
+      - "Users frequently lose connectivity"
+      - "Data entry must work offline and sync later"
+    avoid_when:
+      - "Offline is optional (over-engineering)"
+    tradeoffs:
+      pros:
+        - "Full functionality offline"
+        - "Resilient to network interruptions"
+        - "Better UX in low-connectivity areas"
+      cons:
+        - "Complex data sync logic (conflict resolution)"
+        - "Local storage management across devices"
+        - "Testing matrix: offline, online, flaky connectivity"
+    implementation:
+      guidelines:
+        - "Implement app shell: cache all static assets on install"
+        - "Use IndexedDB for local data store (Dexie.js or idb library)"
+        - "Implement Cache-First for app shell, Network-First for data mutations"
+        - "Queue mutations with Background Sync API"
+        - "Implement conflict resolution (last-write-wins or CRDT)"
+        - "Show connectivity status indicator"
+        - "Sync data opportunistically (on connectivity change, periodic sync)"
+        - "Implement offline-first data reading: return cached, update in background"
+      common_errors:
+        - error: "No conflict resolution for offline mutations"
+          impact: "Data loss or overwrites when multiple offline edits sync"
+          fix: "Use last-write-wins with timestamps or implement CRDT conflict resolution"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Workbox"
+        type: framework
+        role: "Caching strategies for service worker"
+        status: recommended
+      - name: "IndexedDB"
+        type: spec
+        role: "Client-side structured data storage"
+        status: recommended
+
+  - id: cache_first_static
+    name: "Cache-First for Static Content"
+    description: >
+      Cache-First strategy for static content (docs, images, fonts, CSS).
+      On first visit, fetch from network and cache. On subsequent visits,
+      serve from cache immediately. Only go to network if cache miss.
+    use_when:
+      - "Content rarely changes (docs, blog posts)"
+      - "Images, fonts, and other static assets"
+    avoid_when:
+      - "Content changes frequently"
+    tradeoffs:
+      pros:
+        - "Instant loading from cache"
+        - "Works offline without any network request"
+      cons:
+        - "Stale content until cache is invalidated"
+    implementation:
+      guidelines:
+        - "Cache static assets on service worker install (precache)"
+        - "Use versioned cache names for easy invalidation"
+        - "Set maxEntries and maxAgeSeconds for cache limits"
+        - "Update cached content on service worker update"
+      common_errors:
+        - error: "No cache size limits leading to storage quota exceeded"
+          impact: "Service worker stops caching, app breaks offline"
+          fix: "Set maxEntries (50) and maxAgeSeconds (30 days) on all caches"
+    maturity:
+      level: standard
+
+  - id: background_sync_queue
+    name: "Background Sync Queue"
+    description: >
+      Queue user mutations (form submissions, likes, comments) when offline
+      using the Background Sync API. When connectivity returns, replay the
+      queue in order. Provides user feedback that actions are pending sync.
+    use_when:
+      - "User actions must be persisted even when offline"
+      - "Form submissions, comments, content creation"
+    avoid_when:
+      - "Read-only applications"
+    tradeoffs:
+      pros:
+        - "Actions never lost due to connectivity"
+        - "Background sync when user is not interacting"
+      cons:
+        - "Sync timing is controlled by the browser"
+        - "Conflict resolution required for concurrent edits"
+    implementation:
+      guidelines:
+        - "Use the Background Sync API (navigator.serviceWorker.ready.sync.register)"
+        - "Queue each mutation with timestamp and action type"
+        - "Show pending action indicator to the user"
+        - "Replay mutations in FIFO order on sync event"
+        - "Handle sync failures: retry with exponential backoff"
+        - "Provide manual sync button as fallback"
+      common_errors:
+        - error: "Replaying mutations out of order causing data inconsistency"
+          impact: "Dependent mutations applied before their prerequisites"
+          fix: "Queue FIFO; if mutation A must precede B, await A's success before B"
+    maturity:
+      level: advanced
+
+examples:
+  - id: sw_caching_strategies
+    title: "Service Worker Caching Strategies"
+    context: "PWA with API data"
+    correct: |
+      // CORRECT: Workbox routing with strategies
+      import { registerRoute } from "workbox-routing"
+      import { StaleWhileRevalidate, CacheFirst, NetworkFirst } from "workbox-strategies"
+
+      // Static assets: Cache-First
+      registerRoute(
+        /\.(?:js|css|woff2|png|jpg)$/,
+        new CacheFirst({ cacheName: "static-assets" })
+      )
+
+      // API data: Stale-While-Revalidate
+      registerRoute(
+        /\/api\/products/,
+        new StaleWhileRevalidate({ cacheName: "api-cache" })
+      )
+
+      // Mutations: Network-First (always try network)
+      registerRoute(
+        /\/api\/orders/,
+        new NetworkFirst({ cacheName: "order-cache" })
+      )
+    incorrect: |
+      // WRONG: Network-Only for everything — no offline support
+      // Even static assets require network access
+      registerRoute(
+        /\/.*/,
+        new NetworkOnly()
+      )
+    explanation: >
+      The correct version uses different caching strategies per content type:
+      Cache-First for static assets (fast offline), Stale-While-Revalidate for
+      API data (fast with background refresh), and Network-First for mutations.
+      The incorrect version has no caching, providing zero offline functionality.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All communication uses HTTPS"
+  data_protection:
+    requirements:
+      - "Sensitive data not exposed in client-visible state"
+  access_control:
+    requirements:
+      - "Feature-based access control enforced"
+  input_output:
+    requirements:
+      - "All user input sanitized"
+  secrets:
+    requirements:
+      - "No secrets in client-side code"
+  monitoring:
+    requirements:
+      - "Errors logged with context for debugging"
+
+compliance:
+  standards:
+    - name: "OWASP"
+      relevance: "Frontend security best practices"
+  requirements_mapping:
+    - control: secure_communication
+      description: "All frontend communication uses secure channels"
+      maps_to:
+        - "OWASP: secure communication"
+
+prompt_recipes:
+  - id: pwa_setup
+    scenario: greenfield
+    description: "Set up PWA from scratch"
+    prompt: "Set up PWA for {app_name}.\n\nSteps:\n1. Configure manifest.json with icons, name, theme color\n2. Create service worker with Workbox\n3. Set up caching strategies per content type\n4. Register service worker after load\n5. Implement install prompt\n6. Test offline behavior"
+  - id: offline_migration
+    scenario: migration
+    description: "Add offline support to existing app"
+    prompt: "Add offline support to {app_name}.\n\nPlan:\n1. Audit current network dependencies\n2. Implement service worker with workbox\n3. Cache static assets on install\n4. Add Stale-While-Revalidate for API endpoints\n5. Queue mutations with Background Sync\n6. Add offline UI indicators\n7. Test offline scenarios"
+  - id: sw_update
+    scenario: migration
+    description: "Implement service worker update flow"
+    prompt: "Implement service worker update strategy for {app_name}.\n\nSteps:\n1. Configure versioned cache names\n2. Detect service worker updates on navigation\n3. Show update available prompt to user\n4. Implement skipWaiting on user confirmation\n5. Clear old caches on activation\n6. Test update flow end to end"
+  - id: pwa_audit
+    scenario: audit
+    description: "Audit PWA implementation for best practices"
+    prompt: "Audit PWA implementation for {app_name}.\n\nChecklist:\n1. Service worker registered after page load\n2. Offline fallback page provided\n3. Manifest configured with correct icons\n4. Caching strategies differ by content type\n5. Cache size limits set (maxEntries, maxAgeSeconds)\n6. Install prompt implemented (beforeinstallprompt)\n7. Lighthouse PWA audit passes"
+
+anti_patterns:
+  - name: "No Offline Fallback"
+    description: "Service worker installed but no offline fallback page. Users see browser's offline page when disconnected."
+    fix: "Implement an offline fallback page cached during service worker install."
+    severity: high
+    related_pattern: standard_pwa_setup
+  - name: "Caching Everything Unconditionally"
+    description: "Service worker caches every request including API mutations. Stale data is never invalidated."
+    fix: "Use different strategies per content type. Set cache expiration policies."
+    severity: medium
+    related_pattern: standard_pwa_setup
+  - name: "No Cache Invalidation Strategy"
+    description: "Old cached assets persist, showing stale content even after app update."
+    fix: "Use versioned cache names. Implement service worker update flow with skipWaiting."
+    severity: medium
+    related_pattern: cache_first_static
+
+checklist:
+  - id: PWA-01
+    category: reliability
+    description: "Service worker installed and active"
+    severity: high
+    verified_by: standard_pwa_setup
+  - id: PWA-02
+    category: reliability
+    description: "Offline fallback page provided"
+    severity: high
+    verified_by: standard_pwa_setup
+  - id: PWA-03
+    category: performance
+    description: "Static assets cached with Cache-First strategy"
+    severity: medium
+    verified_by: cache_first_static
+  - id: PWA-04
+    category: maintainability
+    description: "Cache names versioned for easy invalidation"
+    severity: medium
+    verified_by: standard_pwa_setup
+  - id: PWA-05
+    category: correctness
+    description: "Background sync queue with FIFO replay and conflict resolution"
+    severity: high
+    verified_by: background_sync_queue
+  - id: PWA-06
+    category: reliability
+    description: "Manifest configured with correct icons and display mode"
+    severity: high
+    verified_by: standard_pwa_setup
+  - id: PWA-07
+    category: reliability
+    description: "Caching strategies differ by content type"
+    severity: medium
+    verified_by: standard_pwa_setup

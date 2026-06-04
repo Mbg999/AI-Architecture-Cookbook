@@ -86,3 +86,35 @@ entries:
     prerequisites: ["logging-observability", "authentication"]
     pattern_count: 4
     anti_pattern_count: 3
+
+  - domain: frontend-testing
+    version: "1.0.0"
+    description: "Frontend testing patterns: Vitest, Testing Library, visual regression, accessibility, E2E with Playwright"
+    tags: ["testing", "frontend", "vitest", "playwright", "testing-library", "visual-regression", "e2e"]
+    prerequisites: ["testing-strategies", "frontend-component-architecture"]
+    pattern_count: 5
+    anti_pattern_count: 4
+
+  - domain: zero-trust-networking
+    version: "1.0.0"
+    description: "Zero-trust networking: mTLS, identity-aware proxy, micro-segmentation, BeyondCorp/ZTNA"
+    tags: ["zero-trust", "networking", "mtls", "identity-aware", "micro-segmentation", "beyondcorp"]
+    prerequisites: ["api-gateway-edge-security", "authentication", "secrets-management", "encryption"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: observability-sre
+    version: "1.0.0"
+    description: "SRE patterns: SLI/SLO definition, error budgets, SLO-driven alerting, incident management"
+    tags: ["sre", "observability", "sli", "slo", "error-budget", "alerting", "incident-management"]
+    prerequisites: ["logging-observability", "testing-strategies"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: threat-modeling
+    version: "1.0.0"
+    description: "Threat modeling: STRIDE, DREAD, attack trees, threat matrices, data flow diagrams, and risk assessment frameworks"
+    tags: ["threat-modeling", "stride", "dread", "attack-tree", "risk-assessment", "security", "threat-analysis"]
+    prerequisites: ["secure-sdlc", "encryption"]
+    pattern_count: 4
+    anti_pattern_count: 3

@@ -1,0 +1,622 @@
+# =============================================================================
+# AI Architecture Cookbook — Frontend State Management
+# Schema: v3 | Domain: frontend-state-management
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: frontend-state-management
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Frontend state management patterns covering server state (data fetching,
+    caching, optimistic updates), global client state (stores, actions,
+    selectors), URL state, form state, and atomic/derived state. Provides
+    context-aware recommendations based on app complexity, state type, and
+    team size.
+
+  tags:
+    - state-management
+    - frontend
+    - react
+    - vue
+    - redux
+    - zustand
+    - query
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - id: api-design
+      reason: "Server state management depends on API contracts and caching headers"
+    - id: error-handling
+      reason: "State management retry, rollback, and error boundaries"
+    - id: frontend-component-architecture
+      reason: "Component hierarchy determines state scoping decisions"
+
+  related_standards:
+    - id: form-handling-patterns
+      relationship: complementary
+      context: "Form state is a specialized state domain covered by form patterns"
+    - id: caching-strategies
+      relationship: subset
+      context: "Server state caching is a subset of broader caching strategies"
+
+context_inputs:
+  - name: state_type
+    type: enum
+    description: "Primary type of state to manage"
+    required: true
+    default: server
+    enum_values:
+      - server
+      - global
+      - url
+      - form
+      - mixed
+
+  - name: app_complexity
+    type: enum
+    description: "Overall complexity of the application"
+    required: true
+    default: moderate
+    enum_values:
+      - simple
+      - moderate
+      - complex
+
+  - name: team_size
+    type: enum
+    description: "Number of frontend developers"
+    required: false
+    default: small
+    enum_values:
+      - small
+      - medium
+      - large
+
+  - name: real_time_needs
+    type: boolean
+    description: "Whether state needs real-time synchronization"
+    required: false
+    default: false
+
+  - name: persistence_requirement
+    type: enum
+    description: "Whether state must survive page reload"
+    required: false
+    default: none
+    enum_values:
+      - none
+      - session
+      - local
+
+decision_tree:
+  - id: form_state_route
+    priority: 1
+    if:
+      - state_type == form
+    then:
+      pattern: form_state
+      notes: "Form state is best managed by dedicated form libraries that handle validation, dirty tracking, and submission state"
+
+  - id: server_state_route
+    priority: 2
+    if:
+      - state_type in [server, mixed]
+      - real_time_needs == true
+    then:
+      pattern: server_state_query
+      notes: "Server state with real-time needs benefits from TanStack Query or SWR with WebSocket subscriptions"
+
+  - id: url_state_route
+    priority: 3
+    if:
+      - state_type == url
+    then:
+      pattern: url_state
+      notes: "URL-based state uses query params, hash, or router state for shareable and bookmarkable state"
+
+  - id: global_complex
+    priority: 4
+    if:
+      - team_size in [medium, large]
+      - app_complexity in [moderate, complex]
+    then:
+      pattern: global_client_state
+      notes: "Global state stores (Zustand, Redux, Pinia) scale with team size and app complexity"
+
+  - id: simple_atomic
+    priority: 5
+    if:
+      - app_complexity == simple
+    then:
+      pattern: atomic_state
+      notes: "Atomic state (Jotai, Signals) provides fine-grained reactivity without boilerplate"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: server_state_query
+    description: "Server state queries are the most common state management need"
+
+patterns:
+  - id: server_state_query
+    name: "Server State / Data Fetching"
+    description: >
+      Manage server-cached state with libraries like TanStack Query, SWR, or
+      RTK Query. These handle: caching, background refetching, stale-while-
+      revalidate, optimistic updates, pagination, and request deduplication.
+      Server state is treated as a cache of server truth, not application state.
+    use_when:
+      - "Most state comes from API calls"
+      - "Need automatic cache invalidation and refetching"
+      - "Optimistic UI updates for better UX"
+      - "Multiple components consume the same API data"
+    avoid_when:
+      - "All state is UI-local (toggle, dropdown open/close)"
+      - "No API calls (static app)"
+      - "Primarily real-time WebSocket data (use direct subscription)"
+    tradeoffs:
+      pros:
+        - "Automatic caching, deduplication, and garbage collection"
+        - "Background refetching keeps data fresh"
+        - "Optimistic updates with automatic rollback on error"
+        - "Devtools for debugging cache state"
+      cons:
+        - "Cache invalidation is hard to configure correctly"
+        - "Library-specific mental model (stale-while-revalidate)"
+        - "Over-fetching if queries aren't granular enough"
+    implementation:
+      guidelines:
+        - "Use staleTime to avoid refetching on every mount (set based on data freshness needs)"
+        - "Use gcTime to keep data in cache for back-navigation"
+        - "Implement optimistic updates with onMutate for rollback"
+        - "Use query key factories for structured, cacheable keys"
+        - "Prefetch data for anticipated user actions"
+        - "Use infinite queries for paginated lists"
+        - "Set up query cancellation for aborted requests"
+      common_errors:
+        - error: "Setting staleTime: 0 (default) causing refetch on every mount"
+          impact: "Excessive API calls, poor performance, rate limiting"
+          fix: "Set staleTime based on data freshness: 30s for user data, 5min for reference data"
+        - error: "No optimistic rollback on mutation failure"
+          impact: "UI shows incorrect data until refetch completes"
+          fix: "Implement onMutate to save previous state, onError to restore it"
+    maturity:
+      level: standard
+    standards:
+      - name: "TanStack Query"
+        type: framework
+        role: "Server state management with caching, refetching, and optimistic updates"
+        status: recommended
+      - name: "SWR"
+        type: framework
+        role: "Lightweight React hooks for data fetching with stale-while-revalidate"
+        status: recommended
+      - name: "RTK Query"
+        type: framework
+        role: "Redux Toolkit data fetching and caching layer"
+        status: recommended
+
+  - id: global_client_state
+    name: "Global Client State"
+    description: >
+      Centralized state store for application-wide client state (user session,
+      theme, UI preferences, feature flags). Libraries: Zustand, Redux Toolkit,
+      Pinia (Vue), MobX. Supports middleware, devtools, and selectors for
+      efficient re-rendering.
+    use_when:
+      - "State shared across many unrelated components"
+      - "Complex state logic with multiple consumers"
+      - "Medium to large teams needing predictable state updates"
+      - "Middleware needed for logging, persistence, undo"
+    avoid_when:
+      - "Small app with minimal shared state (use props or context)"
+      - "State is primarily server data (use TanStack Query)"
+      - "Form-heavy app (form libraries handle their own state)"
+    tradeoffs:
+      pros:
+        - "Single source of truth for application-wide state"
+        - "Devtools: time-travel debugging, action logging"
+        - "Middleware: persistence, logging, undo/redo"
+        - "Predictable updates via actions/reducers"
+      cons:
+        - "Boilerplate: actions, reducers, selectors, middleware"
+        - "Over-centralization: everything ends up in global store"
+        - "Selector complexity: inefficient selectors cause re-renders"
+    implementation:
+      guidelines:
+        - "Use multiple stores by domain (user store, ui store, settings store)"
+        - "Use selectors with equality functions to prevent unnecessary re-renders"
+        - "Keep derived state computed, not stored (use selectors or signals)"
+        - "Use middleware for side effects (logging, analytics, persistence)"
+        - "Prefer Zustand or Pinia over Redux for simpler API"
+        - "Use Redux Toolkit if the team already knows Redux patterns"
+        - "Implement store reset on logout for security"
+      common_errors:
+        - error: "Storing derived data alongside source data"
+          impact: "Inconsistency when source changes but derived doesn't update"
+          fix: "Derive computed values in selectors, don't store them"
+        - error: "No selector memoization causing infinite re-render loops"
+          impact: "Performance degradation, frozen UI"
+          fix: "Use createSelector (Reselect) or shallow equality checks"
+    maturity:
+      level: standard
+    standards:
+      - name: "Zustand"
+        type: framework
+        role: "Minimal global state with hooks API and middleware"
+        status: recommended
+      - name: "Redux Toolkit"
+        type: framework
+        role: "Predictable state container with devtools and middleware"
+        status: recommended
+      - name: "Pinia"
+        type: framework
+        role: "Vue state management with TypeScript-first API"
+        status: recommended
+      - name: "MobX"
+        type: framework
+        role: "Reactive state management with observables"
+        status: recommended
+
+  - id: url_state
+    name: "URL State"
+    description: >
+      State stored in URL query parameters, hash fragments, or router state.
+      Naturally shareable, bookmarkable, and survives page refresh. Ideal for
+      search filters, pagination, tab selection, and modal state.
+    use_when:
+      - "State should be shareable via URL (filters, search, page)"
+      - "State must survive page refresh"
+      - "Browser back/forward navigation should restore state"
+    avoid_when:
+      - "Sensitive data (never put tokens or PII in URL)"
+      - "Frequently changing state (causes history pollution)"
+      - "Complex or large state objects (URL length limits)"
+    tradeoffs:
+      pros:
+        - "Naturally persists across refresh"
+        - "Shareable and bookmarkable"
+        - "Back/forward navigation works out of the box"
+        - "Server can read initial state from URL"
+      cons:
+        - "Limited to string values (complex objects need serialization)"
+        - "URL length limits (~2000 chars)"
+        - "History pollution if every interaction pushes state"
+    implementation:
+      guidelines:
+        - "Use URLSearchParams for query parameter state"
+        - "Push state for significant navigation, replace for intermediate filters"
+        - "Serialize complex state to JSON and encode as base64 or single param"
+        - "Use router hooks (useSearchParams, useRouter) for URL state"
+        - "Validate and sanitize all URL state on read"
+        - "Provide default values when URL params are missing"
+        - "Use replaceState instead of pushState for transient filters"
+      common_errors:
+        - error: "Storing sensitive data in URL query params"
+          impact: "Tokens, emails, or IDs exposed in browser history, referrer headers"
+          fix: "Never store auth tokens or PII in URL; use session storage or server state"
+    maturity:
+      level: standard
+    standards:
+      - name: "URLSearchParams API"
+        type: spec
+        role: "Browser native API for query parameter manipulation"
+        status: recommended
+
+  - id: atomic_state
+    name: "Atomic State (Jotai / Signals)"
+    description: >
+      Fine-grained reactive state using atoms (Jotai, Recoil) or signals
+      (Preact Signals, Angular Signals, Solid). Each piece of state is an
+      independent unit. Derived atoms compute values reactively. Only
+      components consuming a specific atom re-render when it changes.
+    use_when:
+      - "Simple to moderate app complexity"
+      - "Fine-grained reactivity without boilerplate"
+      - "Derived state that auto-updates when dependencies change"
+      - "Avoiding selector complexity of global stores"
+    avoid_when:
+      - "Complex async data with caching needs (use TanStack Query)"
+      - "Large team needing strict state conventions"
+      - "Middleware-heavy state (use Zustand or Redux)"
+    tradeoffs:
+      pros:
+        - "Minimal boilerplate — no actions, reducers, or dispatch"
+        - "Automatic granular re-renders (only consumers of changed atoms update)"
+        - "Derived atoms compose naturally"
+        - "Small bundle size (Jotai: ~3kB, Signals: ~1kB)"
+      cons:
+        - "No built-in devtools or time-travel debugging"
+        - "No middleware ecosystem (logging, persistence)"
+        - "Less suitable for very complex state logic"
+    implementation:
+      guidelines:
+        - "Start with atoms for raw state; use derived atoms for computed values"
+        - "Split state into small atoms (one concern per atom)"
+        - "Use atom families for dynamic collections (one atom per item ID)"
+        - "Use async atoms for server state with loadable pattern"
+        - "For deep objects, use split atoms to avoid full-object re-renders"
+      common_errors:
+        - error: "Creating one large atom for all state (defeats granularity)"
+          impact: "Any change re-renders all consumers of the atom"
+          fix: "Split into multiple focused atoms; compose via derived atoms"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Jotai"
+        type: framework
+        role: "Atomic React state with derived atoms and async support"
+        status: recommended
+      - name: "Preact Signals"
+        type: framework
+        role: "Signal-based reactive state for fine-grained updates"
+        status: emerging
+      - name: "Angular Signals"
+        type: framework
+        role: "Reactive primitive for Angular state management"
+        status: recommended
+
+  - id: form_state
+    name: "Form State"
+    description: >
+      Specialized form state management: field values, validation errors,
+      dirty/pristine tracking, submission state, touched fields, and wizard
+      state. Libraries: React Hook Form, Formik, FormKit (Vue), VeeValidate.
+      Form state is inherently local and complex — handling validation UX,
+      async validation, conditional fields, and multi-step wizards.
+
+      (Placeholder: this domain is covered in detail by form-handling-patterns.
+      Present here as a distinct pattern to route the decision tree correctly.)
+    use_when:
+      - "Primary state is form field values and validation"
+      - "Complex forms with conditional fields, async validation"
+      - "Multi-step wizards with state across steps"
+    avoid_when:
+      - "Simple forms with 2-3 fields (use local state)"
+    tradeoffs:
+      pros:
+        - "Dedicated form libraries handle complex validation UX"
+        - "Automatic dirty/pristine tracking"
+        - "Async validation, conditional fields, arrays"
+      cons:
+        - "Form libraries have learning curves"
+        - "Overkill for simple forms"
+    implementation:
+      guidelines:
+        - "Use a dedicated form library (React Hook Form, FormKit)"
+        - "Validate on blur and on change, not just on submit"
+        - "Implement field-level and form-level validation"
+        - "Save draft state to localStorage for long forms"
+        - "Show error state only after field has been touched"
+      common_errors:
+        - error: "Validating only on submit"
+          impact: "Poor UX: user fills 20 fields, submits, gets 5 errors"
+          fix: "Validate on blur and onChange; show errors after touch"
+    maturity:
+      level: standard
+
+examples:
+  - id: server_state_correct
+    title: "Server State with Optimistic Update"
+    context: "Todo list with instant UI feedback"
+    correct: |
+      // CORRECT: TanStack Query with optimistic update
+
+      const queryClient = useQueryClient()
+
+      const mutation = useMutation({
+        mutationFn: (newTodo) => api.post("/todos", newTodo),
+        onMutate: async (newTodo) => {
+          await queryClient.cancelQueries({ queryKey: ["todos"] })
+          const previous = queryClient.getQueryData(["todos"])
+          queryClient.setQueryData(["todos"], (old) => [...old, newTodo])
+          return { previous }
+        },
+        onError: (err, newTodo, context) => {
+          queryClient.setQueryData(["todos"], context.previous)
+          showError("Failed to add todo")
+        },
+        onSettled: () => {
+          queryClient.invalidateQueries({ queryKey: ["todos"] })
+        },
+      })
+    incorrect: |
+      // WRONG: Manual fetch, no caching, no optimistic update
+
+      const [todos, setTodos] = useState([])
+      const [loading, setLoading] = useState(true)
+
+      useEffect(() => {
+        fetch("/api/todos").then(r => r.json()).then(setTodos)
+      }, [])
+
+      const addTodo = async (title) => {
+        await fetch("/api/todos", {
+          method: "POST",
+          body: JSON.stringify({ title }),
+        })
+        // Must refetch ALL todos to see the new one
+        fetch("/api/todos").then(r => r.json()).then(setTodos)
+      }
+    explanation: >
+      The correct version uses optimistic updates (UI updates immediately,
+      rolls back on error) and cache invalidation. The incorrect version
+      has no caching, no optimistic feedback, and must re-fetch all data
+      after every mutation.
+
+security_hardening:
+  transport:
+    requirements:
+      - "API calls use HTTPS; tokens never in URL state"
+  data_protection:
+    requirements:
+      - "Sensitive state never persisted to URL or localStorage"
+      - "Stores cleared on logout (app reset)"
+  access_control:
+    requirements:
+      - "State derived from API responses respects authorization"
+  input_output:
+    requirements:
+      - "URL state validated and sanitized on read"
+  secrets:
+    requirements:
+      - "API tokens stored in secure HTTP-only cookies, not client state"
+  monitoring:
+    requirements:
+      - "State errors logged with context (action, reducer, component)"
+
+compliance:
+  standards:
+    - name: "OWASP"
+      relevance: "URL state exposes data in referrer headers and browser history"
+  requirements_mapping:
+    - control: state_security
+      description: "Sensitive data excluded from client-visible state"
+      maps_to:
+        - "OWASP: sensitive data exposure"
+
+prompt_recipes:
+  - id: state_greenfield
+    scenario: greenfield
+    description: "Design state management architecture"
+    prompt: |
+      Design state management for {app_name}.
+
+      Context:
+      - State type: server/global/url/form/mixed
+      - Complexity: simple/moderate/complex
+      - Team size: small/medium/large
+      - Real-time: yes/no
+
+      Tasks:
+      1. Identify state domains (server, UI, form, URL)
+      2. Choose library per domain with rationale
+      3. Define store structure and selectors
+      4. Plan cache invalidation strategy
+      5. Set up devtools and debugging
+
+  - id: migrate_to_query
+    scenario: migration
+    description: "Migrate from global store to server state"
+    prompt: |
+      Migrate API data from global Redux store to TanStack Query.
+
+      Plan:
+      1. Identify server state currently in Redux
+      2. Create query hooks replacing thunks/sagas
+      3. Set staleTime per endpoint
+      4. Implement optimistic mutations
+      5. Remove old Redux reducers for migrated state
+
+  - id: state_performance
+    scenario: performance
+    description: "Optimize state re-renders"
+    prompt: |
+      Profile and optimize state-related re-renders in {app_name}.
+
+      Steps:
+      1. Add React Devtools Profiler markers
+      2. Identify components re-rendering from unrelated state changes
+      3. Fix missing selector equality checks
+      4. Split large stores into domain-specific stores
+      5. Use atomic state for frequently changing values
+
+  - id: state_persistence
+    scenario: edge-case
+    description: "Implement state persistence across sessions"
+    prompt: |
+      Implement state persistence for {app_name}.
+
+      Requirements:
+      - User preferences survive page reload
+      - Draft form data saved locally
+      - Sensitive data excluded
+
+      Approach:
+      1. Use Zustand persist middleware or TanStack Query persister
+      2. Whitelist only non-sensitive keys
+      3. Version persisted state for migration on schema changes
+      4. Encrypt sensitive persisted values
+
+anti_patterns:
+  - name: "Putting Everything in Global State"
+    description: >
+      Moving server state, form state, UI toggle state, and derived values
+      all into a single global store. Loses granularity, causes unnecessary
+      re-renders, and mixes concerns.
+    fix: "Use the right tool for each state type: server state → TanStack Query, form state → form library, UI state → local state or atoms."
+    severity: high
+    related_pattern: global_client_state
+
+  - name: "Ignoring Stale-While-Revalidate"
+    description: >
+      Refetching data from the server every time a component mounts,
+      ignoring the stale-while-revalidate caching strategy. Increases
+      server load, latency, and bandwidth.
+    fix: "Set appropriate staleTime per endpoint (30s-5min). Use stale-while-revalidate: show cached data, refetch in background."
+    severity: medium
+    related_pattern: server_state_query
+
+  - name: "Over-Normalizing Without Selectors"
+    description: >
+      Storing deeply normalized relational state but reading it with
+      inefficient selectors that reconstruct objects on every call.
+      Every component re-renders on any state change.
+    fix: "Create memoized selectors (createSelector, Zustand shallow) that only return new references when relevant data changes."
+    severity: medium
+    related_pattern: global_client_state
+
+  - name: "Mixing Server and UI State in Same Store"
+    description: >
+      UI state (theme, sidebar open) and server data (user, todos) in
+      the same store. Cache invalidation and UI persistence become coupled.
+    fix: "Separate stores by concern: one for UI state (Zustand, context) and one for server state (TanStack Query)."
+    severity: medium
+    related_pattern: global_client_state
+
+checklist:
+  - id: SM-01
+    category: performance
+    description: "Server state queries have staleTime > 0 to avoid excess refetching"
+    severity: high
+    verified_by: server_state_query
+  - id: SM-02
+    category: reliability
+    description: "Optimistic mutations have error rollback (onError/onMutate)"
+    severity: high
+    verified_by: server_state_query
+  - id: SM-03
+    category: performance
+    description: "Selectors use memoization or shallow equality checks"
+    severity: high
+    verified_by: global_client_state
+  - id: SM-04
+    category: security
+    description: "No sensitive data stored in URL params or localStorage"
+    severity: critical
+    verified_by: url_state
+  - id: SM-05
+    category: maintainability
+    description: "State stores are split by domain, not monolithic"
+    severity: medium
+    verified_by: global_client_state
+  - id: SM-06
+    category: reliability
+    description: "Store reset on user logout clears all client state"
+    severity: critical
+    verified_by: global_client_state
+  - id: SM-07
+    category: maintainability
+    description: "Global store doesn't contain server-cacheable data"
+    severity: medium
+    verified_by: global_client_state
+  - id: SM-08
+    category: performance
+    description: "Devtools disabled in production builds"
+    severity: medium
+    verified_by: global_client_state

@@ -1,0 +1,407 @@
+# =============================================================================
+# AI Architecture Cookbook — Real-Time Frontend
+# Schema: v3 | Domain: real-time-frontend
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: real-time-frontend
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Real-time frontend communication patterns covering WebSockets (client-side),
+    Server-Sent Events (SSE), polling strategies (short/long polling), resilient
+    reconnection, message buffering, bidirectional state sync, and optimistic
+    updates for real-time collaborative features.
+
+  tags:
+    - real-time
+    - websocket
+    - sse
+    - polling
+    - collaboration
+    - live-updates
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - id: messaging-events
+      reason: "Real-time frontend consumes messages from server-side event streams"
+    - id: frontend-state-management
+      reason: "Real-time updates flow into client-side state"
+    - id: error-handling
+      reason: "Connection failures require retry, fallback, and error states"
+
+  related_standards:
+    - id: pwa-offline-first
+      relationship: complementary
+      context: "Real-time connections must handle offline/online transitions"
+
+context_inputs:
+  - name: update_freshness
+    type: enum
+    description: "Maximum acceptable delay between event and display"
+    required: true
+    default: medium
+    enum_values:
+      - realtime
+      - near_realtime
+      - periodic
+
+  - name: connection_reliability
+    type: enum
+    description: "Reliability of the user's network connection"
+    required: false
+    default: stable
+    enum_values:
+      - stable
+      - flaky
+      - unreliable
+
+  - name: payload_size
+    type: enum
+    description: "Size of each real-time update payload"
+    required: false
+    default: small
+    enum_values:
+      - small
+      - medium
+      - large
+
+decision_tree:
+  - id: realtime_required
+    priority: 1
+    if:
+      - update_freshness == realtime
+      - connection_reliability in [stable, flaky]
+    then:
+      pattern: websocket_client
+      notes: "Real-time updates (< 100ms) require WebSocket with reconnection logic"
+
+  - id: flaky_network
+    priority: 2
+    if:
+      - connection_reliability == unreliable
+    then:
+      pattern: resilient_reconnection
+      notes: "Unreliable networks need exponential backoff reconnection, message buffering, and state reconciliation"
+
+  - id: near_realtime
+    priority: 3
+    if:
+      - update_freshness == near_realtime
+    then:
+      pattern: server_sent_events
+      notes: "Near-real-time (1-5s delay) can use SSE which is simpler than WebSockets"
+
+  - id: periodic_updates
+    priority: 4
+    if:
+      - update_freshness == periodic
+    then:
+      pattern: polling_strategy
+      notes: "Periodic updates use polling (long or short) when simpler infrastructure is needed"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: polling_strategy
+    description: "Polling is the simplest fallback that works everywhere"
+
+patterns:
+  - id: websocket_client
+    name: "WebSocket Client"
+    description: >
+      Persistent bi-directional communication channel via WebSocket API.
+      Client connects, sends/receives messages, and maintains connection.
+      Ideal for chat, live notifications, collaborative editing, and
+      real-time dashboards.
+    use_when:
+      - "Sub-100ms update latency required"
+      - "Client needs to send as well as receive"
+      - "High-frequency updates (multiple/second)"
+      - "Bidirectional communication needed"
+    avoid_when:
+      - "One-way server-to-client updates only (use SSE)"
+      - "Occasional, non-critical updates (use polling)"
+      - "All data can be fetched on demand"
+    tradeoffs:
+      pros:
+        - "Lowest latency for real-time updates"
+        - "Full duplex: send and receive on same connection"
+        - "Efficient: no HTTP overhead per message"
+      cons:
+        - "Requires WebSocket server (more complex infra)"
+        - "Connection management: reconnect, heartbeat, backpressure"
+        - "Not supported in restrictive proxy environments"
+    implementation:
+      guidelines:
+        - "Use a WebSocket library (Socket.IO, ws, PartySocket) for reconnection and fallback"
+        - "Implement automatic reconnection with exponential backoff (1s, 2s, 4s, max 30s)"
+        - "Send heartbeat/ping every 30s to detect stale connections"
+        - "Buffer messages sent while disconnected, replay on reconnect"
+        - "Use binary format (ArrayBuffer, MessagePack) for large payloads"
+        - "Handle connection state: connected, connecting, disconnected, reconnecting"
+        - "Show connection status indicator in the UI"
+        - "Authenticate WebSocket connection (token in query param or first message)"
+      common_errors:
+        - error: "No reconnection logic — user must refresh page to reconnect"
+          impact: "Temporary network blip kills real-time updates until manual refresh"
+          fix: "Implement automatic reconnection with exponential backoff"
+    maturity:
+      level: standard
+    standards:
+      - name: "WebSocket API"
+        type: spec
+        role: "Browser native bi-directional communication"
+        status: recommended
+      - name: "Socket.IO"
+        type: framework
+        role: "WebSocket library with auto-reconnect, fallback, and rooms"
+        status: recommended
+
+  - id: server_sent_events
+    name: "Server-Sent Events (SSE)"
+    description: >
+      One-way server-to-client event stream via EventSource API. Simpler than
+      WebSockets — uses standard HTTP. Server pushes events; client listens.
+      Ideal for live feeds, notifications, and status updates.
+    use_when:
+      - "One-way server-to-client updates"
+      - "1-5 second update latency is acceptable"
+      - "Simpler infrastructure than WebSockets"
+      - "Events, notifications, status updates"
+    avoid_when:
+      - "Client must send data to server (use WebSocket or HTTP)"
+      - "Sub-100ms latency required"
+    tradeoffs:
+      pros:
+        - "Simple: standard HTTP, no special server needed"
+        - "Built-in browser reconnection"
+        - "Works through most proxies and firewalls"
+      cons:
+        - "One-way only (server to client)"
+        - "Limited to 6 concurrent connections per domain (HTTP/1.1)"
+        - "Not supported in IE/older browsers (polyfill available)"
+    implementation:
+      guidelines:
+        - "Use EventSource API with onmessage handler"
+        - "Handle connection errors with automatic reconnect (built-in)"
+        - "Parse event data as JSON in onmessage"
+        - "Use event types branching for different message kinds"
+        - "Set Last-Event-ID for resuming missed events on reconnect"
+        - "Consider HTTP/2 for removing the 6-connection limit"
+      common_errors:
+        - error: "SSE connection not closing properly on navigation"
+          impact: "Hitting browser connection limit on SPA navigation"
+          fix: "Close EventSource on component unmount: eventSource.close()"
+    maturity:
+      level: standard
+    standards:
+      - name: "EventSource API"
+        type: spec
+        role: "Browser native server-sent events"
+        status: recommended
+
+  - id: polling_strategy
+    name: "Polling (Short and Long Polling)"
+    description: >
+      Client pings server at regular intervals (short polling) or keeps a
+      request open until data arrives (long polling). Simplest real-time
+      approach. Works everywhere without special protocols.
+    use_when:
+      - "5-30 second update frequency is acceptable"
+      - "Simple infrastructure requirements"
+      - "No WebSocket/SSE support in the environment"
+      - "Non-critical, infrequent updates"
+    avoid_when:
+      - "Sub-second updates required"
+      - "High-frequency polling would overload the server"
+    tradeoffs:
+      pros:
+        - "Works everywhere — no special protocol support needed"
+        - "Simple to implement and debug"
+        - "Compatible with all HTTP infrastructure"
+      cons:
+        - "Higher latency than WebSocket/SSE"
+        - "Unnecessary requests when no new data exists"
+        - "Server load scales with polling frequency"
+    implementation:
+      guidelines:
+        - "Use long polling to reduce request frequency: server holds request until data available"
+        - "Set polling interval based on data freshness needs (5s for chat, 30s for notifications)"
+        - "Use request cancellation on component unmount"
+        - "Implement polling only when the tab/view is visible (visibilitychange)"
+        - "Use exponential backoff for polling on error (network failure)"
+      common_errors:
+        - error: "Polling at high frequency with no backoff on errors"
+          impact: "Server receives constant failed requests during outage (thundering herd)"
+          fix: "Implement backoff: double interval on error up to a max"
+    maturity:
+      level: standard
+
+  - id: resilient_reconnection
+    name: "Resilient Reconnection"
+    description: >
+      Sophisticated reconnection strategy for flaky networks: exponential
+      backoff with jitter, connection state tracking, message buffering
+      during offline, state reconciliation on reconnect, and graceful
+      degradation to polling when WebSocket fails permanently.
+    use_when:
+      - "Mobile or unstable network connections"
+      - "Real-time updates critical despite flaky connectivity"
+      - "Users in areas with poor network coverage"
+    avoid_when:
+      - "Stable network with reliable connection"
+    tradeoffs:
+      pros:
+        - "Works reliably on poor networks"
+        - "No data loss during disconnection"
+        - "Graceful fallback to HTTP polling"
+      cons:
+        - "Complex implementation"
+        - "Message ordering and deduplication challenges"
+    implementation:
+      guidelines:
+        - "Implement exponential backoff with jitter (base^attempt + random(0, 1000))"
+        - "Buffer outbound messages in a queue during disconnection"
+        - "On reconnect: flush buffer, then full state sync from server"
+        - "Track last received message ID for deduplication on reconnect"
+        - "Fall back to HTTP long polling after N failed WebSocket attempts"
+        - "Show connection quality indicator (connected/reconnecting/offline)"
+        - "Use visibilitychange to pause polling when tab is hidden"
+      common_errors:
+        - error: "No message deduplication on reconnect"
+          impact: "User sees duplicate notifications or state updates"
+          fix: "Use message IDs for deduplication; server provides 'lastSeenId' on reconnect"
+    maturity:
+      level: advanced
+
+examples:
+  - id: websocket_vs_polling
+    title: "WebSocket vs Polling"
+    context: "Chat application"
+    correct: |
+      // CORRECT: WebSocket with Socket.IO
+      import { io } from "socket.io-client"
+
+      const socket = io("wss://chat.example.com", {
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 10000,
+      })
+
+      socket.on("connect", () => console.log("Connected"))
+      socket.on("message", (msg) => addMessage(msg))
+      socket.on("disconnect", () => console.log("Disconnected"))
+    incorrect: |
+      // WRONG: Polling every 500ms
+      setInterval(async () => {
+        const messages = await fetch("/api/messages/latest")
+          .then(r => r.json())
+        messages.forEach(m => addMessage(m))
+      }, 500) // 500ms — server hit every half second
+    explanation: >
+      The correct version uses WebSocket with Socket.IO for persistent
+      bi-directional connection with auto-reconnect. The incorrect version
+      polls every 500ms, creating unnecessary server load and higher latency.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All communication uses HTTPS"
+  data_protection:
+    requirements:
+      - "Sensitive data not exposed in client-visible state"
+  access_control:
+    requirements:
+      - "Feature-based access control enforced"
+  input_output:
+    requirements:
+      - "All user input sanitized"
+  secrets:
+    requirements:
+      - "No secrets in client-side code"
+  monitoring:
+    requirements:
+      - "Errors logged with context for debugging"
+
+compliance:
+  standards:
+    - name: "OWASP"
+      relevance: "Frontend security best practices"
+  requirements_mapping:
+    - control: secure_communication
+      description: "All frontend communication uses secure channels"
+      maps_to:
+        - "OWASP: secure communication"
+
+prompt_recipes:
+  - id: realtime_setup
+    scenario: greenfield
+    description: "Set up real-time features"
+    prompt: "Set up real-time updates for {feature_name}.\n\nRequirements:\n- Latency: realtime/near-realtime/periodic\n- Network: stable/flaky/unreliable\n- Direction: one-way/two-way\n\nChoose protocol and design reconnection strategy."
+  - id: realtime_state_sync
+    scenario: migration
+    description: "Add real-time sync to existing app"
+    prompt: "Add real-time collaboration to {app_name}.\n\nPlan:\n1. Choose protocol (WebSocket, SSE, polling)\n2. Set up server-side event publishing\n3. Implement client connection with reconnection\n4. Handle optimistic updates + server reconciliation\n5. Add conflict resolution\n6. Test offline/online transitions"
+  - id: connection_debugging
+    scenario: audit
+    description: "Debug real-time connection issues"
+    prompt: "Debug real-time connection issues for {app_name}.\n\nSteps:\n1. Check WebSocket connection state\n2. Verify reconnection backoff behavior\n3. Inspect message buffering during offline\n4. Check for message deduplication on reconnect\n5. Review connection status indicator behavior\n6. Test graceful degradation to polling"
+  - id: protocol_migration
+    scenario: migration
+    description: "Migrate from polling to WebSocket"
+    prompt: "Migrate {app_name} from polling to WebSocket for real-time updates.\n\nSteps:\n1. Set up WebSocket server endpoint\n2. Implement client WebSocket connection with reconnection\n3. Add message buffering and deduplication\n4. Replace polled endpoints with event handlers\n5. Implement graceful fallback to polling\n6. Benchmark latency improvement"
+
+anti_patterns:
+  - name: "No Connection Status Indicator"
+    description: "User has no idea if real-time connection is live. Messages silently fail."
+    fix: "Show connection status: green dot (connected), yellow (reconnecting), red (disconnected)."
+    severity: medium
+    related_pattern: websocket_client
+  - name: "Polling Too Aggressively"
+    description: "Polling every 100ms for data that changes every 30 seconds. Wasted server resources."
+    fix: "Set polling interval based on actual data change frequency. Use long polling or SSE instead."
+    severity: high
+    related_pattern: polling_strategy
+  - name: "No Message Buffering on Disconnect"
+    description: "Messages sent while disconnected are lost. User thinks action was submitted."
+    fix: "Buffer outbound messages locally and flush when connection restores."
+    severity: high
+    related_pattern: resilient_reconnection
+
+checklist:
+  - id: RT-01
+    category: reliability
+    description: "WebSocket reconnection with exponential backoff implemented"
+    severity: critical
+    verified_by: websocket_client
+  - id: RT-02
+    category: reliability
+    description: "Connection status indicator shown in the UI"
+    severity: medium
+    verified_by: websocket_client
+  - id: RT-03
+    category: correctness
+    description: "Outbound messages buffered during disconnection and replayed"
+    severity: high
+    verified_by: resilient_reconnection
+  - id: RT-04
+    category: correctness
+    description: "Message deduplication mechanism on reconnect"
+    severity: high
+    verified_by: resilient_reconnection
+  - id: RT-05
+    category: performance
+    description: "Polling interval increases on error (backoff)"
+    severity: medium
+    verified_by: polling_strategy
+  - id: RT-06
+    category: reliability
+    description: "WebSocket gracefully degrades to HTTP polling after failures"
+    severity: high
+    verified_by: resilient_reconnection

@@ -1,0 +1,450 @@
+# =============================================================================
+# AI Architecture Cookbook — Data Engineering Pipelines
+# Schema: v3 | Domain: data-engineering-pipelines
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: data-engineering-pipelines
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Data pipeline patterns covering batch ETL/ELT with dbt and Airflow,
+    streaming pipelines with Kafka/Flink, data lake/lakehouse architecture,
+    and feature stores for ML. Guidance on orchestration, transformation,
+    and data quality for analytical and operational data flows.
+
+  tags:
+    - data-engineering
+    - etl
+    - elt
+    - dbt
+    - airflow
+    - data-lake
+    - data-warehouse
+    - feature-store
+
+  categories:
+    - integration-data
+
+  prerequisites:
+    - data-persistence
+    - data-transformation
+    - performance-optimization
+
+  related_standards:
+    - id: data-transformation
+      relationship: complementary
+      context: "Transformation patterns apply within pipeline stages"
+    - id: data-persistence
+      relationship: complementary
+      context: "Pipeline output destinations follow persistence standards"
+    - id: mlops-lifecycle
+      relationship: complementary
+      context: "Feature stores and data pipelines feed ML training"
+
+context_inputs:
+  - name: pipeline_type
+    type: enum
+    description: "Type of data pipeline"
+    required: true
+    default: batch
+    enum_values: [batch, streaming, hybrid, event_driven]
+
+  - name: data_volume
+    type: enum
+    description: "Data volume processed per day"
+    required: true
+    default: moderate
+    enum_values: [small, moderate, large, massive]
+
+  - name: latency_requirement
+    type: enum
+    description: "Required data freshness downstream"
+    required: true
+    default: daily
+    enum_values: [real_time, near_real_time, hourly, daily, batch_weekly]
+
+  - name: ml_integration
+    type: boolean
+    description: "Does the pipeline serve ML?"
+    required: false
+    default: false
+
+decision_tree:
+  - id: streaming_realtime
+    priority: 1
+    if:
+      - latency_requirement in [real_time, near_real_time]
+      - pipeline_type in [streaming, hybrid]
+    then:
+      pattern: streaming_pipelines
+      standards: ["Apache Kafka", "Apache Flink"]
+      notes: "Real-time latency requires streaming with Kafka for ingestion and Flink for stream processing."
+
+  - id: lakehouse_large_volume
+    priority: 2
+    if:
+      - data_volume in [large, massive]
+      - latency_requirement in [hourly, daily, batch_weekly]
+    then:
+      pattern: data_lake_lakehouse
+      standards: ["Apache Iceberg", "Delta Lake"]
+      notes: "Large-volume batch processing benefits from lakehouse ACID on object storage."
+
+  - id: batch_etl_elt
+    priority: 3
+    if:
+      - pipeline_type in [batch, hybrid]
+      - latency_requirement in [hourly, daily, batch_weekly]
+    then:
+      pattern: batch_etl_elt
+      standards: ["dbt", "Apache Airflow"]
+      notes: "Standard batch processing: ELT for cloud warehouses, ETL for traditional warehouses."
+
+  - id: feature_store_ml
+    priority: 4
+    if:
+      - ml_integration == true
+    then:
+      pattern: feature_store
+      standards: ["Feast", "Tecton"]
+      notes: "Feature stores centralize ML features with point-in-time correct lookups for training and inference."
+
+  - id: simple_batch
+    priority: 5
+    if:
+      - data_volume in [small, moderate]
+      - latency_requirement in [daily, batch_weekly]
+    then:
+      pattern: batch_etl_elt
+      notes: "Small to moderate data with daily latency is served well by batch ELT/ETL."
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: batch_etl_elt
+    description: "Batch ELT/ETL with Airflow and dbt covers widest range of data pipeline scenarios"
+
+patterns:
+  - id: batch_etl_elt
+    name: "Batch ETL/ELT with dbt and Airflow"
+    description: >
+      Batch pipeline with Airflow for orchestration and dbt for SQL transformations.
+      ELT loads raw data then transforms in-warehouse; ETL transforms before loading.
+    use_when:
+      - "Daily/hourly/weekly batch acceptable"
+      - "SQL-based transformations sufficient"
+      - "Data warehouse or lakehouse is target"
+    avoid_when:
+      - "Sub-second latency needed"
+      - "Transformations require complex imperative code"
+    tradeoffs:
+      pros: ["Declarative SQL transforms easy to review", "dbt provides docs, lineage, testing", "Airflow handles complex DAGs"]
+      cons: ["Batch latency inherent", "Full refresh cycles resource-intensive", "Orchestration complexity at scale"]
+    implementation:
+      guidelines:
+        - "Use ELT for cloud warehouses; ETL for traditional warehouses"
+        - "Layer dbt models: staging, intermediate, mart"
+        - "Add dbt tests (not-null, unique, custom) for data quality"
+        - "Implement incremental models for large tables"
+        - "Use Airflow sensors for upstream data availability"
+      common_errors:
+        - error: "Full refreshes on large tables every run"
+          impact: "High cost, long duration, data unavailable during refresh"
+          fix: "Use dbt incremental models with is_incremental() and timestamp filtering"
+        - error: "No data quality tests in pipeline"
+          impact: "Corrupted data propagates silently to dashboards"
+          fix: "Add dbt tests on every model; alert on test failures"
+    maturity:
+      level: standard
+    standards:
+      - name: "Apache Airflow"
+        type: framework
+        role: "Pipeline orchestration and scheduling"
+        status: recommended
+      - name: "dbt"
+        type: tool
+        role: "SQL data transformation with testing"
+        status: recommended
+
+  - id: streaming_pipelines
+    name: "Streaming Pipelines"
+    description: >
+      Continuous data processing with Kafka for event ingestion and Flink/Kafka
+      Streams for stream processing. Sub-second to sub-minute data freshness.
+    use_when:
+      - "Real-time or near-real-time processing"
+      - "Event-driven architectures"
+      - "Time-sensitive analytics (fraud, monitoring)"
+    avoid_when:
+      - "Batch meets requirements (streaming adds complexity)"
+      - "Low data volume not justifying streaming infra"
+    tradeoffs:
+      pros: ["Sub-second data freshness", "Continuous processing, no batch windows", "Natural for event-driven architectures"]
+      cons: ["Significant operational complexity", "Exactly-once semantics hard end-to-end", "Higher infra cost than batch"]
+    implementation:
+      guidelines:
+        - "Use Kafka with appropriate partitioning"
+        - "Design idempotent consumers for duplicate events"
+        - "Implement dead-letter queues for failed events"
+        - "Monitor consumer lag as primary health metric"
+        - "Use schema registry (Avro, Protobuf) for evolution"
+      common_errors:
+        - error: "No consumer lag monitoring"
+          impact: "Processing falls behind; data freshness degrades silently"
+          fix: "Monitor consumer lag with alert thresholds; auto-scale consumers"
+        - error: "Non-idempotent stream processing"
+          impact: "Duplicates cause incorrect aggregations on replay"
+          fix: "Use upsert semantics and window deduplication"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Apache Kafka"
+        type: tool
+        role: "Distributed event streaming platform"
+        status: recommended
+      - name: "Apache Flink"
+        type: framework
+        role: "Stateful stream processing engine"
+        status: recommended
+
+  - id: data_lake_lakehouse
+    name: "Data Lake and Lakehouse"
+    description: >
+      Raw data in object storage (Parquet format) with ACID transactions via
+      Iceberg/Delta Lake. Combines data lake flexibility with warehouse reliability.
+    use_when:
+      - "Petabyte-scale raw data storage"
+      - "Multiple engines access same data"
+      - "ACID on data lake storage"
+    avoid_when:
+      - "Small datasets fitting in traditional warehouse"
+    tradeoffs:
+      pros: ["Cost-effective object storage", "Open formats prevent lock-in", "Time travel and snapshot isolation"]
+      cons: ["Performance tuning complex (file sizing, compaction)", "Small file problem degrades queries", "Catalog and metadata management needed"]
+    implementation:
+      guidelines:
+        - "Store raw data in immutable, append-only partitions"
+        - "Use Iceberg or Delta Lake for ACID transactions"
+        - "Partition by date; target 128-512MB file sizes"
+        - "Implement compaction jobs to merge small files"
+        - "Register tables in shared catalog (Hive Metastore, Glue)"
+      common_errors:
+        - error: "Small file accumulation (millions of tiny Parquet files)"
+          impact: "Query planning overhead dominates; queries take minutes"
+          fix: "Implement automatic compaction; tune partitioning for 128-512MB files"
+        - error: "No schema validation on raw ingestion"
+          impact: "Corrupted data enters lake; downstream processing fails"
+          fix: "Reject malformed records at ingestion; validate schema on write"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Apache Iceberg"
+        type: format
+        role: "Open table format for lakehouse ACID"
+        status: recommended
+      - name: "Delta Lake"
+        type: format
+        role: "Lakehouse with ACID and time travel"
+        status: recommended
+
+  - id: feature_store
+    name: "Feature Store"
+    description: >
+      Central ML feature repository ensuring consistency between training and
+      inference. Point-in-time correct historical lookups and low-latency serving.
+    use_when:
+      - "Multiple models share common features"
+      - "Need consistent features between training and serving"
+      - "Online inference requires low-latency feature lookups"
+    avoid_when:
+      - "Single model with no shared features"
+      - "Batch-only with no online serving"
+    tradeoffs:
+      pros: ["Feature reuse across models", "Eliminates training-serving skew", "Central discovery of features"]
+      cons: ["Additional infrastructure to operate", "Online serving needs low-latency store (Redis)", "Feature backfill expensive"]
+    implementation:
+      guidelines:
+        - "Define features as transformations in feature store DSL"
+        - "Separate batch features from streaming features"
+        - "Use point-in-time joins for training data"
+        - "Serve online features from Redis/DynamoDB"
+        - "Monitor feature distributions for drift"
+      common_errors:
+        - error: "Training-serving skew from different feature code"
+          impact: "Model works offline but fails in production"
+          fix: "Compute features once in feature store; serve same values for training and inference"
+        - error: "No point-in-time correctness in training data"
+          impact: "Training uses future data unavailable at inference (lookahead bias)"
+          fix: "Use feature store point-in-time joins to ensure temporal correctness"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Feast"
+        type: framework
+        role: "Open-source feature store"
+        status: recommended
+
+security_hardening:
+  transport:
+    requirements:
+      - "TLS 1.2+ for all pipeline data transfers"
+      - "mTLS for Kafka broker communication"
+  data_protection:
+    requirements:
+      - "Encrypt sensitive columns at rest in lake and warehouse"
+      - "Tokenize or mask PII in pipeline transformations"
+  access_control:
+    requirements:
+      - "Least-privilege IAM roles per pipeline stage"
+      - "Airflow RBAC for DAG editing and execution"
+  input_output:
+    requirements:
+      - "Validate incoming data schema before ingestion"
+      - "Reject malformed records to dead-letter queue"
+  secrets:
+    requirements:
+      - "DB credentials in secret manager, not DAG code"
+      - "Rotate pipeline credentials on schedule"
+  monitoring:
+    requirements:
+      - "Monitor pipeline task failures on thresholds"
+      - "Track data freshness SLA per table"
+
+examples:
+  - id: pipeline_etl_design
+    title: "Batch ETL Pipeline"
+    context: "Daily data processing with dbt and Airflow"
+    correct: |
+      # CORRECT: dbt model with Airflow orchestration
+      # models/staging/stg_orders.sql
+      SELECT
+        id AS order_id,
+        customer_id,
+        order_date,
+        amount,
+        status,
+        updated_at
+      FROM raw_orders
+      WHERE updated_at >= '{{ var("start_date") }}'
+
+      # Airflow DAG triggers dbt run, validates freshness
+      dag = DAG("orders_pipeline", schedule="0 3 * * *")
+      extract >> dbt_run >> dbt_test >> freshness_check >> load_to_analytics
+    incorrect: |
+      # WRONG: No orchestration, no testing
+      # Manual script run daily with no validation
+      cursor.execute("SELECT * FROM raw_orders")
+      cursor.executemany("INSERT INTO staging VALUES (?)", rows)
+      # No idempotency — at-least-once semantics can duplicate
+      # No DAG, no monitoring, no freshness check
+    explanation: >
+      The correct version uses dbt for transforms (idempotent, testable)
+      and Airflow for orchestration with freshness validation. The
+      incorrect version has no idempotency, no testing, no scheduling.
+
+compliance:
+  standards:
+    - name: "GDPR (Right to Erasure)"
+      relevance: "Pipelines must support data deletion across all storage layers"
+    - name: "SOX (Financial Data)"
+      relevance: "Pipelines for financial reporting need audit trails"
+
+  requirements_mapping:
+    - control: data_lineage
+      description: "Every field traceable from source to consumption"
+      maps_to: ["SOX §404", "GDPR Article 15"]
+    - control: pipeline_audit
+      description: "All runs logged with duration, status, row counts"
+      maps_to: ["SOX §404"]
+
+prompt_recipes:
+  - id: pipeline_greenfield
+    scenario: greenfield
+    description: "Design data pipeline architecture"
+    prompt: |
+      Design pipeline for: type=[batch/streaming/hybrid], volume=[small/moderate/large/massive],
+      latency=[real-time/near-real-time/hourly/daily], ML=[yes/no].
+      Design: ingestion, orchestration (Airflow/Prefect), transforms (dbt/Spark), storage (warehouse/lake).
+
+  - id: pipeline_migration
+    scenario: migration
+    description: "Migrate legacy ETL to ELT"
+    prompt: |
+      Migrate ETL to ELT: 1. Extract current pipeline logic 2. Load raw data as-is 3. Reimplement transforms as dbt models 4. Verify output parity 5. Cut over pipeline by pipeline.
+
+  - id: pipeline_audit
+    scenario: audit
+    description: "Audit pipeline health"
+    prompt: |
+      Audit: 1. DAGs monitored with alerting? 2. Data freshness SLA tracked? 3. dbt tests on every model? 4. Incremental for large tables? 5. Consumer lag monitored? 6. DLQs for failed records? 7. Credentials in secret manager?
+
+  - id: feature_store_design
+    scenario: greenfield
+    description: "Design feature store"
+    prompt: |
+      Design feature store: shared features across N models, online latency <10ms, point-in-time training data.
+      Components: feature registry, batch computation (Spark), streaming (Flink), online store (Redis), offline store (data lake).
+
+anti_patterns:
+  - name: "Data Pipeline Monolith"
+    description: "Single DAG handling all ingestion, transforms, quality. Brittle and hard to maintain."
+    fix: "Split into focused DAGs per data domain"
+    severity: high
+    related_pattern: batch_etl_elt
+
+  - name: "No Data Quality Checks"
+    description: "Pipelines without validation; corrupted data propagates silently"
+    fix: "Implement dbt tests on every model; alert on failures"
+    severity: critical
+    related_pattern: batch_etl_elt
+
+  - name: "Data Swamp"
+    description: "Data lake without catalog or governance; data accumulates undocumented"
+    fix: "Maintain shared catalog with schema, lineage, and ownership"
+    severity: high
+    related_pattern: data_lake_lakehouse
+
+checklist:
+  - id: DE-01
+    category: reliability
+    description: "DAGs monitored with alerting on failure"
+    severity: critical
+    verified_by: batch_etl_elt
+  - id: DE-02
+    category: correctness
+    description: "dbt tests on all models"
+    severity: high
+    verified_by: batch_etl_elt
+  - id: DE-03
+    category: performance
+    description: "Incremental models for large tables"
+    severity: high
+    verified_by: batch_etl_elt
+  - id: DE-04
+    category: reliability
+    description: "Consumer lag monitored for streaming"
+    severity: critical
+    verified_by: streaming_pipelines
+  - id: DE-05
+    category: reliability
+    description: "Dead-letter queues for failed events"
+    severity: high
+    verified_by: streaming_pipelines
+  - id: DE-06
+    category: performance
+    description: "File compaction to 128-512MB target"
+    severity: high
+    verified_by: data_lake_lakehouse
+  - id: DE-07
+    category: correctness
+    description: "Point-in-time joins for training data"
+    severity: critical
+    verified_by: feature_store
+  - id: DE-08
+    category: security
+    description: "Credentials in secret manager, not code"
+    severity: critical
+    verified_by: batch_etl_elt

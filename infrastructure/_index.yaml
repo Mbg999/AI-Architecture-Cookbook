@@ -70,3 +70,35 @@ entries:
     prerequisites: ["containerization", "orchestration", "cloud-architecture", "performance-optimization"]
     pattern_count: 5
     anti_pattern_count: 3
+
+  - domain: serverless-functions
+    version: "1.0.0"
+    description: "Serverless functions: single-purpose Lambda, Step Functions orchestration, API Gateway, event-driven functions"
+    tags: ["serverless", "lambda", "functions", "faas", "cold-start", "step-functions", "event-driven"]
+    prerequisites: ["cloud-architecture", "api-design", "ci-cd"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: edge-computing
+    version: "1.0.0"
+    description: "Edge computing patterns: edge functions, CDN compute, geo-distribution, IoT edge, edge caching, local processing"
+    tags: ["edge-computing", "edge", "cdn", "cloudflare-workers", "akamai", "iot", "geo-distribution"]
+    prerequisites: ["cloud-architecture", "containerization"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: disaster-recovery-backup
+    version: "1.0.0"
+    description: "Disaster recovery and backup: RTO/RPO, backup strategies, multi-region failover, chaos testing, restore validation"
+    tags: ["disaster-recovery", "backup", "rto", "rpo", "failover", "chaos-testing", "multi-region"]
+    prerequisites: ["cloud-architecture", "data-persistence"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: finops-cost-optimization
+    version: "1.0.0"
+    description: "FinOps and cost optimization: cloud cost governance, reserved instances, spot instances, auto-scaling, cost allocation"
+    tags: ["finops", "cost-optimization", "cloud-cost", "reserved-instances", "spot", "auto-scaling", "cost-governance"]
+    prerequisites: ["cloud-architecture", "infrastructure-as-code"]
+    pattern_count: 4
+    anti_pattern_count: 3

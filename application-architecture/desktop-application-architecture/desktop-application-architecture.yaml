@@ -1,0 +1,676 @@
+# =============================================================================
+# AI Architecture Cookbook — Desktop Application Architecture
+# Schema: v3 | Domain: desktop-application-architecture
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: desktop-application-architecture
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Desktop application architecture patterns covering Electron and Tauri
+    frameworks, native modules and FFI for platform-specific functionality,
+    auto-update mechanisms, system tray integration, window management, IPC
+    between main and renderer processes, and desktop-specific considerations
+    for memory, startup time, and OS integration.
+
+  tags:
+    - desktop
+    - electron
+    - tauri
+    - native
+    - auto-updater
+    - system-tray
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - id: frontend-component-architecture
+      reason: "Desktop UI in Electron/Tauri uses frontend component patterns for the renderer layer"
+
+  related_standards:
+    - id: frontend-component-architecture
+      relationship: complementary
+      context: "Desktop renderer process follows frontend component patterns"
+    - id: native-mobile-architecture
+      relationship: complementary
+      context: "Desktop native modules share FFI and bridge architecture patterns with mobile"
+    - id: pwa-offline-first
+      relationship: alternative
+      context: "PWA with install prompt is an alternative distribution model for desktop apps"
+
+context_inputs:
+  - name: os_target
+    type: enum
+    description: "Target desktop operating systems"
+    required: true
+    default: cross_platform
+    enum_values:
+      - windows_only
+      - macos_only
+      - linux_only
+      - cross_platform
+
+  - name: app_complexity
+    type: enum
+    description: "Application feature complexity"
+    required: true
+    default: moderate
+    enum_values:
+      - simple
+      - moderate
+      - complex
+
+  - name: native_integration
+    type: enum
+    description: "Need for native OS APIs and system integration"
+    required: true
+    default: moderate
+    enum_values:
+      - minimal
+      - moderate
+      - extensive
+
+  - name: bundle_size_constraint
+    type: enum
+    description: "Application bundle size sensitivity"
+    required: true
+    default: flexible
+    enum_values:
+      - tight
+      - moderate
+      - flexible
+
+decision_tree:
+  - id: electron_complex_app
+    priority: 1
+    if:
+      - app_complexity in [moderate, complex]
+      - os_target == cross_platform
+      - bundle_size_constraint in [moderate, flexible]
+    then:
+      pattern: electron_architecture
+      notes: >
+        Electron is the proven choice for complex cross-platform desktop apps.
+        Its mature ecosystem, broad library support, and Chromium rendering
+        engine handle complex UI and extensive feature sets well.
+
+  - id: tauri_lightweight
+    priority: 2
+    if:
+      - bundle_size_constraint in [tight, moderate]
+      - native_integration in [minimal, moderate]
+    then:
+      pattern: tauri_architecture
+      notes: >
+        Tauri provides significantly smaller bundle sizes by using the OS
+        webview instead of bundling Chromium. It also has a stronger security
+        model with CSP enforcement and Rust-based backend.
+
+  - id: native_ffi_heavy
+    priority: 3
+    if:
+      - native_integration == extensive
+    then:
+      pattern: native_modules_ffi
+      notes: >
+        Extensive native integration requires a well-designed FFI layer. Both
+        Electron (via native addons) and Tauri (via Rust commands) support
+        calling native code, but the architecture must handle threading,
+        memory safety, and platform differences.
+
+  - id: auto_update_needed
+    priority: 4
+    if:
+      - os_target in [windows_only, macos_only, cross_platform]
+    then:
+      pattern: auto_update
+      notes: >
+        Auto-update is mandatory for all shipped desktop applications except
+        for Linux distribution-managed packages. Use electron-updater for
+        Electron or tauri-updater for Tauri.
+
+  - id: simple_electron
+    priority: 5
+    if:
+      - app_complexity == simple
+      - os_target == cross_platform
+    then:
+      pattern: tauri_architecture
+      notes: >
+        Simple cross-platform apps benefit most from Tauri's small bundle
+        size and faster startup. The simplicity of the app means the smaller
+        Tauri ecosystem is not a limiting factor.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: electron_architecture
+    description: "Electron is the most proven and widely-supported desktop framework"
+
+patterns:
+  - id: electron_architecture
+    name: "Electron Architecture"
+    description: >
+      Electron applications consist of a main process (Node.js) that manages
+      the application lifecycle, windows, and native APIs, and one or more
+      renderer processes (Chromium) that render the web-based UI. Communication
+      between processes uses Inter-Process Communication (IPC) via Electron's
+      ipcMain/ipcRenderer modules. A preload script bridges the context
+      isolation boundary between renderer and main process.
+    use_when:
+      - "Complex cross-platform desktop applications"
+      - "Need mature ecosystem with extensive libraries and tooling"
+      - "Chromium DevTools-based debugging desirable"
+      - "Existing web application needs desktop distribution"
+    avoid_when:
+      - "Bundle size is critical (Chromium adds ~150MB)"
+      - "Memory-constrained environments"
+      - "Security-sensitive apps needing minimal attack surface"
+    tradeoffs:
+      pros:
+        - "Largest desktop framework ecosystem and community"
+        - "Full Chromium rendering — no compatibility issues"
+        - "Mature tooling: electron-builder, electron-forge, electron-updater"
+        - "Works on all three desktop platforms out of the box"
+      cons:
+        - "Large bundle size (~150MB for Chromium + Node.js)"
+        - "High memory usage (Chromium process per window)"
+        - "Slower startup time compared to Tauri or native"
+        - "Larger security surface area (Chromium + Node.js)"
+    implementation:
+      guidelines:
+        - "Enable context isolation and disable nodeIntegration in renderers"
+        - "Use preload scripts with contextBridge for controlled IPC"
+        - "Implement process sandboxing: renderers have no direct system access"
+        - "Use IPC for all native operations; never expose Node.js APIs to renderers"
+        - "Manage window lifecycle: create, hide, destroy explicitly"
+        - "Implement single-instance lock for file association handling"
+        - "Use electron-updater for auto-update with staged rollouts"
+        - "Configure Content Security Policy (CSP) headers in all windows"
+      common_errors:
+        - error: "nodeIntegration enabled in renderer process"
+          impact: "Renderer has full Node.js access; XSS vulnerability becomes RCE"
+          fix: "Disable nodeIntegration; use contextBridge and preload scripts for controlled native access"
+        - error: "Memory leaks from unreleased IPC listeners"
+          impact: "App memory grows over time; eventually slows down or crashes"
+          fix: "Remove IPC listeners when windows are destroyed; use ipcRenderer.removeAllListeners"
+    maturity:
+      level: standard
+    standards:
+      - name: "Electron Security (Context Isolation)"
+        type: practice
+        role: "Secure Electron configuration with context isolation and sandbox"
+        status: recommended
+
+  - id: tauri_architecture
+    name: "Tauri Architecture"
+    description: >
+      Tauri applications use the OS-native webview (WebView2 on Windows,
+      WKWebView on macOS, WebKitGTK on Linux) for rendering, with a Rust
+      backend process that handles system commands, IPC, and native APIs.
+      The architecture is inherently more secure than Electron because
+      the renderer has no direct system access — all operations go through
+      a CSP-enforced Rust command layer with explicit allowlists.
+    use_when:
+      - "Bundle size is constrained (Tauri adds ~5MB vs Electron's ~150MB)"
+      - "Security-sensitive applications needing minimal attack surface"
+      - "Startup time is critical (Tauri starts 2-5x faster than Electron)"
+      - "Rust expertise available for backend development"
+    avoid_when:
+      - "Complex native features requiring extensive third-party native libraries"
+      - "Team has no Rust experience and tight deadlines"
+    tradeoffs:
+      pros:
+        - "Tiny bundle size (~5MB vs Electron's ~150MB)"
+        - "Faster startup and lower memory consumption"
+        - "Stronger security model (CSP-enforced, no Node.js in renderer)"
+        - "Rust backend provides memory safety and performance"
+      cons:
+        - "Smaller ecosystem and fewer third-party plugins"
+        - "Webview inconsistencies across platforms (CSS, features)"
+        - "Rust backend increases development complexity"
+        - "No Chromium DevTools in production builds"
+    implementation:
+      guidelines:
+        - "Define IPC commands as type-safe Rust functions with #[tauri::command]"
+        - "Use frontend TypeScript bindings generated from Rust command signatures"
+        - "Configure CSP in tauri.conf.json to restrict renderer capabilities"
+        - "Implement window state persistence via Rust backend (not localStorage)"
+        - "Use tauri-plugin APIs for system tray, notifications, shell, filesystem"
+        - "Apply least privilege: configure allowlist for only needed APIs"
+        - "Use tauri-updater for cross-platform auto-updates"
+        - "Handle webview edge cases: test on all target OS platform webview versions"
+      common_errors:
+        - error: "Overly permissive allowlist in tauri.conf.json"
+          impact: "Renderer process has access to system APIs it should not, negating security benefits"
+          fix: "Configure allowlist with minimum required APIs; use custom commands for specific operations"
+        - error: "Rust panics in IPC commands not caught or handled"
+          impact: "Unhandled panic crashes the backend process and the entire application"
+          fix: "Use Result<T, E> return types; log errors; never panic in IPC command handlers"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Tauri Security (CSP + Allowlist)"
+        type: practice
+        role: "Security-first desktop framework with Rust backend"
+        status: recommended
+
+  - id: native_modules_ffi
+    name: "Native Modules / FFI Architecture"
+    description: >
+      Desktop applications frequently need to call native OS APIs or C libraries
+      for performance-critical or platform-specific functionality. The FFI
+      architecture abstracts platform differences behind a unified interface,
+      manages threading (off the UI thread), handles memory allocation across
+      boundaries, and provides type-safe bindings. Electron uses Node.js
+      native addons (N-API) or child processes; Tauri uses Rust FFI.
+    use_when:
+      - "Performance-critical operations (image processing, video encoding)"
+      - "OS-specific features not exposed by framework (Windows Registry, macOS Keychain)"
+      - "Integrating legacy native libraries or hardware SDKs"
+      - "Filesystem operations requiring low-level access"
+    avoid_when:
+      - "Operation can be done via standard framework APIs"
+      - "No existing native library dependency"
+    tradeoffs:
+      pros:
+        - "Access to full native OS and library functionality"
+        - "Performance-critical code runs at native speed"
+        - "Can wrap and reuse existing C/C++/Rust libraries"
+        - "Abstracts platform differences behind common interface"
+      cons:
+        - "Significant development and maintenance complexity"
+        - "Must manage memory across language boundaries"
+        - "Build infrastructure required per platform and architecture"
+        - "Debugging is more difficult (two language runtimes)"
+    implementation:
+      guidelines:
+        - "Define a clean abstraction layer: platform-specific code behind unified interface"
+        - "Use N-API (Node.js) or Rust FFI (Tauri) — never raw native addons"
+        - "Run FFI operations on background threads; never block the main/renderer thread"
+        - "Serialize complex data as structured buffers (protobuf or flatbuffers)"
+        - "Implement comprehensive error handling: every FFI call can fail"
+        - "Use reference counting or RAII to manage native resource lifetimes"
+        - "Conditionally load platform-specific modules at runtime via platform detection"
+        - "Provide pure-software fallback for platforms without the native capability"
+      common_errors:
+        - error: "Blocking the main process with synchronous FFI calls"
+          impact: "Application freezes during native operations; OS may show beachball/not responding"
+          fix: "Always use async FFI; dispatch native calls to worker threads; use IPC for results"
+        - error: "Memory corruption from incorrect FFI bindings"
+          impact: "Segfaults, heap corruption, unpredictable crashes in production"
+          fix: "Use code generation for FFI bindings; use safe wrappers (Neon for Node, cxx for Rust)"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "N-API (Node.js Native Addons)"
+        type: spec
+        role: "Stable Node.js API for native addon development"
+        status: recommended
+      - name: "Neon Bindings (Rust to Node.js)"
+        type: framework
+        role: "Safe Rust bindings for Node.js native modules"
+        status: recommended
+
+  - id: auto_update
+    name: "Auto-Update"
+    description: >
+      Automatic update infrastructure for desktop applications. Supports
+      staged rollouts, differential updates, update channels (stable, beta,
+      canary), and forced updates for critical security patches. Electron
+      uses electron-updater (electron-builder) or Squirrel. Tauri uses
+      tauri-updater. Updates are verified with code signing before application.
+    use_when:
+      - "Shipped desktop application distributed to end users"
+      - "Need to deploy security patches quickly"
+      - "Want staged rollouts to catch issues before full release"
+    avoid_when:
+      - "Linux distribution-managed package (apt, rpm, pacman)"
+      - "Internal enterprise tool with managed IT deployment"
+    tradeoffs:
+      pros:
+        - "Users always have latest features and security fixes"
+        - "Staged rollouts limit blast radius of problematic releases"
+        - "Update process is transparent to the user"
+        - "Differential updates reduce download size"
+      cons:
+        - "Codesigning certificates required (cost and management overhead)"
+        - "Update server infrastructure (self-hosted or managed)"
+        - "Testing matrix expands (multiple versions in the wild)"
+        - "Force-updates can disrupt user workflow if not carefully timed"
+    implementation:
+      guidelines:
+        - "Use electron-updater or tauri-updater based on framework choice"
+        - "Implement update channels: stable, beta, canary with user opt-in"
+        - "Stage rollouts: update 1% of users, monitor, then 5%, 25%, 100%"
+        - "Sign all updates with codesigning certificate; verify signatures client-side"
+        - "Support auto-update and manual update check with user notification"
+        - "Force update for critical security patches; optional for feature releases"
+        - "Provide release notes in the update dialog"
+        - "Handle update failures gracefully: retry with exponential backoff"
+        - "Monitor update success rate and crash rate per version"
+      common_errors:
+        - error: "No codesigning for update packages"
+          impact: "Users receive unsigned updates that may be blocked by OS or tampered with in transit"
+          fix: "Always sign updates; verify signature before installation; automate signing in CI/CD pipeline"
+        - error: "Update during active user session without save prompt"
+          impact: "User loses unsaved work when app restarts for update"
+          fix: "Prompt user to save work before restart; provide defer option (remind later)"
+    maturity:
+      level: standard
+    standards:
+      - name: "electron-updater"
+        type: tool
+        role: "Auto-update solution for Electron applications"
+        status: recommended
+      - name: "tauri-updater"
+        type: tool
+        role: "Auto-update plugin for Tauri applications"
+        status: recommended
+
+examples:
+  - id: electron_ipc_pattern
+    title: "Electron Secure IPC — File Dialog"
+    context: "Opening a native file dialog from renderer via secure IPC"
+    correct: |
+      // preload.js — Expose controlled API via contextBridge
+      const { contextBridge, ipcRenderer } = require("electron")
+
+      contextBridge.exposeInMainWorld("desktopAPI", {
+        openFile: (extensions) => ipcRenderer.invoke("dialog:openFile", extensions),
+        onFileOpened: (callback) => ipcRenderer.on("file:opened", (_event, path) => callback(path)),
+      })
+
+      // main.js — Handle IPC with native dialog
+      const { ipcMain, dialog } = require("electron")
+
+      ipcMain.handle("dialog:openFile", async (_event, extensions) => {
+        const result = await dialog.showOpenDialog({
+          properties: ["openFile"],
+          filters: [{ name: "Files", extensions }],
+        })
+        return result.canceled ? null : result.filePaths[0]
+      })
+
+      // renderer.js — Use controlled API
+      const filePath = await window.desktopAPI.openFile(["pdf", "txt"])
+    incorrect: |
+      // WRONG: nodeIntegration enabled — renderer has full system access
+      // main.js (BAD)
+      const win = new BrowserWindow({
+        webPreferences: {
+          nodeIntegration: true,  // SECURITY RISK!
+          contextIsolation: false // SECURITY RISK!
+        }
+      })
+
+      // renderer.js (BAD) — Direct Node.js access
+      const { dialog } = require("electron")  // Requires nodeIntegration
+      dialog.showOpenDialog(...)  // Renderer can also require('child_process')!
+    explanation: >
+      The correct version uses contextIsolation with a preload script that
+      exposes only the required `openFile` function via contextBridge. The
+      main process handles the actual native dialog, and the renderer never
+      has direct Node.js access. The incorrect version enables nodeIntegration,
+      giving the renderer full system access and making XSS a critical RCE risk.
+
+  - id: tauri_command
+    title: "Tauri Rust Command — System Info"
+    context: "Exposing system information from Rust backend"
+    correct: |
+      // Rust backend — tauri command
+      #[tauri::command]
+      fn get_system_info() -> Result<SystemInfo, String> {
+          let os = std::env::consts::OS.to_string();
+          let hostname = hostname::get()
+              .map_err(|e| format!("Failed to get hostname: {}", e))?
+              .to_string_lossy()
+              .to_string();
+          Ok(SystemInfo { os, hostname })
+      }
+
+      // Frontend — Type-safe invocation
+      interface SystemInfo {
+        os: string
+        hostname: string
+      }
+
+      const info = await invoke<SystemInfo>("get_system_info")
+    incorrect: |
+      // WRONG: Shell command injection risk from renderer
+      // Rust backend
+      #[tauri::command]
+      fn run_command(cmd: String) -> String {
+          let output = std::process::Command::new("sh")
+              .arg("-c")
+              .arg(cmd)  // DANGEROUS: command injection!
+              .output()
+              .unwrap();
+          String::from_utf8_lossy(&output.stdout).to_string()
+      }
+
+      // Frontend — User input passed directly to shell
+      const result = await invoke("run_command", { cmd: userInput })
+    explanation: >
+      The correct version exposes a typed Rust command that returns a
+      structured SystemInfo object. No shell execution, no injection risk.
+      The incorrect version passes user input directly to a shell command,
+      creating a remote command execution vulnerability.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All update server communication over HTTPS"
+      - "Update package signatures verified before installation"
+      - "CSP headers configured to restrict renderer network access"
+  data_protection:
+    requirements:
+      - "Sensitive data stored in OS keychain (Windows Credential Manager, macOS Keychain)"
+      - "No sensitive data exposed via IPC to renderer processes"
+      - "Secure memory wiping for sensitive data buffers"
+  access_control:
+    requirements:
+      - "Renderer processes sandboxed with no direct system access"
+      - "IPC commands restricted to allowlist in Tauri tauri.conf.json"
+      - "Single-instance lock prevents unauthorized process spawning"
+  input_output:
+    requirements:
+      - "All IPC inputs validated and sanitized on the receiving end"
+      - "Deep link URLs parsed and validated before action"
+      - "Drag-and-drop file paths validated before access"
+  secrets:
+    requirements:
+      - "No API keys or tokens in frontend code (renderer bundle)"
+      - "Codesigning certificates in secure storage with HSM if available"
+      - "Auto-update private keys never exposed to build agents"
+  monitoring:
+    requirements:
+      - "Crash reporting with native stack traces (Sentry, Crashpad)"
+      - "Update success/failure rate monitored per version"
+      - "Performance metrics: startup time, memory usage, frame rate"
+
+compliance:
+  standards:
+    - name: "OWASP Desktop Application Security"
+      relevance: "Desktop-specific security threats and countermeasures"
+    - name: "Apple Notarization Requirements"
+      relevance: "macOS code signing and notarization for distribution"
+    - name: "Microsoft Windows App Certification"
+      relevance: "Windows application certification requirements"
+
+  requirements_mapping:
+    - control: secure_updates
+      description: "Auto-update with code signing and signature verification"
+      maps_to:
+        - "OWASP Desktop: Secure Updates"
+        - "Apple Notarization"
+    - control: sandboxed_renderer
+      description: "Renderer processes sandboxed with context isolation"
+      maps_to:
+        - "OWASP Desktop: Process Sandboxing"
+    - control: secure_storage
+      description: "Credentials and tokens stored in OS keychain"
+      maps_to:
+        - "OWASP Desktop: Secure Credential Storage"
+
+prompt_recipes:
+  - id: desktop_framework_selection
+    scenario: greenfield
+    description: "Select desktop application framework"
+    prompt: |
+      Select the desktop application framework.
+
+      Context:
+      - Target OS: [Windows/macOS/Linux/cross-platform]
+      - App complexity: [simple/moderate/complex]
+      - Native integration level: [minimal/moderate/extensive]
+      - Bundle size constraint: [tight/moderate/flexible]
+      - Team expertise: [frontend/backend/Rust]
+
+      Evaluate:
+      - Electron vs Tauri vs native per platform
+      - Bundle size implications
+      - Security model differences
+      - Ecosystem maturity and library availability
+      - Build and deployment complexity
+
+  - id: desktop_auto_update_setup
+    scenario: greenfield
+    description: "Set up auto-update infrastructure"
+    prompt: |
+      Set up auto-update infrastructure for a desktop application.
+
+      Framework: [Electron/Tauri]
+      Distribution platforms: [Windows/macOS/Linux]
+
+      Requirements:
+      1. Update server configuration (self-hosted S3/GitHub Releases/managed)
+      2. Codesigning certificate procurement and CI/CD integration
+      3. Update channel setup (stable, beta, canary)
+      4. Staged rollout configuration and monitoring
+      5. Differential vs full update strategy
+      6. Force update for critical security patches
+      7. User notification and deferment UX
+      8. Rollback mechanism for failed updates
+
+  - id: desktop_security_audit
+    scenario: audit
+    description: "Audit desktop application security"
+    prompt: |
+      Audit the desktop application security posture:
+
+      1. Is context isolation enabled? (Electron) / CSP enforced? (Tauri)
+      2. Is nodeIntegration disabled? / Is allowlist minimal?
+      3. Are IPC commands validated on both sides?
+      4. Are update packages signed and verified?
+      5. Are secrets stored in OS keychain, not in the bundle?
+      6. Is the renderer process sandboxed?
+      7. Are deep links and custom protocols validated?
+      8. Is single-instance lock enforced?
+      9. Are crash reports filtered for sensitive data?
+      10. Is the CSP header restrictive enough?
+
+  - id: desktop_native_ffi
+    scenario: architecture
+    description: "Design native module integration"
+    prompt: |
+      Design the native module / FFI integration for a desktop app.
+
+      Native library: [library name]
+      Functionality: [what the library does]
+      Framework: [Electron/Tauri]
+
+      Requirements:
+      - Type-safe bindings between framework and native code
+      - Async call pattern (never block UI)
+      - Memory management strategy across language boundary
+      - Error handling: all native errors as typed exceptions
+      - Platform fallback: what happens if native lib unavailable
+      - Testing strategy: mock native layer for unit tests
+      - Build: cross-compilation for each target platform
+
+anti_patterns:
+  - name: "Renderer Has Direct System Access"
+    description: >
+      Electron app with nodeIntegration enabled and contextIsolation disabled.
+      The renderer process running web content has full Node.js and system
+      access. A single XSS vulnerability becomes a critical remote code
+      execution risk with full system compromise.
+    fix: "Disable nodeIntegration, enable contextIsolation; use preload scripts with contextBridge for controlled IPC"
+    severity: critical
+    related_pattern: electron_architecture
+
+  - name: "Auto-Update Without Codesigning"
+    description: >
+      Shipping auto-updates without codesigning the update packages.
+      Updates cannot be verified as authentic; attackers can serve
+      malicious updates via MITM or compromised update server.
+    fix: "Obtain codesigning certificates; sign all updates in CI/CD; verify signatures client-side"
+    severity: critical
+    related_pattern: auto_update
+
+  - name: "No Graceful Update Handling"
+    description: >
+      Forcing app restarts for updates without saving user state or
+      providing deferral options. Users lose unsaved work, generating
+      frustration and support tickets. Some users disable updates
+      entirely to avoid disruption.
+    fix: "Prompt users to save work; provide defer option; use background download and staged restart"
+    severity: medium
+    related_pattern: auto_update
+
+checklist:
+  - id: DESK-01
+    category: security
+    description: "Context isolation enabled; nodeIntegration disabled"
+    severity: critical
+    verified_by: electron_architecture
+  - id: DESK-02
+    category: security
+    description: "Update packages codesigned and verified before installation"
+    severity: critical
+    verified_by: auto_update
+  - id: DESK-03
+    category: security
+    description: "IPC commands validated and sanitized on receiver side"
+    severity: high
+    verified_by: electron_architecture
+  - id: DESK-04
+    category: security
+    description: "CSP headers configured for all windows"
+    severity: high
+    verified_by: tauri_architecture
+  - id: DESK-05
+    category: security
+    description: "No secrets in renderer bundle or source code"
+    severity: critical
+    verified_by: native_modules_ffi
+  - id: DESK-06
+    category: reliability
+    description: "Auto-update with staged rollout capability"
+    severity: high
+    verified_by: auto_update
+  - id: DESK-07
+    category: performance
+    description: "FFI calls async — never blocked on native operations"
+    severity: high
+    verified_by: native_modules_ffi
+  - id: DESK-08
+    category: security
+    description: "Tauri allowlist configured with minimum required APIs"
+    severity: high
+    verified_by: tauri_architecture
+  - id: DESK-09
+    category: reliability
+    description: "Crash reporting with native stack trace capture"
+    severity: medium
+    verified_by: electron_architecture
+  - id: DESK-10
+    category: reliability
+    description: "Update deferral and user save prompt implemented"
+    severity: medium
+    verified_by: auto_update

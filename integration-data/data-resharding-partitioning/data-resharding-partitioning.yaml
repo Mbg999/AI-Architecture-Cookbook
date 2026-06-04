@@ -1,0 +1,720 @@
+# =============================================================================
+# AI Architecture Cookbook — Data Resharding & Partitioning
+# Schema: v3 | Domain: data-resharding-partitioning
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: data-resharding-partitioning
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Data sharding and partitioning patterns for horizontal and vertical
+    scaling. Covers consistent hashing, range-based sharding, re-sharding
+    without downtime, and query-aware partition design for distributed
+    databases.
+
+  tags:
+    - sharding
+    - partitioning
+    - consistent-hashing
+    - re-sharding
+    - horizontal-scaling
+    - database
+
+  categories:
+    - integration-data
+
+  prerequisites:
+    - data-persistence
+    - database-migration
+
+  related_standards:
+    - id: data-persistence
+      relationship: complementary
+      context: "Sharding determines how data is distributed across storage instances"
+    - id: database-migration
+      relationship: complementary
+      context: "Re-sharding is a data migration operation requiring schema evolution"
+    - id: performance-optimization
+      relationship: complementary
+      context: "Query performance depends on partition key design"
+    - id: messaging-events
+      relationship: complementary
+      context: "Re-sharding coordination can use async messaging for data sync"
+
+context_inputs:
+  - name: data_volume
+    type: enum
+    description: "Expected data volume over time"
+    required: true
+    default: medium
+    enum_values:
+      - small
+      - medium
+      - large
+      - very_large
+
+  - name: shard_count
+    type: enum
+    description: "Current or planned number of shards"
+    required: true
+    default: single
+    enum_values:
+      - single
+      - few
+      - many
+      - dynamic
+
+  - name: rebalancing_frequency
+    type: enum
+    description: "How often data must be redistributed across shards"
+    required: true
+    default: rarely
+    enum_values:
+      - never
+      - rarely
+      - periodically
+      - continuously
+
+  - name: query_pattern
+    type: enum
+    description: "Primary query access pattern"
+    required: true
+    default: key_lookup
+    enum_values:
+      - key_lookup
+      - range_scan
+      - aggregations
+      - multi_shard
+      - mixed
+
+decision_tree:
+  - id: dynamic_rebalancing_needs_consistent_hashing
+    priority: 1
+    if:
+      - rebalancing_frequency in [periodically, continuously]
+    then:
+      pattern: consistent_hashing
+      standards:
+        - "Consistent Hashing"
+      notes: "Frequent rebalancing requires consistent hashing to minimize data movement on topology changes"
+
+  - id: range_scan_queries_need_range_partitioning
+    priority: 2
+    if:
+      - query_pattern == range_scan
+    then:
+      pattern: horizontal_partitioning
+      standards:
+        - "Range-Based Partitioning"
+      notes: "Range scans benefit from range-based partitioning where adjacent data is colocated"
+
+  - id: very_large_volume_needs_sharding
+    priority: 3
+    if:
+      - data_volume in [large, very_large]
+      - query_pattern in [key_lookup, mixed]
+    then:
+      pattern: consistent_hashing
+      standards:
+        - "Consistent Hashing"
+      notes: "Large volumes with key-lookup access patterns suit hash-based sharding for even distribution"
+
+  - id: mixed_workload_uses_composite_strategy
+    priority: 4
+    if:
+      - query_pattern == mixed
+      - data_volume in [medium, large]
+    then:
+      pattern: horizontal_partitioning
+      standards:
+        - "Composite Partitioning"
+      notes: "Mixed workloads benefit from composite partitioning (hash + range) to serve multiple access patterns"
+
+  - id: few_shards_for_initial_deployment
+    priority: 5
+    if:
+      - shard_count in [single, few]
+      - rebalancing_frequency == rarely
+    then:
+      pattern: horizontal_partitioning
+      standards:
+        - "Range-Based Partitioning"
+      notes: "Starting with few shards and rare rebalancing — range partitioning is simplest to implement and reason about"
+
+  - id: re_sharding_without_downtime
+    priority: 6
+    if:
+      - data_volume in [large, very_large]
+      - rebalancing_frequency in [periodically, continuously]
+    then:
+      pattern: re_sharding_without_downtime
+      standards:
+        - "Vitess / Citus Re-Sharding"
+      notes: "Large-scale re-sharding requires zero-downtime techniques: proxy-based, virtual shards, or live migration"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: critical
+  fallback:
+    pattern: horizontal_partitioning
+    description: "Range-based partitioning on a stable key — simplest for initial deployment"
+
+patterns:
+  - id: horizontal_partitioning
+    name: Horizontal Partitioning (Sharding)
+    description: >
+      Splitting a large dataset across multiple database instances based
+      on a partition key. Each shard holds a subset of rows. Can be
+      range-based (users A-M on shard 1, N-Z on shard 2) or list-based.
+      Simplest approach but data skew is a risk.
+
+    use_when:
+      - "Dataset exceeds single-node capacity (storage or query throughput)"
+      - "Natural range-based partition key exists (date range, geographic region)"
+      - "Simple, predictable shard count that rarely changes"
+      - "Queries mostly access a single shard"
+
+    avoid_when:
+      - "Shard count changes frequently — rebalancing is expensive"
+      - "No natural partition key — all keys needed for queries"
+      - "Cross-shard queries or transactions are common"
+      - "Data distribution by partition key is highly skewed"
+
+    tradeoffs:
+      pros:
+        - "Simple to implement and understand"
+        - "Efficient range scans within a partition"
+        - "No hash computation needed for routing"
+        - "Easy to add shards at the high end of the range"
+      cons:
+        - "Data skew — some shards grow faster than others"
+        - "Rebalancing requires full data migration"
+        - "Range queries across partition boundaries are slow"
+        - "Hot spots at partition boundaries"
+
+    implementation:
+      guidelines:
+        - "Choose partition key with even data distribution (not created_at timestamp alone)"
+        - "Use composite partition key for multi-dimensional data"
+        - "Pre-split partitions to avoid single-shard bottleneck"
+        - "Monitor partition size growth to detect skew early"
+        - "Keep partition count manageable (8-256 shards for most systems)"
+        - "Design application to route queries to correct shard"
+
+      common_errors:
+        - error: "Data skew from poor partition key"
+          impact: "One shard handles 80% of traffic while others are idle — no scaling benefit"
+          fix: "Use composite or hash-based key; test distribution with production data shape"
+        - error: "Too many partitions too early"
+          impact: "Operational overhead (connections, backups) with no performance benefit"
+          fix: "Start with 8-16 partitions; grow as needed; use virtual shards for flexibility"
+        - error: "Cross-shard transactions without coordination"
+          impact: "Distributed transactions are slow, fragile, and not supported by all databases"
+          fix: "Design schema to avoid cross-shard operations; use saga pattern when needed"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: Range-Based Partitioning
+        type: practice
+        role: "Partitioning by contiguous key ranges"
+        status: recommended
+      - name: Composite Partitioning
+        type: practice
+        role: "Multi-level partitioning (hash + range)"
+        status: recommended
+
+  - id: vertical_partitioning
+    name: Vertical Partitioning
+    description: >
+      Splitting a table by columns rather than rows. Frequently accessed
+      columns live in one table, rarely accessed or large columns in another.
+      Reduces row width and I/O for common queries. Often used with
+      normalized schemas or to isolate sensitive columns.
+
+    use_when:
+      - "Table has many columns but queries only access a subset"
+      - "Large BLOB/TEXT columns slow down row scans"
+      - "Sensitive columns need separate access controls"
+      - "Different columns have different update frequencies"
+
+    avoid_when:
+      - "Queries consistently access all columns"
+      - "Schema changes are frequent (vertical partitioning adds coupling)"
+      - "Single-table performance is acceptable"
+
+    tradeoffs:
+      pros:
+        - "Reduced I/O per query — only read needed columns"
+        - "Better cache utilization (more rows per page)"
+        - "Sensitive data isolation for access control"
+        - "Different storage/compression per column group"
+      cons:
+        - "Application must join or union across partitions"
+        - "Transaction spanning partitions requires coordination"
+        - "Schema complexity increases"
+        - "Insert performance degrades (multiple tables per row)"
+
+    implementation:
+      guidelines:
+        - "Separate hot columns from cold columns (accessed daily vs. yearly)"
+        - "Separate large columns (BLOB, TEXT) from frequently scanned columns"
+        - "Use view or ORM mapping to simplify application queries"
+        - "Isolate PII/PCI columns into partitioned table with stricter access"
+        - "Monitor query patterns — adjust partitioning if columns shift access frequency"
+
+      common_errors:
+        - error: "Over-partitioning — too many narrow tables"
+          impact: "Every query joins 5+ tables; performance worse than single wide table"
+          fix: "Partition only columns with clear access pattern separation; measure before and after"
+        - error: "Vertical partitioning without considering update patterns"
+          impact: "Update to one column group requires transaction coordinating all groups"
+          fix: "Group columns that are updated together; isolate columns with independent update cycles"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: Vertical Partitioning
+        type: practice
+        role: "Splitting tables by column groups"
+        status: recommended
+
+  - id: consistent_hashing
+    name: Consistent Hashing
+    description: >
+      Distributed hashing scheme that minimizes data movement when the
+      number of shards changes. Each key is hashed onto a ring and
+      assigned to the nearest shard. Adding or removing a shard only
+      affects neighboring shards (N/m keys moved instead of all keys).
+
+    use_when:
+      - "Shard count changes over time (scale up and down)"
+      - "Need even data distribution without data skew"
+      - "Automatic shard rebalancing required"
+      - "Keyspace is large and well-distributed by hash"
+
+    avoid_when:
+      - "Range queries must use contiguous keys"
+      - "Shard count is fixed and never changes"
+      - "Hash collisions cause unacceptable performance degradation"
+      - "Key distribution is inherently non-uniform"
+
+    tradeoffs:
+      pros:
+        - "Minimal data movement on topology change (only N/m keys)"
+        - "Even distribution — hash function spreads keys uniformly"
+        - "Supports dynamic scaling — add/remove nodes easily"
+        - "Decentralized — each client can route without central lookup"
+      cons:
+        - "Range scans are not supported (hashed keys are non-contiguous)"
+        - "Virtual nodes add complexity but help with heterogeneity"
+        - "Hot spot handling requires additional strategies (bounded loads)"
+        - "Partition key cannot be changed after deployment"
+
+    implementation:
+      guidelines:
+        - "Use 100-200 virtual nodes per physical shard for even distribution"
+        - "Combine with bounded consistent hashing to handle hot spots"
+        - "Pre-compute hash ring on all clients or use proxy/router"
+        - "Use hash function with uniform distribution (MurmurHash3, CityHash)"
+        - "Test distribution with actual key set before production"
+        - "Plan for gradual rebalancing to avoid cluster overload"
+
+      common_errors:
+        - error: "Too few virtual nodes per shard"
+          impact: "Uneven distribution — some shards get 3x more keys than others"
+          fix: "Use 100-200 virtual nodes per physical shard to smooth distribution"
+        - error: "Using hash of user ID without accounting for growth"
+          impact: "Different hashing scheme needed when sharding by tenant + user"
+          fix: "Design hash key as the granularity at which data is accessed together"
+        - error: "No handling for hot keys (viral tenant, celebrity user)"
+          impact: "Single shard overloaded even though ring distribution is even"
+          fix: "Use consistent hashing with bounded loads or replicate hot keys to multiple shards"
+
+    maturity:
+      level: advanced
+
+    standards:
+      - name: Consistent Hashing
+        type: spec
+        role: "Distributed hash table partitioning scheme"
+        status: recommended
+        reference: "https://en.wikipedia.org/wiki/Consistent_hashing"
+
+  - id: re_sharding_without_downtime
+    name: Re-Sharding Without Downtime
+    description: >
+      Techniques to change the number of shards without taking the system
+      offline. Uses virtual shards (pre-allocate many logical shards,
+      map to fewer physical shards), live migration (move data while
+      serving reads from old location), or proxy-based routing (transparent
+      to application).
+
+    use_when:
+      - "Current shard count no longer sufficient for data volume or throughput"
+      - "Cannot take production system offline for migration"
+      - "Existing shards are unevenly loaded"
+      - "Moving from single node to multi-shard or vice versa"
+
+    avoid_when:
+      - "Maintenance window is available and acceptable"
+      - "Data can be exported, transformed, and imported in a batch"
+      - "Current shard count is still adequate with optimization"
+
+    tradeoffs:
+      pros:
+        - "Zero downtime — system remains fully operational"
+        - "Rollback possible at any stage"
+        - "Application often needs no changes (proxy handles routing)"
+        - "Can be automated and monitored"
+      cons:
+        - "Significant operational complexity"
+        - "Dual-write during migration adds write latency"
+        - "Temporary storage cost (data exists in both old and new shards)"
+        - "Migration can take hours or days for very large datasets"
+
+    implementation:
+      guidelines:
+        - "Use virtual shards: pre-allocate 1024+ logical shards, map to 4-16 physical shards"
+        - "Implement proxy/router that understands shard mapping (Vitess, pgcat, ProxySQL)"
+        - "Live migration: copy data in batches, track progress, drain old shards"
+        - "Dual-write during transition: write to both old and new shard locations"
+        - "Verify consistency before switching reads to new shards"
+        - "Phase migration: one shard at a time, not all at once"
+        - "Plan rollback path before starting migration"
+
+      common_errors:
+        - error: "Re-sharding all shards simultaneously"
+          impact: "Cluster overloaded from data copy + production traffic; performance degradation"
+          fix: "Re-shard one shard at a time; throttle copy rate; schedule during low traffic"
+        - error: "No rollback plan before starting migration"
+          impact: "If migration fails mid-way, cannot revert without complex manual recovery"
+          fix: "Plan and test rollback path before starting; keep snapshot of pre-migration state"
+        - error: "Not validating data consistency after migration"
+          impact: "Data corrupted or missing in new shards; silent data loss"
+          fix: "Implement consistency checks: row count, checksums, sample spot checks"
+
+    maturity:
+      level: enterprise
+
+    standards:
+      - name: Virtual Sharding
+        type: pattern
+        role: "Pre-allocated logical shards mapped to fewer physical shards"
+        status: recommended
+      - name: Live Data Migration
+        type: practice
+        role: "Moving data between shards while serving production traffic"
+        status: recommended
+
+examples:
+  - id: consistent_hashing_ring
+    title: "Consistent Hashing with Virtual Nodes"
+    context: "Adding a new shard to an existing cluster"
+    correct: |
+      # Initial: 4 physical shards, 200 virtual nodes each
+      # 800 virtual nodes distributed on the hash ring [0..2^32-1]
+      shard_map = {
+          shard_1: [hash("vnode-1-1"), hash("vnode-1-2"), ...],  # 200 nodes
+          shard_2: [hash("vnode-2-1"), hash("vnode-2-2"), ...],
+          shard_3: [hash("vnode-3-1"), hash("vnode-3-2"), ...],
+          shard_4: [hash("vnode-4-1"), hash("vnode-4-2"), ...],
+      }
+
+      # Adding shard_5: only ~200/800 = 25% of keys need moving
+      # (only keys in the new shard's vnode ranges)
+      function find_shard(key):
+          hash_value = murmur3_hash(key)
+          # Walk clockwise around ring from hash_value
+          for vnode in sorted_vnodes:
+              if hash_value <= vnode.hash:
+                  return vnode.shard_id
+          return first_vnode.shard_id  # Wrapped around
+    incorrect: |
+      # WRONG: Simple modulo — adding a shard moves ALL keys
+      function find_shard(key):
+          shard_id = hash(key) % 4  # Adding 5th shard: hash(key) % 5 = different for ALL keys
+          return "shard_" + shard_id
+    explanation: >
+      Consistent hashing only moves N/m keys when a shard is added (moved
+      fraction = 1/(m+1)). Simple modulo requires re-hashing every key,
+      requiring a full data migration on every topology change.
+
+  - id: virtual_shards
+    title: "Virtual Shards for Zero-Downtime Re-Sharding"
+    context: "Growing from 4 to 8 physical shards"
+    correct: |
+      # Start: 1024 virtual shards mapped to 4 physical shards
+      # Each physical shard hosts 256 virtual shards
+      mapping = {shard_1: [vs_1..vs_256], shard_2: [vs_257..vs_512], ...}
+
+      # Adding shard_5: move 128 virtual shards from each existing shard
+      # Phase 1: Start replicating data for vs_1..vs_128 to shard_5
+      # Phase 2: Dual-write: write to old physical + new physical for those VS
+      # Phase 3: Switch reads to new physical for vs_1..vs_128
+      # Phase 4: Remove old data for vs_1..vs_128
+      # Total data moved: 128/1024 = 12.5% of data
+    incorrect: |
+      # WRONG: Re-sharding by copying entire database
+      # export all data from shard_1 -> import to shard_5
+      # export all data from shard_2 -> import to shard_6
+      # export all data from shard_3 -> import to shard_7
+      # export all data from shard_4 -> import to shard_8
+      # 100% of data moved; not zero-downtime capable
+    explanation: >
+      Virtual shards pre-allocate fine-grained logical partitions. To
+      add a physical shard, move a subset of virtual shards — only that
+      fraction of data is migrated, process can be phased, and read
+      traffic stays uninterrupted.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Cross-shard replication traffic encrypted with TLS"
+      - "Shard router/proxy connections use authenticated TLS"
+  data_protection:
+    requirements:
+      - "Sensitive columns not used as partition keys (avoids PII in routing metadata)"
+      - "Vertical partitioning for sensitive columns with stricter encryption"
+  access_control:
+    requirements:
+      - "Shard-to-shard communication authenticated with mTLS or service accounts"
+      - "Admin access to shard topology changes restricted to CI/CD pipeline"
+  input_output:
+    requirements:
+      - "Shard key validated and sanitized before routing"
+      - "Injection of shard key via unvalidated user input prevented"
+  secrets:
+    requirements:
+      - "Database credentials for each shard from secrets manager, not config inheritance"
+      - "Shard topology configuration stored securely with access control"
+  monitoring:
+    requirements:
+      - "Monitor per-shard query latency, disk usage, and connection count"
+      - "Alert on shard imbalance (one shard exceeding others by >20%)"
+      - "Track re-sharding progress with row count and consistency metrics"
+
+compliance:
+  standards:
+    - name: "PCI DSS v4.0"
+      relevance: "Cardholder data storage restricted to specific shards for scope reduction"
+      reference: "PCI DSS v4.0 Requirement 3"
+    - name: "GDPR"
+      relevance: "Right-to-erasure must work across all shards consistently"
+      reference: "GDPR Article 17"
+
+  requirements_mapping:
+    - control: data_isolation
+      description: "Sensitive data stored on separate shards with controlled access"
+      maps_to:
+        - "PCI DSS Requirement 3.3"
+    - control: cross_shard_deletion
+      description: "Data deletion propagates to all shards for right-to-erasure"
+      maps_to:
+        - "GDPR Article 17"
+
+prompt_recipes:
+  - id: greenfield_sharding
+    scenario: greenfield
+    description: "Design sharding strategy for a new distributed system"
+    prompt: |
+      Design a data sharding strategy for a new system.
+
+      Context:
+      - Data volume: [small/medium/large/very_large]
+      - Initial shard count: [single/few/many/dynamic]
+      - Rebalancing frequency: [never/rarely/periodically/continuously]
+      - Query pattern: [key_lookup/range_scan/aggregations/multi_shard/mixed]
+
+      Requirements:
+      1. Choose partitioning approach (horizontal, consistent hashing, or composite)
+      2. Select partition key with even distribution
+      3. Design shard routing (proxy-based or application-level)
+      4. Plan for future re-sharding (virtual shards or consistent hashing)
+      5. Define cross-shard transaction strategy
+      6. Outline monitoring for shard balance and performance
+
+  - id: audit_sharding
+    scenario: audit
+    description: "Audit existing sharding implementation for balance and performance"
+    prompt: |
+      Audit the sharding implementation:
+
+      1. Are shards evenly balanced (data size, query count, latency)?
+      2. Is the partition key well-distributed (no hot shards)?
+      3. Are cross-shard queries or transactions causing problems?
+      4. Is shard routing correct and efficient?
+      5. Can re-sharding be performed without downtime?
+      6. Are shard credentials securely managed?
+
+  - id: re_sharding_migration
+    scenario: migration
+    description: "Plan data re-sharding for a growing system"
+    prompt: |
+      Plan re-sharding for a system outgrowing its current topology.
+
+      Current: {shard_count} shards using {partitioning_method}
+      Problem: {skew_description, capacity_crisis, or query_pattern_change}
+
+      Plan:
+      1. Choose new shard count and partition key
+      2. Design migration approach:
+         - Virtual shards: pre-allocate and redistribute
+         - Live migration: copy data shard by shard
+         - Proxy-based: add router between app and DB
+      3. Phase plan: migrate one shard at a time
+      4. Dual-write strategy during transition
+      5. Consistency verification after each phase
+      6. Rollback plan
+
+  - id: debugging_hot_shard
+    scenario: debugging
+    description: "Debug hot shard causing latency spikes"
+    prompt: |
+      Debug a hot shard issue:
+
+      Symptoms: One shard has 5x CPU of others, query latency 10x higher,
+      timeouts on that shard.
+
+      Investigation:
+      1. Is it a single hot key or skewed key distribution?
+      2. Check partition key distribution — is one value dominating?
+      3. Check for range queries or batch operations hitting one shard
+
+      Fixes:
+      - Hot key: replicate or cache the hot key across shards
+      - Skewed distribution: review partition key choice
+      - Range scan: adjust query patterns or add secondary index
+
+  - id: high_security_sharding
+    scenario: architecture
+    description: "Design sharding for PCI/GDPR compliance"
+    prompt: |
+      Design sharding strategy for a regulated environment.
+
+      Requirements:
+      1. PCI data on dedicated shards with separate encryption keys
+      2. PII partitioned by region for data residency compliance
+      3. Cross-shard deletion for right-to-erasure
+      4. Audit trail for all cross-shard data access
+      5. Isolate tenants with different compliance requirements
+
+      Design:
+      1. Tenant-aware shard key (tenant_id + entity_id)
+      2. Sensitive data on dedicated shards with audit logging
+      3. Regional shards for data residency
+      4. Consistent erasure across all shards
+
+anti_patterns:
+  - name: "Modulo Sharding Without Consistent Hashing"
+    description: >
+      Using simple modulo (hash(key) % N) for shard routing. Adding or
+      removing a shard changes the modulo base, requiring every key to
+      be remapped — a full data migration on every scaling event.
+    fix: "Use consistent hashing with virtual nodes to minimize data movement on topology changes"
+    severity: critical
+    related_pattern: consistent_hashing
+
+  - name: "Hot Key from Poor Partition Key"
+    description: >
+      Choosing a partition key with low cardinality or skewed distribution
+      (e.g., status field with 3 values, country field with 80% in one
+      value). One shard handles all traffic for the popular key value.
+    fix: "Use composite key with high-cardinality component; or use hash of natural key"
+    severity: critical
+    related_pattern: horizontal_partitioning
+
+  - name: "Cross-Shard Transactions Without Saga"
+    description: >
+      Using distributed transactions (XA/2PC) across shards for every
+      write operation. Two-phase commit is slow, fragile, and often
+      unavailable in sharded databases.
+    fix: "Design schema to avoid cross-shard operations; use saga pattern with compensating actions"
+    severity: high
+    related_pattern: horizontal_partitioning
+
+  - name: "Ignoring Re-Sharding Until Emergency"
+    description: >
+      Deferring re-sharding planning until the current shard topology
+      is at capacity. Emergency re-sharding under load is high-risk,
+      complex, and often causes downtime.
+    fix: "Plan for re-sharding from day one; pre-allocate virtual shards; monitor growth trends"
+    severity: high
+    related_pattern: re_sharding_without_downtime
+
+checklist:
+  - id: SHR-01
+    category: design
+    description: "Partition key chosen for even data distribution"
+    severity: critical
+    verified_by: horizontal_partitioning
+
+  - id: SHR-02
+    category: performance
+    description: "No hot shards — all shards within 20% load of each other"
+    severity: high
+    verified_by: consistent_hashing
+
+  - id: SHR-03
+    category: reliability
+    description: "Re-sharding plan exists and can be executed without downtime"
+    severity: critical
+    verified_by: re_sharding_without_downtime
+
+  - id: SHR-04
+    category: reliability
+    description: "Consistent hashing used for dynamic shard topologies"
+    severity: high
+    verified_by: consistent_hashing
+
+  - id: SHR-05
+    category: reliability
+    description: "Cross-shard transactions avoided; saga pattern used when required"
+    severity: high
+    verified_by: horizontal_partitioning
+
+  - id: SHR-06
+    category: security
+    description: "Shard-to-shard replication traffic encrypted"
+    severity: high
+    verified_by: horizontal_partitioning
+
+  - id: SHR-07
+    category: observability
+    description: "Per-shard latency, disk, and connections monitored"
+    severity: high
+    verified_by: horizontal_partitioning
+
+  - id: SHR-08
+    category: correctness
+    description: "Data consistency verified after re-sharding"
+    severity: critical
+    verified_by: re_sharding_without_downtime
+
+  - id: SHR-09
+    category: security
+    description: "Sensitive columns not used as partition keys"
+    severity: high
+    verified_by: vertical_partitioning
+
+  - id: SHR-10
+    category: performance
+    description: "Virtual shards pre-allocated for future re-sharding"
+    severity: medium
+    verified_by: re_sharding_without_downtime
+
+  - id: SHR-11
+    category: design
+    description: "Cross-shard queries minimized and optimized"
+    severity: medium
+    verified_by: horizontal_partitioning
+
+  - id: SHR-12
+    category: compliance
+    description: "Right-to-erasure works consistently across all shards"
+    severity: high
+    verified_by: re_sharding_without_downtime

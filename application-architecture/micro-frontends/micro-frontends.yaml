@@ -1,0 +1,732 @@
+# =============================================================================
+# AI Architecture Cookbook — Micro-Frontends
+# Schema: v3 | Domain: micro-frontends
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: micro-frontends
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Micro-frontend architecture patterns covering module federation, Web
+    Components, iframe-based composition, server-side composition, and
+    router-based orchestration (Single SPA). Provides recommendations for
+    independent frontend deployment, inter-MF communication, and shared
+    dependency management.
+
+  tags:
+    - micro-frontends
+    - module-federation
+    - web-components
+    - single-spa
+    - frontend
+    - decomposition
+    - composition
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - id: api-design
+      reason: "Micro-frontends communicate via APIs; API contracts define MF boundaries"
+    - id: ci-cd
+      reason: "Independent deployment requires mature CI/CD per micro-frontend"
+    - id: frontend-component-architecture
+      reason: "Each micro-frontend follows component architecture internally"
+
+  related_standards:
+    - id: frontend-build-performance
+      relationship: complementary
+      context: "Module federation and shared dependencies impact bundle strategy"
+    - id: api-gateway-edge-security
+      relationship: complementary
+      context: "API gateway routes requests to the correct micro-frontend origin"
+
+context_inputs:
+  - name: team_count
+    type: integer
+    description: "Number of frontend teams working on the product"
+    required: true
+    default: 3
+
+  - name: integration_approach
+    type: enum
+    description: "How micro-frontends compose at runtime"
+    required: true
+    default: client
+    enum_values:
+      - client
+      - server
+      - hybrid
+
+  - name: deployment_frequency
+    type: enum
+    description: "How often each micro-frontend is deployed independently"
+    required: false
+    default: weekly
+    enum_values:
+      - daily
+      - weekly
+      - monthly
+
+  - name: framework_heterogeneity
+    type: enum
+    description: "Whether different MFs use different frameworks"
+    required: false
+    default: single
+    enum_values:
+      - single
+      - mixed
+      - polyglot
+
+  - name: isolation_requirement
+    type: enum
+    description: "How strictly MFs must be isolated from each other"
+    required: false
+    default: moderate
+    enum_values:
+      - low
+      - moderate
+      - strict
+
+  - name: shared_dependency_strategy
+    type: enum
+    description: "How shared libraries are managed across MFs"
+    required: false
+    default: singleton
+    enum_values:
+      - singleton
+      - versioned
+      - no_sharing
+
+decision_tree:
+  - id: iframe_isolation
+    priority: 1
+    if:
+      - isolation_requirement == strict
+    then:
+      pattern: iframe_composition
+      notes: >
+        Strict isolation (legacy systems, third-party content) requires
+        iframe-based composition with postMessage for cross-MF communication.
+        Each MF runs in a fully isolated browsing context.
+
+  - id: server_composition
+    priority: 2
+    if:
+      - integration_approach in [server, hybrid]
+    then:
+      pattern: server_side_composition
+      notes: >
+        Server-side composition (Edge Side Includes, Tailor, Podium) stitches
+        HTML fragments server-side. Best for SEO-critical apps and strict
+        SSR requirements.
+
+  - id: framework_heterogeneous
+    priority: 3
+    if:
+      - framework_heterogeneity in [mixed, polyglot]
+    then:
+      pattern: web_components_composition
+      notes: >
+        Web Components provide a framework-agnostic boundary. Use Custom
+        Elements for independent MF rendering regardless of underlying
+        framework (React, Vue, Angular, Svelte).
+
+  - id: module_federation_standard
+    priority: 4
+    if:
+      - team_count > 3
+    then:
+      pattern: module_federation
+      notes: >
+        Module Federation (Webpack 5 / Vite) is the recommended default for
+        teams > 3. Supports shared dependency singletons, independent
+        deployment, and dynamic remote loading.
+
+  - id: simple_routing
+    priority: 5
+    if:
+      - team_count >= 2
+      - integration_approach == client
+    then:
+      pattern: router_orchestration
+      notes: "Router-based orchestration (Single SPA, Piral) for smaller teams starting with MFs"
+
+decision_metadata:
+  confidence: medium
+  risk_if_wrong: high
+  fallback:
+    pattern: router_orchestration
+    description: "Router-based orchestration is the simplest starting point for micro-frontends"
+
+patterns:
+  - id: module_federation
+    name: "Module Federation"
+    description: >
+      Webpack 5 Module Federation or Vite Federation Plugin allows micro-frontends
+      to expose and consume modules at runtime. Each MF is independently built
+      and deployed; a shell/host application dynamically loads remotes. Shared
+      dependencies (React, Vue) are loaded once as singletons.
+
+      Advantages include: framework support (React, Vue, Angular, Svelte),
+      shared dependency deduplication, dynamic remotes, and TypeScript support
+      via module federation types.
+    use_when:
+      - "3+ frontend teams working on the same product"
+      - "Independent deployment cycles per feature area"
+      - "Single-page application with multiple domains (checkout, search, account)"
+      - "Existing Webpack 5 or Vite build pipeline"
+    avoid_when:
+      - "Single team or small app (over-architecture)"
+      - "Strict isolation required (iframe is safer)"
+      - "SSR-first apps without Node.js server (use server-side composition)"
+      - "No shared dependency strategy"
+    tradeoffs:
+      pros:
+        - "Independent deployment per micro-frontend"
+        - "Shared dependencies as singletons (smaller bundles)"
+        - "Framework-agnostic consumer"
+        - "Dynamic loading — no redeploy to add/remove remotes"
+        - "Mature ecosystem (Webpack 5, Vite federation)"
+      cons:
+        - "Complex build configuration (exposes, remotes, shared)"
+        - "Version coupling: shared dependency upgrades require coordination"
+        - "Runtime errors from missing/incompatible remotes"
+        - "Debugging across MF boundaries is harder"
+    implementation:
+      guidelines:
+        - "Define shared dependencies (React, Vue, lodash) as singletons with version range"
+        - "Expose only public API components; keep internals private per MF"
+        - "Use plugin-agnostic naming for exposes (./Checkout, ./Search, not ./ReactComponent)"
+        - "Set eager: false on shared dependencies for lazy loading"
+        - "Implement a remote error boundary to handle failed MF loading"
+        - "Version shared utilities as a separate package consumed by all MFs"
+        - "Use TypeScript with module-federation-types or @module-federation/utilities"
+        - "Test integration in CI with all remotes available"
+      common_errors:
+        - error: "Missing shared dependency configuration causes multiple React instances"
+          impact: "Broken hooks, doubled bundle size, context sharing fails"
+          fix: "Configure React as shared singleton with requiredVersion in Webpack config"
+        - error: "No error boundary for remote loading failures"
+          impact: "Entire app crashes when one MF fails to load"
+          fix: "Wrap remote imports in React.Suspense + ErrorBoundary per MF"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Webpack 5 Module Federation"
+        type: tool
+        role: "Build-time module sharing across independently deployed apps"
+        status: recommended
+      - name: "Vite Federation Plugin (@originjs/vite-plugin-federation)"
+        type: tool
+        role: "Module Federation support for Vite-based projects"
+        status: recommended
+      - name: "@module-federation/typescript"
+        type: tool
+        role: "TypeScript support for module federation remotes"
+        status: recommended
+
+  - id: router_orchestration
+    name: "Router-Based Orchestration (Single SPA)"
+    description: >
+      Single SPA (or Piral, Luigi) orchestrates micro-frontends by routing
+      URL paths to specific MF applications. Each MF is a standalone app
+      registered with the orchestrator. The orchestrator handles: lifecycle
+      (mount/unmount), routing, shared state via props, and cross-MF events.
+
+      This is the simplest approach and works well as a starting point.
+    use_when:
+      - "2-5 frontend teams starting with micro-frontends"
+      - "Existing SPA migrating to micro-frontends incrementally"
+      - "Simple routing-based decomposition (each route = one MF)"
+      - "All MFs use same framework"
+    avoid_when:
+      - "Multiple MFs on the same page simultaneously"
+      - "Need for shared components across MFs at runtime"
+      - "Polyglot framework environment (use Web Components instead)"
+    tradeoffs:
+      pros:
+        - "Simplest MF pattern to adopt"
+        - "Incremental migration: one route at a time"
+        - "Clear team-to-route ownership"
+        - "Mature library with good documentation"
+      cons:
+        - "One MF per route — can't compose multiple MFs on one page"
+        - "Shared state still requires custom event bus or URL params"
+        - "Framework lock-in for the orchestrator layer"
+    implementation:
+      guidelines:
+        - "Register each MF with a unique app name and activity function (route match)"
+        - "Pass shared dependencies (user, cart) via props or custom events"
+        - "Use the orchestrator's built-in loading state for lazy MFs"
+        - "Set up shared dependency configuration (import-map or shared libs)"
+        - "Implement cross-MF events via window.dispatchEvent with scoped naming"
+        - "Each MF should mount/unmount cleanly — no global leaks"
+      common_errors:
+        - error: "MFs modifying global styles that affect other MFs"
+          impact: "Style collisions between independently developed MFs"
+          fix: "Use CSS Modules, Shadow DOM, or CSS-in-JS scoped per MF"
+    maturity:
+      level: standard
+    standards:
+      - name: "Single SPA"
+        type: framework
+        role: "JavaScript router orchestrating micro-frontend lifecycles"
+        status: recommended
+      - name: "Piral"
+        type: framework
+        role: "Micro-frontend framework with pilets and shared dependencies"
+        status: recommended
+
+  - id: iframe_composition
+    name: "Iframe-Based Composition"
+    description: >
+      Each micro-frontend runs in a separate iframe with full browsing context
+      isolation. Cross-MF communication uses postMessage. Best for strict
+      isolation requirements (third-party content, legacy systems, untrusted
+      code) but has significant UX tradeoffs.
+    use_when:
+      - "Strict security/isolation requirements"
+      - "Third-party or legacy content that can't be trusted"
+      - "Different security contexts per MF"
+      - "No shared UI needed between MFs"
+    avoid_when:
+      - "Need for shared UI or seamless UX"
+      - "Performance-sensitive apps (iframes add overhead)"
+      - "SEO-critical content (iframes are opaque to search engines)"
+      - "Responsive layouts spanning MFs"
+    tradeoffs:
+      pros:
+        - "Complete isolation: CSS, JS, storage, cookies per iframe"
+        - "Security boundary enforced by the browser"
+        - "Independent scrolling and error handling"
+        - "Easy to embed third-party content"
+      cons:
+        - "No shared UI: different scrollbars, themes, navigation feel"
+        - "postMessage communication adds latency and complexity"
+        - "iframe performance overhead (DOM, memory, navigation)"
+        - "SEO unfriendly — iframes are not indexed"
+    implementation:
+      guidelines:
+        - "Use postMessage with a typed message protocol (event type + payload)"
+        - "Set sandbox attribute for security (allow-scripts, allow-same-origin)"
+        - "Synchronize theme/auth via postMessage, never via direct DOM access"
+        - "Resize iframes dynamically based on content height"
+        - "Implement a communication bus wrapping postMessage"
+        - "Avoid nested iframes (one level only)"
+      common_errors:
+        - error: "No sandbox attribute on iframe"
+          impact: "Iframe can execute arbitrary scripts, navigate top window, submit forms"
+          fix: "Always set sandbox with minimum required permissions"
+    maturity:
+      level: standard
+    standards:
+      - name: "postMessage API"
+        type: spec
+        role: "Cross-origin communication between iframe and host"
+        status: recommended
+
+  - id: server_side_composition
+    name: "Server-Side Composition"
+    description: >
+      Compose micro-frontend HTML fragments on the server before sending to
+      the browser. Each MF is an independent HTTP service returning HTML.
+      Composer services (Tailor, Podium, Edge Side Includes) fetch fragments
+      in parallel and stitch them into a single HTML response.
+
+      Best for SEO-critical, SSR-first applications where client-side
+      composition is insufficient.
+    use_when:
+      - "SSR-first or SEO-critical application"
+      - "Performance-sensitive first meaningful paint"
+      - "Hybrid approach: server composition for header/footer, client for interactive"
+      - "Enterprise portals with multiple independent content providers"
+    avoid_when:
+      - "Highly interactive SPAs with minimal SEO needs"
+      - "Single team managing the entire frontend"
+      - "No server-side infrastructure for fragment fetching"
+    tradeoffs:
+      pros:
+        - "Excellent SEO (fully rendered HTML)"
+        - "Fast first paint (fragments fetched in parallel)"
+        - "Graceful degradation: one fragment failure doesn't break the page"
+        - "Works with any framework that can render HTML"
+      cons:
+        - "Requires server infrastructure (composer service, fragment servers)"
+        - "Client-side interactivity requires JS hydration per fragment"
+        - "Cross-fragment state requires additional coordination"
+        - "Caching strategy is more complex"
+    implementation:
+      guidelines:
+        - "Each MF serves HTML fragments at a dedicated endpoint"
+        - "Use streaming for the composer: flush head/footer while waiting for body"
+        - "Set cache headers per fragment based on update frequency"
+        - "Implement fragment timeout: fallback to cached or placeholder"
+        - "Use Edge Side Includes at CDN level for cached fragments"
+        - "Hydrate interactivity client-side after composition"
+        - "Pass CSRF tokens and session info via HTTP headers"
+      common_errors:
+        - error: "Synchronous fragment fetching (sequential instead of parallel)"
+          impact: "Page load time is the sum of all fragment times"
+          fix: "Fetch all fragments in parallel using async HTTP calls"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Tailor (Zalando)"
+        type: tool
+        role: "Node.js layout service for composing HTML fragments"
+        status: recommended
+      - name: "Podium"
+        type: framework
+        role: "Micro-frontend framework for server-side composition"
+        status: recommended
+      - name: "Edge Side Includes (ESI)"
+        type: spec
+        role: "CDN-level HTML fragment composition"
+        status: emerging
+
+  - id: web_components_composition
+    name: "Web Components Composition"
+    description: >
+      Micro-frontends expose themselves as Custom Elements (Web Components),
+      providing a framework-agnostic boundary. The shell app renders these
+      custom elements directly in HTML, regardless of whether the MF is built
+      with React, Vue, Angular, or vanilla JS.
+
+      This approach prioritizes framework freedom but requires careful
+      lifecycle management and shared library strategy.
+    use_when:
+      - "Polyglot environment: each team chooses its own framework"
+      - "Gradual migration: old MF in Angular, new MF in React"
+      - "Third-party consumer can't control the framework"
+      - "Long-lived apps where framework lock-in is risky"
+    avoid_when:
+      - "All teams use the same framework (module federation is simpler)"
+      - "Need for shared React context/state across MFs"
+      - "Complex props or large data passing (WC props are string-only)"
+    tradeoffs:
+      pros:
+        - "Framework-agnostic: mix React, Vue, Angular, Svelte freely"
+        - "Standardized: Custom Elements v1 spec, supported by all browsers"
+        - "Shadow DOM for CSS isolation"
+        - "No build-time coupling between MFs"
+      cons:
+        - "String-only attributes (complex objects need JSON serialization)"
+        - "Multiple framework runtimes increase bundle size"
+        - "Limited two-way data binding"
+        - "React's synthetic event system has issues with Custom Events"
+    implementation:
+      guidelines:
+        - "Wrap each MF as a Custom Element using the framework's WC support"
+        - "Use Shadow DOM for CSS isolation (mode: 'open' for theming)"
+        - "Pass complex data via element properties, not HTML attributes"
+        - "Dispatch cross-MF events via CustomEvent on window or shared bus"
+        - "Use lazy loading: dynamically import MF bundles on demand"
+        - "Provide a shared DI container for cross-MF services"
+        - "Use React's createRoot with custom element in React 18+"
+      common_errors:
+        - error: "Multiple frameworks loading the same library (e.g., two React versions)"
+          impact: "Bundle bloat and duplicate state management"
+          fix: "Use import-map or shared CDN for common dependencies"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Custom Elements v1"
+        type: spec
+        role: "Web standard for defining framework-agnostic components"
+        status: recommended
+      - name: "Lit"
+        type: framework
+        role: "Lightweight Web Components library for building MFs"
+        status: recommended
+      - name: "Open WC"
+        type: tool
+        role: "Recommendations and tooling for Web Components development"
+        status: recommended
+
+examples:
+  - id: module_federation_config
+    title: "Webpack Module Federation vs Monolith"
+    context: "Splitting an e-commerce app into micro-frontends"
+    correct: |
+      // CORRECT: Module Federation — host exposes, remote consumes
+
+      // Host (shell) — webpack.config.js
+      new ModuleFederationPlugin({
+        name: "shell",
+        remotes: {
+          checkout: "checkout@http://checkout-app/remoteEntry.js",
+          search: "search@http://search-app/remoteEntry.js",
+        },
+        shared: {
+          react: { singleton: true, requiredVersion: "^18.0.0" },
+          "react-dom": { singleton: true, requiredVersion: "^18.0.0" },
+        },
+      })
+
+      // Remote — webpack.config.js
+      new ModuleFederationPlugin({
+        name: "checkout",
+        filename: "remoteEntry.js",
+        exposes: {
+          "./CheckoutPage": "./src/CheckoutPage",
+          "./CheckoutButton": "./src/CheckoutButton",
+        },
+        shared: {
+          react: { singleton: true, requiredVersion: "^18.0.0" },
+        },
+      })
+
+      // Shell consuming the remote
+      const CheckoutButton = React.lazy(() => import("checkout/CheckoutButton"))
+
+      function App() {
+        return (
+          <ErrorBoundary fallback={<p>Checkout unavailable</p>}>
+            <Suspense fallback={<Skeleton />}>
+              <CheckoutButton />
+            </Suspense>
+          </ErrorBoundary>
+        )
+      }
+    incorrect: |
+      // WRONG: No error boundary, no shared singleton, no version range
+
+      new ModuleFederationPlugin({
+        name: "shell",
+        remotes: {
+          checkout: "checkout@http://checkout-app/remoteEntry.js",
+        },
+        // No shared configuration — shipping duplicate React
+        // shared key is missing entirely
+      })
+
+      // Shell directly imports without error handling
+      const CheckoutButton = React.lazy(() => import("checkout/CheckoutButton"))
+
+      function App() {
+        return <CheckoutButton /> // Crashes entire app if remote fails
+      }
+    explanation: >
+      The correct configuration uses shared singletons (single React instance),
+      version ranges for API compatibility, and ErrorBoundary/Suspense around
+      remotes. The incorrect version omits shared configuration (multiple React
+      instances break hooks and double bundle size) and has no error boundary.
+
+  - id: web_component_wrapper
+    title: "Web Components Wrapper for Framework MF"
+    context: "Exposing a React MF as a Web Component"
+    correct: |
+      // CORRECT: Wrap React MF as Custom Element
+
+      class ReactCheckoutElement extends HTMLElement {
+        connectedCallback() {
+          const root = createRoot(this)
+          const userId = this.getAttribute("user-id")
+          root.render(<CheckoutPage userId={userId} />)
+        }
+
+        disconnectedCallback() {
+          queueMicrotask(() => {
+            // React 18 unmounts synchronously; avoid double-unmount
+            if (!this.isConnected) unmountComponentAtNode(this)
+          })
+        }
+      }
+
+      customElements.define("mf-checkout", ReactCheckoutElement)
+      // Usage: <mf-checkout user-id="abc123"></mf-checkout>
+    incorrect: |
+      // WRONG: No lifecycle cleanup, no attribute observation
+
+      customElements.define("mf-checkout", class extends HTMLElement {
+        connectedCallback() {
+          // No createRoot — using old ReactDOM.render
+          ReactDOM.render(<CheckoutPage />, this)
+          // No user-id attribute handling
+          // No unmount on disconnect
+        }
+        // No disconnectedCallback — memory leak!
+      })
+    explanation: >
+      The correct version uses createRoot (React 18), handles attributes via
+      getAttribute, and unmounts on disconnect. The incorrect version causes
+      memory leaks by never unmounting and uses the deprecated ReactDOM.render.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Remote MF entry points loaded over HTTPS"
+      - "Subresource Integrity (SRI) for remoteEntry.js files"
+  data_protection:
+    requirements:
+      - "Cross-MF communication via postMessage validates origin"
+  access_control:
+    requirements:
+      - "Each MF authenticates independently; tokens scoped per MF origin"
+  input_output:
+    requirements:
+      - "MF boundaries validate all incoming props/attributes"
+      - "Custom Events sanitized before processing"
+  secrets:
+    requirements:
+      - "API keys configured per MF environment, never shared via props"
+  monitoring:
+    requirements:
+      - "MF load failures tracked per remote"
+      - "Cross-MF navigation timing instrumented"
+
+compliance:
+  standards:
+    - name: "OWASP"
+      relevance: "postMessage origin validation prevents cross-origin data leaks"
+  requirements_mapping:
+    - control: mf_isolation
+      description: "Micro-frontends operate within security boundaries"
+      maps_to:
+        - "OWASP A1: postMessage origin validation"
+        - "Browser sandbox policies"
+
+prompt_recipes:
+  - id: mf_greenfield
+    scenario: greenfield
+    description: "Design micro-frontend architecture from scratch"
+    prompt: |
+      Design micro-frontend architecture for {product_name}.
+
+      Context:
+      - Teams: {team_count}
+      - Integration: client/server/hybrid
+      - Framework: single/mixed/polyglot
+      - Isolation: low/moderate/strict
+
+      Tasks:
+      1. Identify MF boundaries based on business domains
+      2. Choose integration approach with rationale
+      3. Design shared dependency strategy
+      4. Define cross-MF communication protocol
+      5. Plan deployment infrastructure per MF
+
+  - id: mf_migration
+    scenario: migration
+    description: "Migrate monolith SPA to micro-frontends incrementally"
+    prompt: |
+      Migrate {app_name} from monolith to micro-frontends.
+
+      Current: single SPA, one team, one deploy
+      Target: {N} teams, independent deploys
+
+      Migration plan:
+      1. Identify first MF boundary (lowest risk, clearest domain)
+      2. Set up shell app with Single SPA or Module Federation
+      3. Extract first route/feature as standalone MF
+      4. Set up CI/CD pipeline for the new MF
+      5. Route old traffic to new MF incrementally
+
+  - id: mf_cross_app_state
+    scenario: edge-case
+    description: "Handle cross-MF state sharing"
+    prompt: |
+      Implement cross-MF state sharing for {feature}.
+
+      Requirements:
+      - User session shared across all MFs
+      - Cart state shared between search and checkout MFs
+
+      Options:
+      1. Custom events / postMessage (decoupled)
+      2. Shared auth context via Module Federation singleton
+      3. URL/query params for simple state
+      4. API Gateway session cookie (recommended for auth)
+
+  - id: mf_performance
+    scenario: performance
+    description: "Optimize micro-frontend loading and bundle size"
+    prompt: |
+      Optimize micro-frontend performance for {app_name}.
+
+      Current issues:
+      - {issue_1} (e.g., slow remote loading)
+      - {issue_2} (e.g., duplicate dependencies)
+
+      Strategies:
+      1. Analyze shared dependency configuration
+      2. Lazy load remotes on route change, not app init
+      3. Use module federation eager: false for non-critical MFs
+      4. Preload high-priority remotes via <link rel="modulepreload">
+      5. Optimize remoteEntry.js: keep exposes minimal
+
+anti_patterns:
+  - name: "Too Many Micro-Frontends"
+    description: >
+      Splitting the UI into too many MFs (10+ for a small team). Each
+      MF adds overhead: build config, deployment pipeline, integration
+      testing, and cognitive load.
+    fix: "Start with 2-3 MFs based on clear business domain boundaries. Add more only when team size and deployment independence justify the overhead."
+    severity: high
+    related_pattern: router_orchestration
+
+  - name: "Shared UI in Every MF"
+    description: >
+      Each MF duplicates shared UI components (buttons, headers, footers)
+      instead of consuming them from a shared library. Inconsistent
+      design, larger bundles, harder maintenance.
+    fix: "Create a shared component library consumed by all MFs as a package. Use Module Federation or import-map for the library."
+    severity: medium
+    related_pattern: module_federation
+
+  - name: "Cross-MF Tight Coupling via Direct Imports"
+    description: >
+      Directly importing from another MF's source code instead of through
+      the exposed API. Creates deployment coupling: changing one MF breaks
+      another.
+    fix: "MFs communicate only through their exposed API (module federation exposes, custom events, or postMessage). Never import internal files from another MF."
+    severity: high
+    related_pattern: web_components_composition
+
+  - name: "No Shared Dependency Strategy"
+    description: >
+      Each MF bundles its own copy of React, Vue, etc. Users download
+      the framework multiple times. Bundle bloat and inconsistent behavior.
+    fix: "Configure shared dependencies as singletons with version range in Module Federation, or use an import-map for shared libraries."
+    severity: high
+    related_pattern: module_federation
+
+checklist:
+  - id: MF-01
+    category: maintainability
+    description: "Each MF has a clear, documented business domain boundary"
+    severity: high
+    verified_by: router_orchestration
+  - id: MF-02
+    category: reliability
+    description: "Remote MF loading wrapped in ErrorBoundary / try-catch"
+    severity: critical
+    verified_by: module_federation
+  - id: MF-03
+    category: performance
+    description: "Shared dependencies configured as singletons with version range"
+    severity: high
+    verified_by: module_federation
+  - id: MF-04
+    category: reliability
+    description: "Cross-MF communication validates message origin"
+    severity: critical
+    verified_by: iframe_composition
+  - id: MF-05
+    category: maintainability
+    description: "Each MF independently deployable with its own CI/CD"
+    severity: high
+    verified_by: module_federation
+  - id: MF-06
+    category: security
+    description: "iframe sandbox attribute restricts capabilities"
+    severity: critical
+    verified_by: iframe_composition
+  - id: MF-07
+    category: performance
+    description: "MF bundles analyzed for duplicate dependencies"
+    severity: medium
+    verified_by: module_federation

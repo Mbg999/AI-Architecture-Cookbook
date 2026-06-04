@@ -1,0 +1,473 @@
+# =============================================================================
+# AI Architecture Cookbook — Form Handling Patterns
+# Schema: v3 | Domain: form-handling-patterns
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: form-handling-patterns
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Form handling patterns covering reactive forms, client-side validation UX,
+    multi-step wizards, autosave, dirty checking, form state libraries
+    (React Hook Form, FormKit, VeeValidate), and form accessibility.
+
+  tags:
+    - forms
+    - validation
+    - frontend
+    - react-hook-form
+    - formkit
+    - accessibility
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - id: input-validation
+      reason: "Form validation builds on input validation patterns with UX concerns"
+    - id: frontend-component-architecture
+      reason: "Form fields follow component architecture patterns"
+    - id: frontend-state-management
+      reason: "Form state is a specialized state management domain"
+
+  related_standards:
+    - id: accessibility
+      relationship: complementary
+      context: "Form accessibility includes error associations, focus management, and ARIA"
+
+context_inputs:
+  - name: form_complexity
+    type: enum
+    description: "Complexity of the form"
+    required: true
+    default: simple
+    enum_values:
+      - simple
+      - complex
+      - wizard
+
+  - name: validation_approach
+    type: enum
+    description: "When and how validation runs"
+    required: false
+    default: blur
+    enum_values:
+      - submit
+      - blur
+      - change
+      - realtime
+
+  - name: async_validation
+    type: boolean
+    description: "Whether fields need async validation (API calls)"
+    required: false
+    default: false
+
+  - name: draft_persistence
+    type: boolean
+    description: "Whether form state should survive page refresh"
+    required: false
+    default: false
+
+decision_tree:
+  - id: wizard_form
+    priority: 1
+    if:
+      - form_complexity == wizard
+    then:
+      pattern: wizard_form_pattern
+      notes: "Multi-step wizards need step-level validation, progress tracking, and cross-step state"
+
+  - id: complex_form
+    priority: 2
+    if:
+      - form_complexity == complex
+    then:
+      pattern: complex_form_management
+      notes: "Complex forms benefit from dedicated form libraries with field arrays, conditional logic, async validation"
+
+  - id: draft_required
+    priority: 3
+    if:
+      - draft_persistence == true
+    then:
+      pattern: autosave_draft
+      notes: "Draft persistence uses localStorage with debounced autosave for long forms"
+
+  - id: simple_form
+    priority: 4
+    if:
+      - form_complexity in [simple, complex, wizard]
+    then:
+      pattern: simple_form_management
+      notes: "Simple forms use local state with basic validation on blur/submit"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: low
+  fallback:
+    pattern: simple_form_management
+    description: "Simple local state form management is the safe default"
+
+patterns:
+  - id: simple_form_management
+    name: "Simple Form with Local State"
+    description: >
+      Forms with 2-10 fields managed with local component state. Validation
+      runs on blur and submit. Simple error display per field. Suitable for
+      login, search, contact, and preference forms.
+    use_when:
+      - "2-10 form fields"
+      - "No conditional fields or dynamic arrays"
+      - "Minimal validation (required, email, min/max length)"
+      - "No draft persistence needed"
+    avoid_when:
+      - "More than 10 fields (state gets unwieldy)"
+      - "Complex validation rules or cross-field validation"
+      - "Conditional fields, dynamic add/remove"
+    tradeoffs:
+      pros:
+        - "No library dependency"
+        - "Simple to understand and maintain"
+        - "Full control over validation logic"
+      cons:
+        - "State boilerplate for each form"
+        - "No built-in dirty tracking, touched state"
+        - "Harder to scale to complex forms"
+    implementation:
+      guidelines:
+        - "Use useState per field or useReducer for grouped state"
+        - "Validate on blur for UX, on submit for correctness"
+        - "Track touched state per field for error display timing"
+        - "Show errors only after field has been touched or form submitted"
+        - "Disable submit button during submission"
+        - "Provide clear success/error feedback after submit"
+      common_errors:
+        - error: "Validating on every keystroke for simple forms"
+          impact: "Annoying UX: errors shown before user finishes typing"
+          fix: "Validate on blur or only after first submit attempt"
+    maturity:
+      level: standard
+
+  - id: complex_form_management
+    name: "Complex Form Management"
+    description: >
+      Forms with 10+ fields, conditional sections, dynamic field arrays,
+      cross-field validation, async validation, and complex submission
+      logic. Uses dedicated form libraries (React Hook Form, FormKit,
+      VeeValidate) that handle state, validation, dirty tracking, and
+      submission efficiently.
+    use_when:
+      - "10+ form fields"
+      - "Conditional sections (show field B only when field A = X)"
+      - "Dynamic field arrays (add/remove items)"
+      - "Async validation (check username availability)"
+      - "Cross-field validation (password match)"
+    avoid_when:
+      - "Simple forms (form library overhead isn't justified)"
+      - "Wizard forms (use dedicated wizard pattern)"
+    tradeoffs:
+      pros:
+        - "Built-in dirty/touched/submitting state per field"
+        - "Performance: isolated re-renders per field"
+        - "Schema validation (Zod, Yup) integration"
+        - "Field arrays with add/remove/reorder"
+      cons:
+        - "Learning curve for the library's API"
+        - "Library version upgrades can break complex forms"
+    implementation:
+      guidelines:
+        - "Define validation schema (Zod, Yup) outside the component"
+        - "Use field arrays for dynamic lists (addresses, items)"
+        - "Implement async validation with debounce (300ms)"
+        - "Show validation errors after field touched, not on mount"
+        - "Accessibility: associate errors via aria-describedby"
+        - "Disable form during submission, show loading state"
+        - "Handle server-side validation errors (map to fields)"
+      common_errors:
+        - error: "No debounce on async validation input"
+          impact: "API call on every keystroke — rate limiting, excessive server load"
+          fix: "Debounce async validation by 300ms using the library's built-in debounce"
+    maturity:
+      level: standard
+    standards:
+      - name: "React Hook Form"
+        type: framework
+        role: "Performant React form library with uncontrolled inputs"
+        status: recommended
+      - name: "FormKit"
+        type: framework
+        role: "Vue form building framework with schema support"
+        status: recommended
+      - name: "VeeValidate"
+        type: framework
+        role: "Vue form validation library"
+        status: recommended
+
+  - id: wizard_form_pattern
+    name: "Wizard / Multi-Step Form"
+    description: >
+      Multi-step forms break a long form into sequential steps with progress
+      indication. Each step validates before advancing. State accumulates
+      across steps. Final step submits all data. Used for checkout flows,
+      onboarding, multi-page applications.
+    use_when:
+      - "Long forms (20+ fields) better split into logical steps"
+      - "Complex application forms with dependencies between steps"
+      - "Checkout, onboarding, setup wizards"
+    avoid_when:
+      - "Short forms that fit on one screen"
+      - "No natural step boundaries"
+    tradeoffs:
+      pros:
+        - "Reduces cognitive load: user focuses on one step at a time"
+        - "Progress indication shows user how much is left"
+        - "Each step validates independently"
+      cons:
+        - "Cross-step validation harder (field in step 2 depends on step 1)"
+        - "Persisting partial state requires additional logic"
+    implementation:
+      guidelines:
+        - "Use a step state machine (currentStep, steps array)"
+        - "Validate step before advancing: show errors, prevent next"
+        - "Accumulate state centrally: wizardData = { step1: {}, step2: {} }"
+        - "Save partial wizard state to localStorage for crash recovery"
+        - "Show progress bar or step indicator"
+        - "Allow revisiting previous steps with preserved values"
+        - "Submit all data on final step"
+      common_errors:
+        - error: "Losing wizard state on browser refresh"
+          impact: "User has to start from step 1 after accidental refresh"
+          fix: "Persist wizard state to sessionStorage or localStorage"
+    maturity:
+      level: standard
+
+  - id: autosave_draft
+    name: "Autosave Draft"
+    description: >
+      Automatically save form state to localStorage or IndexedDB as the user
+      types. Debounced saves (1-2s after last change). On page reload, prompt
+      to restore the last draft. Used for long-form content, blog posts,
+      CRM records, and any form where data entry takes significant time.
+    use_when:
+      - "Long forms where user might navigate away"
+      - "Content creation (blog posts, documents)"
+      - "Forms where data entry takes minutes, not seconds"
+      - "Critical data that must not be lost on accidental navigation"
+    avoid_when:
+      - "Simple forms completed in seconds"
+      - "Sensitive data (PII, tokens) in localStorage"
+    tradeoffs:
+      pros:
+        - "No data loss on accidental navigation or crash"
+        - "User can continue where they left off"
+      cons:
+        - "localStorage size limits (~5MB)"
+        - "Sensitive data in localStorage is a security concern"
+    implementation:
+      guidelines:
+        - "Debounce autosave: 1-2s after last change"
+        - "Save to localStorage keyed by form ID + user ID"
+        - "Show 'Draft saved' indicator (not intrusive)"
+        - "On mount, check for draft and offer to restore"
+        - "Clear draft on successful submission"
+        - "Encrypt sensitive fields before saving to localStorage"
+        - "Limit draft age: discard drafts older than 24h"
+      common_errors:
+        - error: "Saving PII or tokens to localStorage"
+          impact: "Sensitive data persists on device, accessible to other scripts"
+          fix: "Encrypt sensitive fields; or use server-side draft saving instead"
+    maturity:
+      level: advanced
+
+examples:
+  - id: form_validation_ux
+    title: "Validation UX Timing"
+    context: "Email field validation"
+    correct: |
+      // CORRECT: Validate on blur, show after touch
+      function validateEmail(email) {
+        if (!email) return "Email is required"
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Invalid email"
+        return null
+      }
+
+      function EmailField() {
+        const [value, setValue] = useState("")
+        const [touched, setTouched] = useState(false)
+        const error = touched ? validateEmail(value) : null
+
+        return (
+          <div>
+            <label htmlFor="email">Email</label>
+            <input
+              id="email"
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              onBlur={() => setTouched(true)}
+              aria-describedby={error ? "email-error" : undefined}
+              aria-invalid={!!error}
+            />
+            {error && <p id="email-error" role="alert">{error}</p>}
+          </div>
+        )
+      }
+    incorrect: |
+      // WRONG: Validate on every keystroke, show before touch
+      function EmailField() {
+        const [value, setValue] = useState("")
+        const error = validateEmail(value) // validates every keystroke
+
+        return (
+          <div>
+            <input
+              value={value}
+              onChange={e => setValue(e.target.value)}
+            />
+            {error && <p>{error}</p>} {/* Shows error while typing */}
+          </div>
+        )
+      }
+    explanation: >
+      The correct version shows errors only after the field has been touched
+      (blurred), providing a non-intrusive UX. The incorrect version shows
+      validation errors while the user is still typing, which is annoying.
+
+security_hardening:
+  input_output:
+    requirements:
+      - "All form inputs sanitized before submission"
+      - "Client-side validation mirrors server-side rules"
+  data_protection:
+    requirements:
+      - "Draft forms with sensitive data use encryption in localStorage"
+  secrets:
+    requirements:
+      - "No tokens or passwords stored in draft form state"
+  monitoring:
+    requirements:
+      - "Form submission failures logged with form ID"
+
+compliance:
+  standards:
+    - name: "WCAG 2.1 AA"
+      relevance: "Form error identification, labels, and instructions"
+  requirements_mapping:
+    - control: error_identification
+      description: "Form errors identified and described to screen readers"
+      maps_to:
+        - "WCAG 2.1: 3.3.1 Error Identification, 3.3.2 Labels"
+
+prompt_recipes:
+  - id: form_greenfield
+    scenario: greenfield
+    description: "Design form with validation"
+    prompt: |
+      Design form for {feature_name}.
+
+      Complexity: simple/complex/wizard
+      Fields: {field_count}
+      Async validation: yes/no
+
+      Tasks:
+      1. Choose form library based on complexity
+      2. Define validation schema (Zod/Yup)
+      3. Design error display UX (timing, placement)
+      4. Handle submission states (loading, success, error)
+
+  - id: form_migration_wizard
+    scenario: migration
+    description: "Convert long form to wizard"
+    prompt: |
+      Convert {form_name} to multi-step wizard.
+
+      Steps:
+      1. Identify logical step boundaries
+      2. Create step state machine
+      3. Implement progress indicator
+      4. Add step validation before advance
+      5. Add draft persistence
+      6. Test cross-step data dependencies
+
+  - id: form_validation_audit
+    scenario: audit
+    description: "Audit form validation UX"
+    prompt: |
+      Audit form validation UX for {form_name}.
+
+      Checklist:
+      1. Errors shown after field touched, not on mount
+      2. Async validation debounced by 300ms
+      3. Error messages specific and actionable
+      4. Errors associated via aria-describedby
+      5. Submission disabled while processing
+      6. Server errors mapped to correct fields
+
+  - id: async_validation
+    scenario: greenfield
+    description: "Implement async field validation"
+    prompt: |
+      Implement async validation for {field_name} in {form_name}.
+
+      Requirements:
+      1. Debounce input by 300ms before validation call
+      2. Show loading indicator during validation
+      3. Handle race conditions (out-of-order responses)
+      4. Cache recent validation results
+      5. Provide clear error message on failure
+
+anti_patterns:
+  - name: "Validate Only on Submit"
+    description: "Form shows all errors only after submit click. User fills 20 fields, submits, sees 5 errors."
+    fix: "Validate on blur and onChange after first touch. Show errors progressively, not all at once."
+    severity: high
+    related_pattern: simple_form_management
+  - name: "No Autosave for Long Forms"
+    description: "User spends 15 minutes on a long form. Accidental navigation loses all progress."
+    fix: "Implement debounced autosave to localStorage with draft restore prompt."
+    severity: medium
+    related_pattern: autosave_draft
+  - name: "Overwhelming Error Display"
+    description: "All field errors shown simultaneously on page load before user interacts."
+    fix: "Show errors only after field touched or form first submitted. Use aria-describedby."
+    severity: medium
+    related_pattern: simple_form_management
+
+checklist:
+  - id: FH-01
+    category: design
+    description: "Form errors associated with fields via aria-describedby"
+    severity: critical
+    verified_by: complex_form_management
+  - id: FH-02
+    category: design
+    description: "Labels explicitly associated with inputs via htmlFor"
+    severity: critical
+    verified_by: simple_form_management
+  - id: FH-03
+    category: maintainability
+    description: "Validation schema defined outside the component"
+    severity: medium
+    verified_by: complex_form_management
+  - id: FH-04
+    category: reliability
+    description: "Draft autosave debounced (1-2s) and cleared on submit"
+    severity: high
+    verified_by: autosave_draft
+  - id: FH-05
+    category: security
+    description: "Sensitive form drafts encrypted before localStorage save"
+    severity: high
+    verified_by: autosave_draft
+  - id: FH-06
+    category: correctness
+    description: "Wizard state persists across steps and survives refresh"
+    severity: high
+    verified_by: wizard_form_pattern
+  - id: FH-07
+    category: design
+    description: "Form submit button disabled while submitting"
+    severity: medium
+    verified_by: complex_form_management

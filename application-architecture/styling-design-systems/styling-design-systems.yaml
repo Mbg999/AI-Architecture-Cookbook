@@ -1,0 +1,551 @@
+# =============================================================================
+# AI Architecture Cookbook — Styling & Design Systems
+# Schema: v3 | Domain: styling-design-systems
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: styling-design-systems
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Styling architecture and design system patterns covering CSS methodology
+    (BEM, CSS-in-JS, utility-first), design tokens, component libraries,
+    theming, dark mode, and accessible visual design. Provides recommendations
+    for maintainable, scalable styling in frontend applications.
+
+  tags:
+    - styling
+    - css
+    - design-system
+    - tailwind
+    - css-in-js
+    - theming
+    - design-tokens
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - id: accessibility
+      reason: "Design systems must enforce accessible color contrast, focus indicators, and typography"
+    - id: frontend-component-architecture
+      reason: "Component architecture feeds into design system component structure"
+    - id: frontend-build-performance
+      reason: "CSS bundle size and extraction affect build performance"
+
+  related_standards:
+    - id: responsive-mobile-first
+      relationship: complementary
+      context: "Design system must support responsive breakpoints via token system"
+
+context_inputs:
+  - name: team_size
+    type: enum
+    description: "Number of developers and designers"
+    required: true
+    default: small
+    enum_values:
+      - small
+      - medium
+      - large
+
+  - name: design_system_maturity
+    type: enum
+    description: "Maturity of the design system"
+    required: true
+    default: none
+    enum_values:
+      - none
+      - emerging
+      - mature
+
+  - name: styling_approach
+    type: enum
+    description: "Preferred styling methodology"
+    required: false
+    default: utility
+    enum_values:
+      - utility
+      - css_modules
+      - css_in_js
+      - css_layers
+
+  - name: branding_count
+    type: integer
+    description: "Number of distinct brands/themes the app supports"
+    required: false
+    default: 1
+
+  - name: accessibility_target
+    type: enum
+    description: "Accessibility compliance target"
+    required: false
+    default: aa
+    enum_values:
+      - none
+      - aa
+      - aaa
+
+decision_tree:
+  - id: multi_brand_enterprise
+    priority: 1
+    if:
+      - branding_count > 1
+      - team_size in [medium, large]
+    then:
+      pattern: design_tokens_css_custom_properties
+      notes: "Multi-brand systems require CSS custom properties as the single source of truth for design tokens"
+
+  - id: mature_ds_headless
+    priority: 2
+    if:
+      - design_system_maturity == mature
+    then:
+      pattern: utility_first_tailwind
+      notes: "Mature design systems benefit from utility-first CSS with Tailwind for rapid, consistent UI development"
+
+  - id: high_a11y_target
+    priority: 3
+    if:
+      - accessibility_target in [aa, aaa]
+    then:
+      pattern: accessible_visual_design
+      notes: "Accessibility targets require enforced color contrast, focus management, and typography constraints"
+
+  - id: emerging_ds
+    priority: 4
+    if:
+      - design_system_maturity == emerging
+    then:
+      pattern: css_modules_bem
+      notes: "Emerging design systems benefit from CSS Modules with BEM naming for predictable, scoped styles"
+
+  - id: simple_approach
+    priority: 5
+    if:
+      - team_size == small
+    then:
+      pattern: utility_first_tailwind
+      notes: "Small teams benefit most from utility-first CSS for rapid development with built-in consistency"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: css_modules_bem
+    description: "CSS Modules with BEM is the safe default for any project"
+
+patterns:
+  - id: utility_first_tailwind
+    name: "Utility-First CSS (Tailwind)"
+    description: >
+      Utility-first CSS with frameworks like Tailwind CSS provides a
+      constrained set of atomic utility classes. Design tokens (colors,
+      spacing, typography) are configured once in tailwind.config and
+      applied via classes. This eliminates context-switching between
+      HTML and CSS files.
+    use_when:
+      - "Small to medium teams wanting rapid development"
+      - "Design system maturity is emerging or mature"
+      - "Design tokens are well-defined"
+      - "Need consistent spacing, color, and typography without custom CSS"
+    avoid_when:
+      - "Large design system with complex, unique components (headless + CSS Modules better)"
+      - "Team strongly prefers CSS-in-JS with dynamic styling"
+      - "No design tokens defined (utility classes without design language are inconsistent)"
+    tradeoffs:
+      pros:
+        - "Rapid development: no context-switching between HTML and CSS"
+        - "Built-in design constraints enforce consistency"
+        - "Built-in responsive modifiers, hover/focus states, dark mode"
+        - "Tree-shaking via PurgeCSS — minimal production CSS"
+      cons:
+        - "HTML can become verbose with many utility classes"
+        - "Learning curve for non-developers (designers)"
+        - "Custom components require extracting utility patterns into components"
+    implementation:
+      guidelines:
+        - "Define brand tokens in tailwind.config (colors, spacing, fonts, breakpoints)"
+        - "Extract repeated utility patterns into component classes using @apply"
+        - "Use the built-in dark mode variant for theme switching"
+        - "Use arbitrary values sparingly (they bypass design constraints)"
+        - "Configure PurgeCSS for production tree-shaking"
+        - "Use the Tailwind VS Code extension for autocomplete"
+        - "Combine with headless UI components for interactive patterns"
+      common_errors:
+        - error: "Using arbitrary values extensively (bypassing tailwind.config)"
+          impact: "Design inconsistencies, hard to maintain theme changes"
+          fix: "Add any repeated value to tailwind.config as a custom token"
+        - error: "Not extracting repeated utility patterns into components"
+          impact: "HTML bloat, hard to maintain consistency across the app"
+          fix: "Extract repeated inline utility groups into reusable components"
+    maturity:
+      level: standard
+    standards:
+      - name: "Tailwind CSS"
+        type: framework
+        role: "Utility-first CSS framework with design system configuration"
+        status: recommended
+
+  - id: css_modules_bem
+    name: "CSS Modules + BEM Methodology"
+    description: >
+      CSS Modules provide locally-scoped class names by default, preventing
+      global style collisions. BEM (Block-Element-Modifier) naming methodology
+      provides a consistent, semantic naming convention. Combined, they offer
+      predictable, maintainable styling without runtime overhead.
+    use_when:
+      - "Emerging design system where naming conventions matter"
+      - "Team that prefers traditional CSS with scoping"
+      - "Large codebase with many contributors needing predictable naming"
+      - "Framework with built-in CSS Modules support (Next.js, Vite)"
+    avoid_when:
+      - "Rapid prototyping where utility classes are faster"
+      - "Dynamic styling based on complex JS logic (CSS-in-JS is better)"
+      - "Small app where a lightweight approach is sufficient"
+    tradeoffs:
+      pros:
+        - "Zero runtime cost — CSS is compiled at build time"
+        - "Locally scoped by default (no global collisions)"
+        - "BEM provides clear relationship between HTML and CSS"
+        - "Works with any CSS preprocessor (Sass, PostCSS)"
+      cons:
+        - "BEM naming can be verbose (block__element--modifier)"
+        - "No built-in design token integration (must use custom properties)"
+        - "Dynamic styling requires CSS custom properties or inline styles"
+    implementation:
+      guidelines:
+        - "Use descriptive block names matching component names"
+        - "Keep BEM depth to max 2 levels (block__element, not block__element__sub)"
+        - "Use CSS custom properties for design tokens"
+        - "Use @layer to control CSS cascade order"
+        - "Avoid nesting deeper than 3 levels in SCSS/Sass"
+        - "Co-locate CSS module with the component file"
+        - "Use compose: for sharing common styles between modules"
+      common_errors:
+        - error: "Deeply nested SCSS (5+ levels) producing overly specific selectors"
+          impact: "Hard to override, large compiled CSS, specificity wars"
+          fix: "Max 3 levels nesting; use BEM for structure, not nesting"
+    maturity:
+      level: standard
+    standards:
+      - name: "CSS Modules"
+        type: standard
+        role: "Build-time CSS scoping via unique class name generation"
+        status: recommended
+      - name: "BEM Methodology"
+        type: practice
+        role: "Block-Element-Modifier naming convention for CSS"
+        status: recommended
+
+  - id: design_tokens_css_custom_properties
+    name: "Design Tokens + CSS Custom Properties"
+    description: >
+      Design tokens are the atomic values of a design system (colors, spacing,
+      typography, shadows). They are stored as CSS custom properties on :root
+      or via data-theme attribute. This enables multi-theme support (brand A,
+      brand B, dark mode) by swapping token values at the root level without
+      touching component styles.
+    use_when:
+      - "Multi-brand or multi-theme application"
+      - "Enterprise design system serving multiple products"
+      - "Dark mode support across the entire app"
+      - "Design tokens consumed by multiple platforms (web, mobile)"
+    avoid_when:
+      - "Single-brand, single-theme app (CSS is sufficient)"
+      - "Small team without design operations resources"
+    tradeoffs:
+      pros:
+        - "Single source of truth for visual design"
+        - "Theme switching: change token values, all components update"
+        - "Tokens can be consumed by multiple platforms (web, iOS, Android)"
+        - "CSS custom properties are inherited and composable"
+      cons:
+        - "Requires design token tooling (Style Dictionary, Theo)"
+        - "Token naming conventions must be agreed upon and documented"
+        - "CSS custom properties cannot be used in media queries (preprocessors needed)"
+    implementation:
+      guidelines:
+        - "Define token categories: color, spacing, typography, shadow, animation"
+        - "Use CSS custom properties on :root for default theme, [data-theme] for variants"
+        - "Use Style Dictionary to generate tokens for multiple platforms"
+        - "Name tokens semantically (color-surface-primary, not color-blue-500)"
+        - "Provide a token documentation page with visual examples"
+        - "Version tokens independently from component releases"
+        - "Test theme switching with automated visual regression"
+      common_errors:
+        - error: "Using presentational token names (blue-500) instead of semantic (primary-surface)"
+          impact: "Rebranding requires changing every component instead of one token value"
+          fix: "Layer tokens: primitives (blue-500) → semantic (surface-primary) → component"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "CSS Custom Properties"
+        type: spec
+        role: "Browser-native custom properties for design token values"
+        status: recommended
+      - name: "Style Dictionary"
+        type: tool
+        role: "Build-time design token generation for multiple platforms"
+        status: recommended
+      - name: "W3C Design Tokens Format"
+        type: spec
+        role: "Standard format for design token definitions"
+        status: emerging
+
+  - id: accessible_visual_design
+    name: "Accessible Visual Design"
+    description: >
+      Ensure styling enforces accessibility: color contrast ratios (WCAG 2.1,
+      4.5:1 text, 3:1 large text), visible focus indicators, sufficient touch
+      targets (44x44px), readable font sizes (min 16px), and respect for user
+      preferences (prefers-reduced-motion, prefers-color-scheme).
+    use_when:
+      - "Accessibility target is AA or AAA"
+      - "Public-facing or regulated applications"
+      - "Design system tokens must enforce accessibility constraints"
+    avoid_when:
+      - "Internal tools with small accessibility requirements"
+      - "Prototypes not intended for production"
+    tradeoffs:
+      pros:
+        - "Compliance with WCAG and legal requirements"
+        - "Better UX for all users, not just those with disabilities"
+        - "Design tokens enforce constraints automatically"
+      cons:
+        - "Design flexibility reduced by contrast and size constraints"
+        - "Requires accessibility expertise on the team"
+    implementation:
+      guidelines:
+        - "Define color tokens with WCAG contrast ratios baked in"
+        - "Ensure all interactive elements have visible :focus-visible outlines"
+        - "Set minimum touch target size to 44x44 CSS pixels"
+        - "Use rem/em for font sizes, respect user font-size preferences"
+        - "Apply prefers-reduced-motion to disable non-essential animations"
+        - "Test all color combinations with a contrast checker"
+        - "Provide a high-contrast mode via tokens"
+      common_errors:
+        - error: "Removing focus outlines without replacement"
+          impact: "Keyboard users can't see which element is focused"
+          fix: "Replace default outline with a custom :focus-visible ring with sufficient contrast"
+    maturity:
+      level: advanced
+    standards:
+      - name: "WCAG 2.1 AA"
+        type: standard
+        role: "Web Content Accessibility Guidelines for visual design"
+        status: recommended
+
+examples:
+  - id: design_tokens_theming
+    title: "Design Tokens for Multi-Theme"
+    context: "Supporting light and dark themes"
+    correct: |
+      /* tokens.css — CORRECT: semantic tokens */
+      :root {
+        --color-surface-primary: #ffffff;
+        --color-text-primary: #1a1a1a;
+        --color-border: #e0e0e0;
+      }
+
+      [data-theme="dark"] {
+        --color-surface-primary: #1a1a1a;
+        --color-text-primary: #e0e0e0;
+        --color-border: #333333;
+      }
+
+      /* Component uses semantic tokens */
+      .card {
+        background: var(--color-surface-primary);
+        color: var(--color-text-primary);
+        border: 1px solid var(--color-border);
+      }
+    incorrect: |
+      /* WRONG: Hardcoded colors — no theme support */
+      .card {
+        background: #ffffff;
+        color: #333333;
+        border: 1px solid #e0e0e0;
+      }
+
+      /* Dark mode forces overrides everywhere */
+      [data-theme="dark"] .card {
+        background: #1a1a1a;
+        color: #e0e0e0;
+      }
+    explanation: >
+      The correct version uses semantic design tokens via CSS custom properties.
+      Theme switching is achieved by changing token values on a data-theme
+      attribute. The incorrect version requires overriding every component
+      style individually for each theme.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All communication uses HTTPS"
+  data_protection:
+    requirements:
+      - "Sensitive data not exposed in CSS custom properties or classes"
+  access_control:
+    requirements:
+      - "Design tokens do not leak feature access information"
+  input_output:
+    requirements:
+      - "User-supplied CSS values sanitized to prevent CSS injection"
+  secrets:
+    requirements:
+      - "No sensitive values embedded in CSS (inline styles, custom properties)"
+  monitoring:
+    requirements:
+      - "Design token usage monitored for deprecation tracking"
+
+compliance:
+  standards:
+    - name: "WCAG 2.1 AA"
+      relevance: "Color contrast, focus indicators, and text sizing must meet AA standards"
+  requirements_mapping:
+    - control: color_contrast
+      description: "All text/background pairs meet WCAG contrast ratios"
+      maps_to:
+        - "WCAG 2.1 AA: 1.4.3 Contrast (Minimum)"
+
+prompt_recipes:
+  - id: design_system_greenfield
+    scenario: greenfield
+    description: "Design a new design system from scratch"
+    prompt: |
+      Design a design system for {product_name}.
+
+      Context:
+      - Brands: {branding_count}
+      - Team: {team_size}
+      - Approach: utility/css-modules/css-in-js
+      - A11y target: AA/AAA
+
+      Tasks:
+      1. Define design token categories (color, spacing, type, shadow)
+      2. Choose CSS methodology with rationale
+      3. Design token naming convention (primitives → semantic)
+      4. Set up theme switching mechanism
+      5. Define accessible color palette with contrast validation
+      6. Create component documentation strategy
+
+  - id: migrate_to_tailwind
+    scenario: migration
+    description: "Migrate from custom CSS to Tailwind"
+    prompt: |
+      Migrate {app_name} from custom CSS to Tailwind.
+
+      Steps:
+      1. Extract existing design tokens from CSS
+      2. Configure tailwind.config with brand tokens
+      3. Create migration codemod for class replacements
+      4. Replace CSS Modules with utility classes incrementally
+      5. Extract common patterns into custom components
+
+  - id: dark_mode_implementation
+    scenario: migration
+    description: "Add dark mode to existing app"
+    prompt: |
+      Implement dark mode for {app_name}.
+
+      Plan:
+      1. Audit existing colors and create token mapping
+      2. Define dark theme token values
+      3. Use CSS custom properties for all color values
+      4. Add data-theme attribute to root
+      5. Test all components for contrast in both themes
+      6. Add prefers-color-scheme media query for auto-switch
+
+  - id: a11y_design_audit
+    scenario: audit
+    description: "Audit design system for WCAG compliance"
+    prompt: |
+      Audit {app_name} design system for accessibility.
+
+      Checklist:
+      1. All color pairs meet WCAG AA contrast (4.5:1 text, 3:1 large)
+      2. All interactive elements have visible focus indicators
+      3. Touch targets are ≥44x44px
+      4. Font sizes are ≥16px
+      5. prefers-reduced-motion disables animations
+      6. Color is never the only indicator of state
+
+anti_patterns:
+  - name: "No Design Tokens"
+    description: >
+      Colors, spacing, and fonts hardcoded throughout the CSS with no
+      token abstraction. Rebranding or theming requires changing every
+      component individually.
+    fix: "Extract all visual values into CSS custom properties. Use semantic naming based on purpose, not appearance."
+    severity: high
+    related_pattern: design_tokens_css_custom_properties
+
+  - name: "IdSelectors in CSS Modules"
+    description: >
+      Using ID selectors or over-nesting in CSS Modules, creating overly
+      specific selectors that are hard to override and produce large CSS.
+    fix: "Use class selectors only, max 2 levels of nesting. Let CSS Modules handle scoping."
+    severity: medium
+    related_pattern: css_modules_bem
+
+  - name: "Inconsistent Utility Usage"
+    description: >
+      Mixing utility classes, inline styles, custom CSS, and CSS-in-JS
+      in the same project with no clear boundaries. Styles are scattered
+      and hard to maintain.
+    fix: "Choose one primary approach. Use utilities for atomic styles, extract component classes for repeated patterns."
+    severity: medium
+    related_pattern: utility_first_tailwind
+
+  - name: "Global CSS Overrides for Every Theme"
+    description: >
+      Instead of using CSS custom properties for tokens, each theme
+      overrides every component's CSS individually. Adding a new theme
+      requires touching every component file.
+    fix: "Use CSS custom properties for all design tokens. Components use var() — themes only set variable values."
+    severity: high
+    related_pattern: design_tokens_css_custom_properties
+
+checklist:
+  - id: DS-01
+    category: maintainability
+    description: "All visual values defined as CSS custom properties (no hardcoded colors/spacing)"
+    severity: high
+    verified_by: design_tokens_css_custom_properties
+  - id: DS-02
+    category: maintainability
+    description: "Single CSS methodology used consistently across the project"
+    severity: medium
+    verified_by: utility_first_tailwind
+  - id: DS-03
+    category: maintainability
+    description: "CSS Module class names use BEM naming convention"
+    severity: medium
+    verified_by: css_modules_bem
+  - id: DS-04
+    category: design
+    description: "Color is not the only indicator of state (error, active, disabled)"
+    severity: high
+    verified_by: accessible_visual_design
+  - id: DS-05
+    category: design
+    description: "All text/background pairs meet WCAG 2.1 AA contrast (4.5:1)"
+    severity: critical
+    verified_by: accessible_visual_design
+  - id: DS-06
+    category: design
+    description: "Production CSS purged of unused utility classes"
+    severity: high
+    verified_by: utility_first_tailwind
+  - id: DS-07
+    category: design
+    description: "Interactive elements have visible :focus-visible outlines"
+    severity: critical
+    verified_by: accessible_visual_design
+  - id: DS-08
+    category: maintainability
+    description: "Touch targets ≥44x44px on all interactive elements"
+    severity: medium
+    verified_by: accessible_visual_design

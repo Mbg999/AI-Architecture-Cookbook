@@ -1,0 +1,624 @@
+# =============================================================================
+# AI Architecture Cookbook — Multi-Tenancy
+# Schema: v3 | Domain: multi-tenancy
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: multi-tenancy
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Multi-tenancy architecture patterns for SaaS applications. Covers database-per-tenant,
+    shared database with row-level security, schema-per-tenant, and hybrid approaches
+    with tenant isolation and routing strategies.
+
+  tags:
+    - multi-tenant
+    - saas
+    - isolation
+    - tenant-routing
+    - data-isolation
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - authentication
+    - authorization
+    - data-persistence
+    - api-design
+
+  related_standards:
+    - id: authorization
+      relationship: complementary
+      context: "Tenant-aware authorization extends RBAC/ABAC with tenant context"
+    - id: data-persistence
+      relationship: complementary
+      context: "Tenant isolation strategy determines data storage architecture"
+
+context_inputs:
+  - name: tenant_count
+    type: integer
+    description: "Expected number of tenants"
+    required: true
+    default: 100
+
+  - name: isolation_level
+    type: enum
+    description: "Required data isolation strength between tenants"
+    required: true
+    default: database
+    enum_values:
+      - database
+      - schema
+      - row
+      - hybrid
+
+  - name: data_sensitivity
+    type: enum
+    description: "Sensitivity level of tenant data"
+    required: true
+    default: medium
+    enum_values:
+      - low
+      - medium
+      - high
+
+  - name: tenant_onboarding_frequency
+    type: enum
+    description: "How often new tenants are onboarded"
+    required: true
+    default: monthly
+    enum_values:
+      - rare
+      - monthly
+      - weekly
+      - daily
+
+decision_tree:
+  - id: high_sensitivity_requires_database_isolation
+    priority: 1
+    if:
+      - data_sensitivity == high
+    then:
+      pattern: db_per_tenant
+      standards:
+        - "Database-per-Tenant Isolation Pattern"
+      notes: "High-sensitivity data requires full database isolation for compliance"
+
+  - id: many_tenants_poor_fit_for_database_per_tenant
+    priority: 2
+    if:
+      - tenant_count > 1000
+      - data_sensitivity != high
+    then:
+      pattern: shared_db_rls
+      standards:
+        - "Row-Level Security (SQL Server, PostgreSQL)"
+      notes: "Database-per-tenant does not scale past ~1000 tenants; RLS is more manageable"
+
+  - id: moderate_sensitivity_with_schema_isolation
+    priority: 3
+    if:
+      - isolation_level == schema
+      - tenant_count <= 500
+    then:
+      pattern: schema_per_tenant
+      standards:
+        - "Schema-per-Tenant Pattern"
+      notes: "Schema isolation balances data separation with operational simplicity"
+
+  - id: complex_isolation_needs_hybrid
+    priority: 4
+    if:
+      - isolation_level == hybrid
+    then:
+      pattern: hybrid_approach
+      standards:
+        - "Hybrid Multi-Tenancy Architecture"
+      notes: "Tiered isolation routes tenants to different strategies based on needs"
+
+  - id: low_sensitivity_with_frequent_onboarding
+    priority: 5
+    if:
+      - data_sensitivity == low
+      - tenant_onboarding_frequency in [weekly, daily]
+    then:
+      pattern: shared_db_rls
+      standards:
+        - "Row-Level Security Pattern"
+      notes: "RLS minimizes per-tenant provisioning overhead for frequent onboarding"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: shared_db_rls
+    description: "Shared database with RLS is the safest default for most SaaS applications"
+
+patterns:
+  - id: db_per_tenant
+    name: "Database-per-Tenant"
+    description: >
+      Each tenant gets their own database instance. Provides the strongest
+      isolation — no cross-tenant data leakage possible at the storage layer.
+      Ideal for high-sensitivity data and enterprise SaaS tiers.
+    use_when:
+      - "High data sensitivity or regulatory compliance requirements"
+      - "Tenant count is manageable (< 1000)"
+      - "Tenants require independent backup/restore capabilities"
+      - "Premium tier offering with guaranteed resource isolation"
+    avoid_when:
+      - "Thousands of tenants — database management overhead becomes prohibitive"
+      - "Tenants are low-value and cannot justify per-database cost"
+      - "Rapid tenant onboarding (hourly/daily) — provisioning delay is unacceptable"
+    tradeoffs:
+      pros:
+        - "Strongest possible isolation — no cross-tenant data leaks"
+        - "Per-tenant backup, restore, and performance tuning"
+        - "No schema compatibility issues between tenants"
+        - "Simplest compliance audit — clear data boundaries"
+      cons:
+        - "Highest operational cost — many databases to manage"
+        - "Connection pooling challenges with many databases"
+        - "Schema migrations must run N times (once per tenant)"
+        - "Provisioning latency for new tenants"
+    implementation:
+      guidelines:
+        - "Use a tenant registry service to map tenant IDs to connection strings"
+        - "Implement database connection pooling per tenant with LRU eviction"
+        - "Run schema migrations as idempotent scripts across all tenant databases"
+        - "Use infrastructure-as-code to automate database provisioning"
+        - "Monitor database health per tenant for resource usage and anomalies"
+      common_errors:
+        - error: "Hardcoded connection strings per tenant"
+          impact: "Adding a tenant requires code change and redeployment"
+          fix: "Use a tenant registry with dynamic connection string lookup and caching"
+        - error: "Schema drift between tenant databases over time"
+          impact: "Inconsistent behavior across tenants; migration failures"
+          fix: "Version-control all migrations and verify schema version per tenant on startup"
+        - error: "No connection pooling limit — all tenants create max connections"
+          impact: "Database connection exhaustion from idle tenant connections"
+          fix: "Implement per-tenant connection pool limits with LRU eviction for inactive tenants"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Database-per-Tenant"
+        type: pattern
+        role: "Strong isolation pattern for SaaS"
+        status: recommended
+
+  - id: shared_db_rls
+    name: "Shared Database with Row-Level Security"
+    description: >
+      Single database shared across all tenants. Row-level security (RLS) policies
+      automatically filter data to the current tenant's scope. Simplest operational
+      model with good scalability for many tenants.
+    use_when:
+      - "Many tenants (1000+) with moderate data sensitivity"
+      - "Frequent tenant onboarding — no provisioning delay"
+      - "Operational simplicity is a priority"
+      - "Tenant data is clearly row-scoped"
+    avoid_when:
+      - "High-sensitivity data requiring database-level isolation"
+      - "Some tenants need independent backup/restore"
+      - "Per-tenant resource usage isolation is required"
+    tradeoffs:
+      pros:
+        - "Simplest operations — single database to manage"
+        - "Instant tenant provisioning — no new database creation"
+        - "Efficient resource utilization across tenants"
+        - "Easy schema migrations — run once"
+      cons:
+        - "Weakest isolation — risk of RLS policy bypass"
+        - "Noisy neighbor problem — one tenant consumes shared resources"
+        - "Harder per-tenant monitoring and billing"
+        - "Cannot restore individual tenant from backup"
+    implementation:
+      guidelines:
+        - "Use database-native RLS (PostgreSQL Row-Level Security, SQL Server Security Policies)"
+        - "Set tenant context via session variable (SET app.current_tenant_id = '...')"
+        - "Test RLS policies thoroughly — write integration tests that verify cross-tenant isolation"
+        - "Use separate schemas for cross-tenant shared reference data"
+        - "Implement tenant-aware query monitoring to detect full-table scans"
+      common_errors:
+        - error: "Missing RLS policy on a table — all tenants see all rows"
+          impact: "Complete cross-tenant data exposure; data breach"
+          fix: "Every table must have an RLS policy; use automated test that queries without tenant context"
+        - error: "Setting tenant context in application layer but RLS bypassed by direct queries"
+          impact: "Admin tools and reports accidentally access all tenant data"
+          fix: "Enforce RLS at the database level; application-layer tenant filtering is defense-in-depth"
+        - error: "RLS performance impact on complex queries"
+          impact: "RLS policies add filter predicates that affect query plans"
+          fix: "Index RLS-filtered columns; monitor query plans for RLS overhead"
+    maturity:
+      level: standard
+    standards:
+      - name: "PostgreSQL Row-Level Security"
+        type: tool
+        role: "Database-native row-level security implementation"
+        status: recommended
+
+  - id: schema_per_tenant
+    name: "Schema-per-Tenant"
+    description: >
+      Single database with separate schemas per tenant. Each tenant gets their
+      own namespace with isolated tables, while sharing the same database instance
+      and connection pool. Balance of isolation and operational simplicity.
+    use_when:
+      - "Moderate tenant count (< 500) with medium data sensitivity"
+      - "Need logical data separation without separate databases"
+      - "Tenants may need custom schema extensions"
+      - "Good middle ground between full isolation and shared operations"
+    avoid_when:
+      - "Very high tenant count — schema management overhead grows"
+      - "Regulatory requirements demand physical data separation"
+      - "Tenant provisioning speed is critical (schema creation takes time)"
+    tradeoffs:
+      pros:
+        - "Better isolation than RLS — tenants cannot see each other's tables"
+        - "Single database — shared connection pool and resource management"
+        - "Per-tenant schema customization possible"
+        - "Schema migration runs once per tenant but can be automated"
+      cons:
+        - "More complex schema migrations than shared DB — must iterate schemas"
+        - "Shared resource pool — noisy neighbor possible"
+        - "Per-tenant backup/restore is complex"
+        - "Schema count grows with tenants; some databases have schema limits"
+    implementation:
+      guidelines:
+        - "Create schemas dynamically during tenant onboarding with base tables"
+        - "Use a naming convention: tenant_{tenant_id} for schema names"
+        - "Run schema migrations as loops over all tenant schemas"
+        - "Implement search_path or schema-qualified queries for tenant routing"
+        - "Monitor per-schema storage usage for billing and capacity planning"
+      common_errors:
+        - error: "Running migrations on default schema only"
+          impact: "Only the default tenant schema is updated; other tenants run old schema"
+          fix: "Migration scripts must iterate all tenant schemas; verify after each run"
+        - error: "Cross-schema joins in application queries"
+          impact: "Accidental cross-tenant data access when queries omit schema qualifiers"
+          fix: "Always use schema-qualified table names; set search_path per connection"
+        - error: "Connection pool saturation from schema catalog queries"
+          impact: "Many concurrent connections querying pg_catalog/INFORMATION_SCHEMA under load"
+          fix: "Cache schema metadata; avoid per-request schema lookups"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Schema-per-Tenant Pattern"
+        type: pattern
+        role: "Logical isolation pattern for SaaS"
+        status: recommended
+
+  - id: hybrid_approach
+    name: "Hybrid Multi-Tenancy"
+    description: >
+      Tiered approach where tenants are assigned different isolation strategies
+      based on their requirements. Premium tenants get database-per-tenant, standard
+      tenants share schemas, and trial tenants use RLS. Enables a product-led growth
+      model where tenants upgrade their isolation tier.
+    use_when:
+      - "Multiple tenant tiers with different isolation needs"
+      - "Product-led growth — free tiers share resources, enterprise gets isolation"
+      - "Gradual migration path from shared to isolated as tenants grow"
+      - "Complex organizational structures with varied compliance requirements"
+    avoid_when:
+      - "All tenants have uniform requirements"
+      - "Team lacks operational maturity to manage multiple isolation patterns"
+      - "Compliance mandates uniform treatment of all tenants"
+    tradeoffs:
+      pros:
+        - "Right-sized isolation for each tenant tier"
+        - "Revenue optimization — charge premium for higher isolation"
+        - "Gradual migration path as tenant needs evolve"
+        - "Efficient resource allocation across tiers"
+      cons:
+        - "Highest operational complexity — three patterns to maintain"
+        - "Complex routing logic — tenant routing must understand tiers"
+        - "Developer cognitive load — different patterns for different tenants"
+        - "Testing must cover all isolation levels"
+    implementation:
+      guidelines:
+        - "Define a tenant tier attribute in the tenant registry (trial, standard, enterprise)"
+        - "Build a routing layer that directs queries to the correct data store"
+        - "Implement migration paths: RLS -> schema-per-tenant -> database-per-tenant"
+        - "Abstract tenant data access behind a repository pattern"
+        - "Test all isolation levels in CI with integration tests per tier"
+      common_errors:
+        - error: "No explicit tier-to-pattern mapping — implicit routing based on metadata"
+          impact: "Wrong isolation applied; tenant data potentially exposed"
+          fix: "Explicit tier-to-strategy mapping in tenant registry with validation"
+        - error: "Assuming tenants never change isolation tier"
+          impact: "No migration path when a tenant outgrows their current isolation"
+          fix: "Design and test migration scripts between all isolation levels from day one"
+        - error: "Testing only the most restrictive isolation level"
+          impact: "Bugs in shared isolation levels go to production"
+          fix: "Run integration tests against all active isolation levels in CI"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Hybrid Multi-Tenancy Architecture"
+        type: pattern
+        role: "Tiered isolation strategy"
+        status: recommended
+
+examples:
+  - id: tenant_routing_middleware
+    title: "Tenant Resolution Middleware"
+    context: "HTTP middleware that resolves tenant context from request"
+    correct: |
+      # Tenant context resolved from subdomain or header
+      class TenantMiddleware:
+          def resolve(self, request):
+              tenant_id = request.headers.get("X-Tenant-ID") or \
+                          self.extract_from_subdomain(request.host)
+              if not tenant_id:
+                  raise TenantResolutionError("No tenant identified")
+
+              tenant = self.tenant_registry.lookup(tenant_id)
+              if not tenant.active:
+                  raise TenantInactiveError(f"Tenant {tenant_id} is inactive")
+
+              # Set tenant context for current request
+              TenantContext.set(tenant)
+              return self.get_next_handler(request, tenant)
+    incorrect: |
+      # Tenant context not set — all queries run without tenant filter
+      class UserController:
+          def list_users(self, request):
+              # No tenant resolution — returns ALL users
+              return UserRepository.find_all()
+    explanation: >
+      Every request must resolve the tenant context before any data access.
+      Missing tenant resolution causes cross-tenant data exposure.
+
+  - id: rls_policy_design
+    title: "PostgreSQL RLS Policy"
+    context: "Creating a row-level security policy for tenant isolation"
+    correct: |
+      -- Enable RLS on table
+      ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+
+      -- Create policy using session variable
+      CREATE POLICY tenant_isolation ON orders
+          USING (tenant_id = current_setting('app.tenant_id')::UUID);
+
+      -- Only the above policy exists — no permissive policies
+      -- All queries automatically filter by tenant_id
+    incorrect: |
+      -- No RLS policy — application-layer filtering only
+      # UserRepository.js
+      function findByTenant(tenantId) {
+          return db.query("SELECT * FROM orders WHERE tenant_id = $1",
+                          [tenantId])
+      }
+      # If anyone forgets the WHERE clause, all tenants' data is exposed
+    explanation: >
+      RLS enforces tenant isolation at the database level, ensuring filtering
+      cannot be bypassed. Application-layer filtering alone is fragile and unsafe.
+
+security_hardening:
+  transport:
+    requirements:
+      - "TLS 1.2+ for all database connections and tenant API endpoints"
+      - "Mutual TLS between services for tenant routing layer"
+  data_protection:
+    requirements:
+      - "Tenant data encryption at rest with per-tenant keys for database-isolated tenants"
+      - "Automated data purging on tenant deletion — no soft-delete leaking across tenants"
+      - "Cross-tenant data access audited and alerted"
+  access_control:
+    requirements:
+      - "Tenant context resolved from authenticated token, not user-supplied parameters"
+      - "Authorization enforced at tenant boundary — user A in tenant 1 cannot access tenant 2"
+      - "Admin cross-tenant access requires explicit elevation and audit trail"
+  input_output:
+    requirements:
+      - "Validate tenant ID from request against authenticated user's tenant membership"
+      - "Sanitize all query parameters to prevent tenant-ID manipulation attacks"
+      - "Ensure error responses do not leak tenant structure or existence"
+  secrets:
+    requirements:
+      - "Per-tenant database credentials rotated independently"
+      - "Connection strings stored in secrets manager with tenant-level access controls"
+      - "No hardcoded tenant identifiers, keys, or connection strings in code"
+  monitoring:
+    requirements:
+      - "Log all cross-tenant access attempts (authorized and unauthorized)"
+      - "Alert on unauthorized cross-tenant access attempts"
+      - "Monitor per-tenant resource usage for billing and noisy-neighbor detection"
+
+compliance:
+  standards:
+    - name: "SOC 2"
+      relevance: "Multi-tenant data isolation is a core SOC 2 control for SaaS providers"
+      reference: "https://www.aicpa-cima.com/topic/audit-assurance/audit-and-assurance-soc-2"
+    - name: "GDPR"
+      relevance: "Tenant isolation boundaries align with data controller obligations"
+    - name: "ISO 27001"
+      relevance: "Information security management including access control (A.9)"
+
+  requirements_mapping:
+    - control: tenant_data_isolation
+      description: "Tenant data is logically or physically isolated from other tenants"
+      maps_to:
+        - "SOC 2 — Logical and Physical Access"
+        - "ISO 27001 — A.9.1.2 Access to Networks and Network Services"
+    - control: tenant_data_deletion
+      description: "Complete data deletion on tenant offboarding"
+      maps_to:
+        - "GDPR — Article 17 Right to Erasure"
+
+prompt_recipes:
+  - id: mt_greenfield
+    scenario: greenfield
+    description: "Design multi-tenancy architecture for a new SaaS"
+    prompt: |
+      Design a multi-tenancy architecture for {application_name}.
+
+      Context:
+      - Expected tenant count: {tenant_count}
+      - Required isolation level: {isolation_level}
+      - Data sensitivity: {data_sensitivity}
+      - Tenant onboarding frequency: {tenant_onboarding_frequency}
+
+      Based on these inputs:
+      1. Choose the primary isolation strategy
+      2. Design the tenant resolution middleware
+      3. Define the tenant data access layer
+      4. Plan schema migrations for tenant isolation
+      5. Design tenant onboarding and offboarding flow
+
+  - id: mt_audit
+    scenario: audit
+    description: "Audit existing multi-tenancy implementation"
+    prompt: |
+      Audit this multi-tenancy implementation for isolation gaps:
+
+      {implementation_details}
+
+      Check for:
+      1. Is tenant context resolved before any data access?
+      2. Are all database queries scoped to the current tenant?
+      3. Are RLS policies in place on all tenant-scoped tables?
+      4. Can tenant A access tenant B's data via any API endpoint?
+      5. Are error responses leaking tenant structure?
+      6. Is tenant data fully purged on offboarding?
+
+  - id: mt_migration
+    scenario: migration
+    description: "Migrate from single-tenant to multi-tenant architecture"
+    prompt: |
+      Plan a migration from single-tenant to multi-tenant architecture.
+
+      Current state: {current_architecture}
+      Target isolation level: {target_isolation}
+
+      Migration plan:
+      1. Add tenant_id column to all tables (with NOT NULL after migration)
+      2. Create tenant registry and resolution middleware
+      3. Backfill tenant_id for existing data
+      4. Update all queries to include tenant scope
+      5. Add RLS policies or schema separation
+      6. Implement tenant-aware authentication
+
+  - id: mt_edge_case
+    scenario: edge-case
+    description: "Handle cross-tenant data sharing scenarios"
+    prompt: |
+      Design a secure cross-tenant data sharing mechanism.
+
+      Sharing requirement: {sharing_scenario}
+      Isolation level: {isolation_level}
+
+      Design:
+      1. Explicit sharing consent model (tenant A consents to share with tenant B)
+      2. Shared data access via read-only views or API
+      3. Audit trail for all cross-tenant data access
+      4. Revocation mechanism when sharing is withdrawn
+      5. Data expiration for time-limited sharing
+
+  - id: mt_high_security
+    scenario: high-security
+    description: "Harden multi-tenancy for compliance"
+    prompt: |
+      Harden multi-tenancy implementation for compliance requirements.
+
+      Compliance standards: {compliance_standards}
+      Isolation level: {isolation_level}
+
+      Security controls needed:
+      1. Tenant boundary verification at every layer
+      2. Encryption with per-tenant keys (if database-isolated)
+      3. Comprehensive access logging per tenant
+      4. Regular penetration testing for cross-tenant access
+      5. Incident response plan for tenant boundary breach
+
+anti_patterns:
+  - name: "Trusting Client-Supplied Tenant ID"
+    description: >
+      Accepting tenant_id from the client request without verifying it matches
+      the authenticated user's tenant. Attackers can access any tenant's data
+      by manipulating the tenant ID.
+    fix: "Resolve tenant from authentication context, not from client-supplied parameters"
+    severity: critical
+    related_pattern: shared_db_rls
+
+  - name: "Application-Only Tenant Filtering"
+    description: >
+      Relying solely on application-layer WHERE clauses to filter by tenant.
+      Missing a single WHERE clause in any query leaks data across tenants.
+    fix: "Add database-enforced isolation (RLS, schema isolation) as defense-in-depth"
+    severity: critical
+    related_pattern: shared_db_rls
+
+  - name: "One-Size-Fits-All Isolation"
+    description: >
+      Applying the same isolation strategy to all tenants regardless of their
+      sensitivity, compliance, or performance requirements. Over-isolates some
+      tenants while under-isolating others.
+    fix: "Use tiered hybrid approach — right-size isolation per tenant plan"
+    severity: medium
+    related_pattern: hybrid_approach
+
+checklist:
+  - id: MT-01
+    category: security
+    description: "Tenant context resolved from authentication, not client input"
+    severity: critical
+    verified_by: shared_db_rls
+
+  - id: MT-02
+    category: security
+    description: "All database queries enforce tenant isolation (RLS or schema-qualified)"
+    severity: critical
+    verified_by: shared_db_rls
+
+  - id: MT-03
+    category: security
+    description: "Cross-tenant access requires explicit authorization and audit"
+    severity: high
+    verified_by: db_per_tenant
+
+  - id: MT-04
+    category: reliability
+    description: "Tenant registry with caching and health monitoring"
+    severity: high
+    verified_by: hybrid_approach
+
+  - id: MT-05
+    category: compliance
+    description: "Tenant data fully purged on offboarding (no soft-delete bleed)"
+    severity: critical
+    verified_by: db_per_tenant
+
+  - id: MT-06
+    category: performance
+    description: "Connection pooling configured with per-tenant limits"
+    severity: medium
+    verified_by: db_per_tenant
+
+  - id: MT-07
+    category: maintainability
+    description: "Schema migrations tested against all isolation levels"
+    severity: high
+    verified_by: schema_per_tenant
+
+  - id: MT-08
+    category: observability
+    description: "Per-tenant metrics collected for resource usage and billing"
+    severity: medium
+    verified_by: hybrid_approach
+
+  - id: MT-09
+    category: security
+    description: "Error responses sanitized — no tenant structure leakage"
+    severity: high
+    verified_by: shared_db_rls
+
+  - id: MT-10
+    category: correctness
+    description: "Integration tests verify tenant isolation at every isolation level"
+    severity: critical
+    verified_by: hybrid_approach

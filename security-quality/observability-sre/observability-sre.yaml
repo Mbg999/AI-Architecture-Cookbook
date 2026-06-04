@@ -1,0 +1,665 @@
+# =============================================================================
+# AI Architecture Cookbook — Observability & SRE
+# Schema: v3 | Domain: observability-sre
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: observability-sre
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Site Reliability Engineering patterns covering service level indicators
+    (SLIs) and service level objectives (SLOs), error budget policies,
+    SLO-driven alerting that reduces noise, and incident management with
+    on-call best practices. Bridges observability data with reliability
+    decision-making.
+
+  tags:
+    - sre
+    - observability
+    - sli
+    - slo
+    - error-budget
+    - alerting
+    - incident-management
+
+  categories:
+    - security-quality
+
+  prerequisites:
+    - id: logging-observability
+      reason: "SLIs depend on metrics and logs collected by observability infrastructure"
+    - id: testing-strategies
+      reason: "Error budget burn rate informs testing investment decisions"
+
+  related_standards:
+    - id: logging-observability
+      relationship: complementary
+      context: "SLIs consume metrics and logs; SLO thresholds drive observability requirements"
+    - id: resilience-chaos-engineering
+      relationship: complementary
+      context: "Error budget budgets experimentation time for chaos engineering"
+
+context_inputs:
+  - name: service_criticality
+    type: enum
+    description: "How critical is the service to business operations"
+    required: true
+    default: standard
+    enum_values:
+      - tier1_critical
+      - tier2_important
+      - tier3_standard
+      - tier4_best_effort
+
+  - name: current_sre_maturity
+    type: enum
+    description: "Current SRE practice maturity level"
+    required: true
+    default: reactive
+    enum_values:
+      - none
+      - reactive
+      - proactive
+      - data_driven
+
+  - name: team_size
+    type: enum
+    description: "Size of the operations/on-call team"
+    required: true
+    default: small
+    enum_values:
+      - small_1_3
+      - medium_4_8
+      - large_9_plus
+
+  - name: incident_frequency
+    type: enum
+    description: "How often incidents occur"
+    required: false
+    default: weekly
+    enum_values:
+      - daily
+      - weekly
+      - monthly
+      - quarterly
+
+decision_tree:
+  - id: tier1_full_sre
+    priority: 1
+    if:
+      - service_criticality == tier1_critical
+      - current_sre_maturity in [proactive, data_driven]
+    then:
+      pattern: sli_slo_definition
+      notes: >
+        Tier-1 critical services with proactive SRE maturity should define
+        comprehensive SLIs across availability, latency, throughput, and
+        correctness dimensions. SLO targets at 99.9%+ with monthly burn-rate
+        alerting.
+
+  - id: error_budget_tier1
+    priority: 2
+    if:
+      - service_criticality in [tier1_critical, tier2_important]
+    then:
+      pattern: error_budgets
+      notes: >
+        Error budgets are essential for tier-1 and tier-2 services. They
+        balance reliability with feature velocity and provide data-driven
+        release gating.
+
+  - id: slo_alerting_setup
+    priority: 3
+    if:
+      - current_sre_maturity in [reactive, proactive]
+      - team_size in [small_1_3, medium_4_8]
+    then:
+      pattern: slo_driven_alerting
+      notes: >
+        SLO-driven alerting reduces on-call fatigue by alerting only when
+        SLO burn rate threatens the objective. This is especially valuable
+        for smaller teams.
+
+  - id: incident_process
+    priority: 4
+    if:
+      - incident_frequency in [daily, weekly]
+    then:
+      pattern: incident_management_oncall
+      notes: >
+        High incident frequency demands a mature incident management process
+        with clear severity classification, escalation paths, and blameless
+        postmortems to drive continuous improvement.
+
+  - id: sre_onramp
+    priority: 5
+    if:
+      - current_sre_maturity == none
+    then:
+      pattern: sli_slo_definition
+      notes: >
+        Start the SRE journey by defining the simplest possible SLIs: request
+        latency and error rate. Set a loose SLO target (99% or even 95%) and
+        iterate. Perfection is not the goal — measurement is.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: sli_slo_definition
+    description: "SLI/SLO definition is the foundation that all other SRE practices build upon"
+
+patterns:
+  - id: sli_slo_definition
+    name: "SLI/SLO Definition Process"
+    description: >
+      Define Service Level Indicators (SLIs) — quantitative measures of
+      a service attribute (latency, error rate, throughput, durability) —
+      and Service Level Objectives (SLOs) — target values for those SLIs
+      over a measurement window (e.g., 99.9% of requests complete in under
+      200ms over a 30-day rolling window). The SLI/SLO framework replaces
+      ad-hoc reliability targets with measurable, data-driven objectives.
+    use_when:
+      - "Defining reliability expectations for a new service"
+      - "Replacing vague uptime targets with measurable objectives"
+      - "Establishing a common language between engineering and product"
+      - "Setting up error budget policies"
+    avoid_when:
+      - "Experimental or prototype services (overhead not justified)"
+      - "Teams not ready to measure and act on SLO data"
+    tradeoffs:
+      pros:
+        - "Clear, measurable, data-driven reliability targets"
+        - "Common language between engineering, product, and management"
+        - "Enables error budget policies and data-driven decisions"
+        - "Identifies which services need reliability investment"
+      cons:
+        - "Requires robust observability infrastructure (metrics pipeline)"
+        - "SLO definition is iterative — first attempts will be wrong"
+        - "Too many SLOs create noise — focus on user-facing ones"
+    implementation:
+      guidelines:
+        - "Define SLIs from the user's perspective: latency (p50/p95/p99), error rate, availability"
+        - "Start with 2-3 SLIs per service — do not over-engineer the first pass"
+        - "Set SLO targets based on business requirements, not arbitrary numbers"
+        - "Use a 30-day rolling window for SLO compliance calculation"
+        - "Document SLI measurement methodology: which logs/metrics, what constitutes a good request"
+        - "Align SLOs with user journeys, not system internals"
+        - "Review and adjust SLOs quarterly — they should evolve with the service"
+        - "Classify requests as good/bad explicitly: define what counts as a failure"
+      common_errors:
+        - error: "Defining too many SLIs and SLOs on the first attempt"
+          impact: "Team becomes overwhelmed measuring and maintaining dozens of SLOs; practice abandoned"
+          fix: "Start with 2-3 user-facing SLIs; expand only after the process is mature"
+        - error: "Setting SLO at 100% availability"
+          impact: "100% is unrealistic; drives excessive investment for negligible user benefit"
+          fix: "Set realistic SLO (99.9% for critical, 99% for standard); use error budget for the remainder"
+    maturity:
+      level: standard
+    standards:
+      - name: "Google SRE Book — Service Level Objectives"
+        type: reference
+        role: "Definitive reference for SLI/SLO definition methodology"
+        status: recommended
+      - name: "OpenSLO"
+        type: framework
+        role: "Open standard for declarative SLO definitions in code"
+        status: recommended
+
+  - id: error_budgets
+    name: "Error Budgets"
+    description: >
+      An error budget is the acceptable amount of unreliability within an SLO
+      window (100% - SLO target = error budget). If a service has a 99.9% SLO
+      over 30 days, the error budget is 0.1% (approximately 43 minutes of
+      downtime). Error budget burn rate determines release gating: releases
+      are paused if the budget is burning too fast, and the remaining budget
+      can be intentionally consumed for experimentation or maintenance.
+    use_when:
+      - "Operating with a formal SLO framework"
+      - "Need a data-driven release gating mechanism"
+      - "Balancing feature velocity with reliability"
+      - "Reducing conflict between dev and ops teams"
+    avoid_when:
+      - "No SLO defined (error budget is meaningless without one)"
+      - "Very early-stage products (focus on product-market fit first)"
+    tradeoffs:
+      pros:
+        - "Data-driven release decisions — not emotional or political"
+        - "Aligns dev and ops around shared reliability goals"
+        - "Encourages reliability investment when budget is low"
+        - "Provides slack for experimentation without guilt"
+      cons:
+        - "Requires accurate SLO measurement — bad SLO means bad budget"
+        - "Can be gamed: teams may avoid risky changes instead of improving reliability"
+        - "Budget policy enforcement requires tooling and cultural buy-in"
+    implementation:
+      guidelines:
+        - "Calculate error budget daily from SLO compliance data"
+        - "Track error budget burn rate: consume it over the window, not all at once"
+        - "Pause releases when error budget is exhausted or burning too fast"
+        - "Define alert thresholds: warning at 50% consumed, critical at 75%"
+        - "Allow intentional error budget consumption for chaos experiments"
+        - "Report error budget status in team standups and monthly reviews"
+        - "Implement burn rate alerts for multi-window (1h, 6h, 1d, 3d) consumption"
+      common_errors:
+        - error: "Error budget policy with no enforcement"
+          impact: "Releases proceed despite exhausted budget; error budget loses credibility"
+          fix: "Automate release gating: CI/CD pipeline checks error budget before deploying"
+        - error: "Weekly error budget reset instead of rolling window"
+          impact: "Service can be down for a day and still have full budget the next Monday"
+          fix: "Use a rolling measurement window (30 days) so each day's data decays naturally"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Google SRE Book — Error Budget"
+        type: reference
+        role: "Foundational reference for error budget theory and practice"
+        status: recommended
+      - name: "OpenSLO"
+        type: framework
+        role: "Declarative SLO and error budget management"
+        status: recommended
+
+  - id: slo_driven_alerting
+    name: "SLO-Driven / Burn Rate Alerting"
+    description: >
+      Alert based on error budget burn rate rather than static thresholds.
+      Instead of alerting when latency exceeds 200ms, alert when the error
+      budget is projected to exhaust within a given time window at the
+      current burn rate. Multi-window burn rate alerts (fast burn = high
+      severity, slow burn = low severity) reduce noise and ensure alerts
+      correlate with real reliability risk.
+    use_when:
+      - "On-call teams suffering from alert fatigue"
+      - "Existing static threshold alerts generate too many false positives"
+      - "SLOs are already defined and measured"
+      - "Need to prioritize alerts by reliability impact"
+    avoid_when:
+      - "No SLO framework in place"
+      - "Very small team with minimal alerting — start simple"
+    tradeoffs:
+      pros:
+        - "Fewer, more meaningful alerts — on-call trusts the pager"
+        - "Alerts correlate with actual user impact"
+        - "Multi-window strategy catches both fast and slow burn scenarios"
+        - "Reduces alert fatigue and on-call burnout"
+      cons:
+        - "Requires accurate SLO data — garbage in, garbage out"
+        - "Burn rate calculation adds complexity to alerting rules"
+        - "Fast burn alerts may fire too late if budget window is too long"
+    implementation:
+      guidelines:
+        - "Implement multi-window burn rate alerts: 1h (fast), 6h (medium), 3d (slow)"
+        - "Use a short window for high-severity alerts (page immediately)"
+        - "Use a long window for low-severity alerts (ticket or daytime follow-up)"
+        - "Alert when burn rate would exhaust budget faster than the target burn rate"
+        - "Set severity: critical if budget exhausted in < 2h, warning if < 24h"
+        - "Pair burn rate alerts with error budget consumption dashboards"
+        - "Test alert configurations against historical incident data"
+      common_errors:
+        - error: "Single-window burn rate alert (e.g., 1h only)"
+          impact: "Fast spikes caught but slow degradation goes unnoticed until budget is exhausted"
+          fix: "Use multiple windows: 1h for fast burn, 6h for medium, 3d for slow burn"
+        - error: "Setting alert thresholds too tight (e.g., 2% budget consumed in 1h)"
+          impact: "Frequent false positives; on-call stops responding to alerts"
+          fix: "Tune thresholds against historical data; aim for <1 false positive per week per service"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Google SRE — Alerting on SLOs"
+        type: reference
+        role: "Detailed guidance on burn rate alerting implementation"
+        status: recommended
+      - name: "Prometheus / Alertmanager"
+        type: tool
+        role: "Metrics and alerting system supporting multi-window SLO alerting"
+        status: recommended
+
+  - id: incident_management_oncall
+    name: "Incident Management & On-Call"
+    description: >
+      Structured incident management process with severity classification,
+      clear escalation paths, incident commander roles, communication
+      templates, and blameless postmortems. On-call rotations follow
+      follow-the-sun or secondary-on-call patterns to ensure coverage
+      without excessive fatigue. Every incident produces a postmortem
+      with action items for preventing recurrence.
+    use_when:
+      - "Team is responsible for production services"
+      - "Incidents happen with any frequency"
+      - "Need to improve mean-time-to-acknowledge (MTTA) and mean-time-to-resolve (MTTR)"
+      - "Compliance requires documented incident response process"
+    avoid_when:
+      - "Single-person operations with no on-call rotation possible"
+    tradeoffs:
+      pros:
+        - "Structured process reduces chaos during incidents"
+        - "Clear roles and escalation paths prevent confusion"
+        - "Postmortems drive systematic reliability improvements"
+        - "Fair on-call rotations prevent burnout"
+      cons:
+        - "Process overhead for very small teams"
+        - "Postmortem culture requires psychological safety"
+        - "On-call is stressful even with good processes"
+    implementation:
+      guidelines:
+        - "Define incident severity levels (SEV1: critical outage, SEV2: degraded, SEV3: minor)"
+        - "Establish incident commander role for each incident to coordinate response"
+        - "Use a dedicated communication channel (Slack, Teams) per active incident"
+        - "Write blameless postmortem within 5 days of every SEV1/SEV2 incident"
+        - "Track action items from postmortems and ensure follow-through"
+        - "Implement follow-the-sun or secondary-on-call rotation for 24/7 coverage"
+        - "Set maximum on-call shift duration (7 days max, prefer 24h shifts)"
+        - "Provide on-call training, runbooks, and escalation contacts"
+        - "Conduct regular incident response drills (game days)"
+      common_errors:
+        - error: "On-call with no runbooks or escalation documentation"
+          impact: "On-call engineer wastes valuable incident time figuring out who to call"
+          fix: "Create and maintain runbooks per service; document escalation contacts and paths"
+        - error: "No postmortem culture — incidents repeat"
+          impact: "Same incidents recur because root causes are never addressed"
+          fix: "Mandate blameless postmortems; track action items to completion; celebrate improvements"
+    maturity:
+      level: standard
+    standards:
+      - name: "Google SRE Book — Incident Response"
+        type: reference
+        role: "Incident management best practices from Google SRE"
+        status: recommended
+      - name: "PagerDuty Incident Response"
+        type: practice
+        role: "Industry standard incident response process"
+        status: recommended
+
+examples:
+  - id: slo_burn_rate_alert
+    title: "Multi-Window SLO Burn Rate Alert"
+    context: "Alerting rules for a 99.9% SLO with multi-window burn rate detection"
+    correct: |
+      # Prometheus alerting rules for 99.9% SLO
+      groups:
+        - name: slo_burn_rate
+          rules:
+            # Fast burn (1h window) — page immediately
+            - alert: SLOFastBurn
+              expr: |
+                (1 - (good_requests_total{job="api"} / bad_requests_total{job="api"})[1h:1m])
+                > 0.1  # 10% error rate sustained over 1 hour
+              for: 5m
+              labels:
+                severity: critical
+              annotations:
+                summary: "Error budget burning at critical rate"
+
+            # Slow burn (6h window) — daytime ticket
+            - alert: SLOSlowBurn
+              expr: |
+                (1 - (good_requests_total{job="api"} / bad_requests_total{job="api"})[6h:5m])
+                > 0.02  # 2% error rate sustained over 6 hours
+              for: 30m
+              labels:
+                severity: warning
+              annotations:
+                summary: "Error budget burning at elevated rate"
+    incorrect: |
+      # WRONG: Static threshold alert — no SLO awareness
+      - alert: HighLatency
+        expr: p99_latency_seconds > 0.5
+        for: 5m
+        labels:
+          severity: critical
+        # This alerts on every latency spike even if SLO is fine
+        # Ignores whether users are actually impacted
+        # No multi-window — one-size-fits-all threshold
+    explanation: >
+      The correct configuration implements multi-window burn-rate alerting.
+      The 1-hour window catches fast, severe degradation and pages immediately.
+      The 6-hour window catches slow, sustained degradation and creates a
+      daytime ticket. The incorrect version uses a static latency threshold
+      that alerts regardless of actual user impact or budget consumption.
+
+  - id: incident_timeline
+    title: "Incident Response Timeline Template"
+    context: "Structured timeline for incident response documentation"
+    correct: |
+      Incident: [SEV1/SEV2/SEV3] — [Brief title]
+      Date: [YYYY-MM-DD]
+      Duration: [X hours Y minutes]
+      Services affected: [list]
+
+      Timeline:
+      - T+00:00 — Alert fired (PagerDuty/OpsGenie)
+      - T+00:03 — Primary on-call acknowledged
+      - T+00:08 — Incident declared, commander assigned
+      - T+00:15 — Communication sent to stakeholders
+      - T+00:45 — Root cause identified
+      - T+01:30 — Mitigation deployed
+      - T+01:35 — Services restored, monitoring confirmed
+      - T+02:00 — Post-incident review scheduled
+
+      Root cause: [one sentence]
+      Action items:
+        - [ ] [Owner] Fix vulnerability: [link to ticket]
+        - [ ] [Owner] Add monitoring: [link to ticket]
+        - [ ] [Owner] Write runbook: [link to ticket]
+    incorrect: |
+      "The service went down. We fixed it. Here's what happened: ..."
+      # No timeline, no severity classification, no action items
+      # Incident cannot be analyzed, action items cannot be tracked
+    explanation: >
+      The correct format captures a structured timeline, severity
+      classification, clear action items, and root cause. This enables
+      data-driven reliability improvements. The incorrect format is
+      an unstructured narrative that cannot drive systematic improvement.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Alert webhooks and notification channels use TLS-encrypted connections"
+      - "Access to observability dashboards over HTTPS with authentication"
+  data_protection:
+    requirements:
+      - "Incident postmortems redact sensitive data, PII, and credentials"
+      - "Metrics and logs containing user data are anonymized before storage"
+  access_control:
+    requirements:
+      - "Alert silencing and configuration changes require RBAC permissions"
+      - "Postmortem access restricted to engineering teams"
+      - "On-call schedule changes require manager approval"
+  input_output:
+    requirements:
+      - "Alert notification webhooks validate payloads and authenticate senders"
+      - "Incident communication channels restrict external access"
+  secrets:
+    requirements:
+      - "Alert notification tokens and webhook secrets in secret manager"
+      - "No hardcoded PagerDuty, Slack, or email credentials in alerting configs"
+  monitoring:
+    requirements:
+      - "Alertmanager uptime and delivery rate monitored"
+      - "On-call acknowledgement SLA tracked and reported"
+      - "Postmortem action items tracked to completion in project management tool"
+
+compliance:
+  standards:
+    - name: "SOC 2 — CC7 (System Operations)"
+      relevance: "Monitoring, incident response, and change management requirements"
+    - name: "ISO 27001 — A.16 (Incident Management)"
+      relevance: "Information security incident management requirements"
+    - name: "NIST SP 800-61 (Incident Handling Guide)"
+      relevance: "Incident response lifecycle and handling guidance"
+
+  requirements_mapping:
+    - control: incident_response
+      description: "Structured incident response with severity classification and postmortems"
+      maps_to:
+        - "SOC 2 CC7.3"
+        - "ISO 27001 A.16.1.5"
+    - control: service_level_objectives
+      description: "SLI/SLO-based reliability measurement and error budget management"
+      maps_to:
+        - "SOC 2 CC7.1"
+    - control: on_call_coverage
+      description: "24/7 on-call coverage with documented escalation paths"
+      maps_to:
+        - "SOC 2 CC7.2"
+        - "NIST SP 800-61"
+
+prompt_recipes:
+  - id: slo_definition_workshop
+    scenario: greenfield
+    description: "Define SLIs and SLOs for a new service"
+    prompt: |
+      Define SLIs and SLOs for a new service.
+
+      Service: [service name]
+      User journeys:
+      1. [list primary user-facing operations]
+
+      For each user journey, define:
+      - SLI: what you measure (latency, error rate, availability)
+      - Measurement method: which metric, how reported
+      - Good/bad classification: what counts as success/failure
+      - SLO target: target value and measurement window
+
+      Start with 2-3 SLIs per service. Do not exceed 5.
+
+  - id: error_budget_policy
+    scenario: architecture
+    description: "Define error budget policy for the organization"
+    prompt: |
+      Define an error budget policy for the organization.
+
+      Requirements:
+      1. How is error budget calculated (SLO %, window)?
+      2. What happens when budget is exhausted? (release freeze, review)?
+      3. Who owns the error budget?
+      4. How is budget burn rate reported?
+      5. How can budget be intentionally consumed (experiments, maintenance)?
+      6. What is the escalation path for budget disputes?
+
+      Consider:
+      - Tier-1 services have stricter policies than tier-3
+      - Error budget must balance feature velocity with reliability
+      - Policy should be automated in CI/CD
+
+  - id: slo_alerting_setup
+    scenario: optimization
+    description: "Configure SLO-driven alerting from scratch"
+    prompt: |
+      Set up SLO-driven burn rate alerting.
+
+      Steps:
+      1. Choose SLIs and their measurement windows
+      2. Define SLO targets per service
+      3. Configure multi-window burn rate alerts:
+         - 1-hour window: [threshold] — [severity]
+         - 6-hour window: [threshold] — [severity]
+         - 3-day window: [threshold] — [severity]
+      4. Create dashboards for error budget consumption
+      5. Set up alert routing (page vs. ticket)
+      6. Tune thresholds against historical incident data
+
+  - id: incident_review
+    scenario: audit
+    description: "Review incident response process and suggest improvements"
+    prompt: |
+      Review the incident response process and suggest improvements.
+
+      Review:
+      1. Are incident severity levels clearly defined?
+      2. Is there a documented incident commander role?
+      3. Are communication templates available?
+      4. Are postmortems written within 5 days of SEV1/SEV2?
+      5. Are action items tracked to completion?
+      6. Is on-call shift duration reasonable (< 7 days)?
+      7. Are runbooks maintained per service?
+      8. Are incident response drills conducted regularly?
+      9. Is alert fatigue being tracked and addressed?
+      10. Is psychological safety practiced in postmortems?
+
+anti_patterns:
+  - name: "Dashboard-Driven Operations"
+    description: >
+      Relying entirely on dashboards for reliability management without SLO
+      targets or alerting. Teams watch dashboards during working hours but
+      miss incidents outside of business hours. No systematic alerting, no
+      SLO compliance measurement, and no error budget.
+    fix: "Define SLOs with burn-rate alerting; dashboards support — do not replace — alerting"
+    severity: high
+    related_pattern: sli_slo_definition
+
+  - name: "Alert Fatigue from Static Thresholds"
+    description: >
+      Configuring alerts with static thresholds (CPU > 80%, latency > 200ms)
+      that trigger frequently but correlate poorly with actual user impact.
+      On-call engineers learn to ignore alerts because most are non-urgent.
+      Genuine incidents get lost in the noise.
+    fix: "Replace static threshold alerts with SLO burn-rate alerts; reduce alert volume by 80%+"
+    severity: high
+    related_pattern: slo_driven_alerting
+
+  - name: "Blameless Postmortems in Name Only"
+    description: >
+      Claiming blameless postmortems while implicitly or explicitly assigning
+      fault. Engineers are reluctant to be honest about contributing factors
+      for fear of punishment. Root causes are not addressed, and incidents
+      recur.
+    fix: "Explicitly state blameless principles in every postmortem; investigate system factors, not individual actions"
+    severity: high
+    related_pattern: incident_management_oncall
+
+checklist:
+  - id: SRE-01
+    category: observability
+    description: "SLIs defined for all tier-1 and tier-2 services"
+    severity: high
+    verified_by: sli_slo_definition
+  - id: SRE-02
+    category: reliability
+    description: "SLO targets set with appropriate measurement windows"
+    severity: high
+    verified_by: sli_slo_definition
+  - id: SRE-03
+    category: reliability
+    description: "Error budget policy defined and enforced in CI/CD"
+    severity: high
+    verified_by: error_budgets
+  - id: SRE-04
+    category: observability
+    description: "Multi-window burn rate alerting configured"
+    severity: high
+    verified_by: slo_driven_alerting
+  - id: SRE-05
+    category: reliability
+    description: "Incident severity levels defined and documented"
+    severity: high
+    verified_by: incident_management_oncall
+  - id: SRE-06
+    category: reliability
+    description: "Postmortems written within 5 days of SEV1/SEV2 incidents"
+    severity: high
+    verified_by: incident_management_oncall
+  - id: SRE-07
+    category: observability
+    description: "On-call shift durations limited to 7 days maximum"
+    severity: medium
+    verified_by: incident_management_oncall
+  - id: SRE-08
+    category: reliability
+    description: "Error budget burn rate dashboard available per service"
+    severity: medium
+    verified_by: error_budgets
+  - id: SRE-09
+    category: reliability
+    description: "Incident response drills conducted quarterly"
+    severity: medium
+    verified_by: incident_management_oncall
+  - id: SRE-10
+    category: observability
+    description: "Runbooks maintained and updated for all services"
+    severity: medium
+    verified_by: incident_management_oncall

@@ -1,0 +1,723 @@
+# =============================================================================
+# AI Architecture Cookbook — Serverless Functions
+# Schema: v3 | Domain: serverless-functions
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: serverless-functions
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Serverless function patterns covering single-purpose Lambda functions,
+    serverless orchestration with Step Functions, Lambda + API Gateway for
+    REST/HTTP APIs, and event-driven functions triggered by queues, streams,
+    and storage events. Addresses cold starts, function sizing, timeout
+    management, stateless design, and observability in serverless
+    architectures.
+
+  tags:
+    - serverless
+    - lambda
+    - functions
+    - faas
+    - cold-start
+    - step-functions
+    - event-driven
+
+  categories:
+    - infrastructure
+
+  prerequisites:
+    - id: cloud-architecture
+      reason: "Serverless functions are a cloud-native compute primitive within a broader cloud architecture"
+    - id: api-design
+      reason: "Lambda + API Gateway implements REST/HTTP API patterns"
+    - id: ci-cd
+      reason: "Serverless deployments require CI/CD pipelines for packaging, versioning, and promotion"
+
+  related_standards:
+    - id: cloud-architecture
+      relationship: complementary
+      context: "Serverless is a cloud-native compute pattern within well-architected frameworks"
+    - id: messaging-events
+      relationship: complementary
+      context: "Event-driven functions consume messages from queues, streams, and event buses"
+    - id: api-design
+      relationship: complementary
+      context: "API Gateway + Lambda follows REST and HTTP API design conventions"
+    - id: resilience-chaos-engineering
+      relationship: complementary
+      context: "Serverless functions need resilience patterns: retries, dead-letter queues, circuit breakers"
+
+context_inputs:
+  - name: invocation_pattern
+    type: enum
+    description: "How the function is triggered"
+    required: true
+    default: api_http
+    enum_values:
+      - api_http
+      - event_driven
+      - scheduled
+      - orchestrated
+
+  - name: execution_duration
+    type: enum
+    description: "Expected function execution duration"
+    required: true
+    default: short
+    enum_values:
+      - short_under_5s
+      - medium_under_5min
+      - long_under_15min
+
+  - name: scale_requirement
+    type: enum
+    description: "Expected concurrency and scaling requirements"
+    required: true
+    default: moderate
+    enum_values:
+      - low
+      - moderate
+      - high
+      - extreme
+
+  - name: state_requirement
+    type: enum
+    description: "State management needs across function invocations"
+    required: true
+    default: stateless
+    enum_values:
+      - stateless
+      - external_state
+      - workflow
+
+decision_tree:
+  - id: single_purpose_api
+    priority: 1
+    if:
+      - invocation_pattern == api_http
+      - state_requirement == stateless
+      - execution_duration in [short_under_5s, medium_under_5min]
+    then:
+      pattern: single_purpose_lambda
+      notes: >
+        Single-purpose Lambda functions behind API Gateway are the serverless
+        sweet spot: each function does one thing, scales independently, and
+        remains stateless. Keep functions focused on a single API operation.
+
+  - id: workflow_orchestration
+    priority: 2
+    if:
+      - state_requirement == workflow
+      - invocation_pattern in [orchestrated, event_driven]
+    then:
+      pattern: serverless_orchestration_step_functions
+      notes: >
+        Workflows that span multiple functions, have branching logic, or need
+        state coordination should use Step Functions for orchestration rather
+        than chaining Lambda invocations manually.
+
+  - id: lambda_api_gateway_full
+    priority: 3
+    if:
+      - invocation_pattern == api_http
+      - scale_requirement in [high, extreme]
+    then:
+      pattern: lambda_api_gateway
+      notes: >
+        High-traffic HTTP APIs need Lambda + API Gateway with provisioned
+        concurrency to eliminate cold starts, response caching for static
+        endpoints, and WAF integration for security.
+
+  - id: event_driven_function
+    priority: 4
+    if:
+      - invocation_pattern == event_driven
+      - state_requirement in [stateless, external_state]
+    then:
+      pattern: event_driven_functions
+      notes: >
+        Event-driven functions react to messages from SQS, SNS, EventBridge,
+        Kinesis, or S3 events. Design for idempotency since events may be
+        delivered more than once.
+
+  - id: scheduled_cron
+    priority: 5
+    if:
+      - invocation_pattern == scheduled
+    then:
+      pattern: single_purpose_lambda
+      notes: >
+        Scheduled functions use EventBridge Scheduler or CloudWatch Events
+        to trigger functions on a cron schedule. Keep scheduled functions
+        focused on a single task (cleanup, report generation, health check).
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: single_purpose_lambda
+    description: "Single-purpose Lambda is the foundational serverless pattern"
+
+patterns:
+  - id: single_purpose_lambda
+    name: "Single-Purpose Lambda Function"
+    description: >
+      Each Lambda function implements exactly one business operation: one API
+      endpoint handler, one data transformation, one notification dispatch.
+      Functions are stateless between invocations, use environment variables
+      for configuration, and rely on managed services (DynamoDB, S3, RDS)
+      for persistence. The single-responsibility principle keeps functions
+      small, testable, and independently deployable and scalable.
+    use_when:
+      - "Simple request-reply operations via API Gateway or ALB"
+      - "Scheduled tasks (cron): cleanup jobs, reports, health checks"
+      - "Data transformation: S3 event processing, format conversion"
+      - "Each operation has distinct scaling requirements"
+    avoid_when:
+      - "Complex business logic spanning multiple steps (use Step Functions)"
+      - "Functions that need to maintain state between calls (use external store)"
+      - "Operations exceeding 15-minute execution limit"
+    tradeoffs:
+      pros:
+        - "Simple: one function = one operation = one code path"
+        - "Independent scaling per function and per operation"
+        - "Small deployment packages: faster cold starts, easier CI/CD"
+        - "Focused observability: per-function metrics and logs"
+      cons:
+        - "Function coordination requires external orchestration (Step Functions)"
+        - "Cold start latency for infrequently invoked functions"
+        - "Environment variable size limited (4KB); complex configs need parameter store"
+        - "Stateless design pushes state to external services (cost, latency)"
+    implementation:
+      guidelines:
+        - "Name functions after the operation they perform: createOrder, processPayment, sendNotification"
+        - "Limit function bundle to essential dependencies; use Lambda Layers for shared code"
+        - "Set memory based on workload needs: 128MB for I/O-bound, 1GB+ for compute-bound"
+        - "Configure reserved concurrency to prevent runaway scaling"
+        - "Use environment variables for configuration, secrets in Secrets Manager"
+        - "Implement structured logging: output JSON to stdout for CloudWatch Logs Insights"
+        - "Set appropriate timeouts: API functions < 30s, data processors < 5min"
+        - "Keep handler code thin: parse input, call business logic, format response"
+      common_errors:
+        - error: "Monolithic Lambda function handling multiple operations"
+          impact: "Large deployment package, slow cold starts, coupling of unrelated operations"
+          fix: "Split into single-purpose functions; each function handles exactly one operation"
+        - error: "No reserved concurrency — function can scale unbounded"
+          impact: "Uncontrolled scaling can overwhelm downstream resources (database connections, API rate limits)"
+          fix: "Set reserved concurrency per function; implement downstream protection with connection pooling and throttling"
+    maturity:
+      level: standard
+    standards:
+      - name: "AWS Lambda Best Practices"
+        type: reference
+        role: "Official AWS guidance for Lambda function design"
+        status: recommended
+      - name: "AWS Well-Architected Serverless Lens"
+        type: reference
+        role: "Well-architected framework for serverless applications"
+        status: recommended
+
+  - id: serverless_orchestration_step_functions
+    name: "Serverless Orchestration (Step Functions)"
+    description: >
+      AWS Step Functions orchestrates multiple Lambda functions into a
+      workflow. Supports sequential steps, parallel branches, conditional
+      branching, error handling with retries and fallbacks, and human-in-the-loop
+      approval steps. The workflow is defined as a state machine in Amazon
+      States Language (ASL), providing execution history, visual workflow,
+      and built-in error handling without custom orchestration code.
+    use_when:
+      - "Multi-step business processes (order fulfillment, user onboarding)"
+      - "Workflows requiring branching, parallel execution, or human approval"
+      - "Long-running processes exceeding Lambda's 15-minute limit"
+      - "Complex error handling: retries with backoff, fallback paths, compensation"
+    avoid_when:
+      - "Simple single-function operations (overhead not justified)"
+      - "Very high-throughput, low-latency paths (Step Functions adds ~100ms overhead per transition)"
+    tradeoffs:
+      pros:
+        - "Visual workflow: state machine is self-documenting"
+        - "Built-in retry, error handling, and compensation logic"
+        - "Execution history for debugging and auditing"
+        - "Long-running workflows (up to 1 year)"
+      cons:
+        - "Additional cost per state transition ($0.025 per 1000 transitions)"
+        - "State transition latency (~100ms per step)"
+        - "ASL definition complexity for very large workflows"
+        - "Limited to AWS ecosystem (not portable to other clouds)"
+    implementation:
+      guidelines:
+        - "Design workflows in small, reusable state machines (< 20 states each)"
+        - "Use Task states for Lambda invocations, Choice for branching, Parallel for fan-out"
+        - "Implement retry policies with exponential backoff and maxAttempts"
+        - "Add Catch paths for every failure mode: function error, timeout, rate limited"
+        - "Use Pass states for data transformation between steps (avoid intermediate Lambdas)"
+        - "Enable X-Ray tracing on the state machine for end-to-end visibility"
+        - "Version state machines; test via Step Functions console before production"
+        - "Use Callback (waitForTaskToken) for human approval steps with timeout"
+      common_errors:
+        - error: "Single large state machine with 100+ states"
+          impact: "Hard to debug, test, and maintain; one failure in any step can block the entire workflow"
+          fix: "Decompose into nested state machines; each handles a sub-process (< 20 states)"
+        - error: "No timeout on execution — workflow runs indefinitely"
+          impact: "Stuck executions accumulate cost and never release resources"
+          fix: "Always set execution timeout; add heartbeat check on tasks for long-running steps"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Amazon States Language (ASL)"
+        type: spec
+        role: "Declarative language for Step Functions state machines"
+        status: recommended
+      - name: "AWS Step Functions Best Practices"
+        type: reference
+        role: "Official guidance for Step Functions workflow design"
+        status: recommended
+
+  - id: lambda_api_gateway
+    name: "Lambda + API Gateway"
+    description: >
+      API Gateway sits in front of Lambda functions, providing HTTP endpoint
+      management, request validation, authentication, rate limiting, API
+      versioning, and response caching. Lambda functions handle the business
+      logic. Supports REST APIs, HTTP APIs (faster, cheaper), and WebSocket
+      APIs for real-time communication. The combination is the standard
+      pattern for serverless HTTP backends.
+    use_when:
+      - "Serverless REST or HTTP API backend"
+      - "Need API key management, usage plans, or rate limiting"
+      - "Multiple API versions served simultaneously"
+      - "Request validation before Lambda invocation"
+    avoid_when:
+      - "Simple internal service with Application Load Balancer (use ALB + Lambda)"
+      - "Real-time streaming (use WebSocket API or AppSync)"
+    tradeoffs:
+      pros:
+        - "Managed API endpoint: HTTPS, custom domains, certificates"
+        - "Request validation at edge before Lambda is invoked"
+        - "API key management and usage plans for monetization"
+        - "Built-in response caching reduces Lambda invocations"
+      cons:
+        - "Additional latency (~20ms API Gateway overhead)"
+        - "Cost per API call ($3.50 per million for REST API)"
+        - "Payload size limit (10MB for REST API, 1MB for HTTP API)"
+        - "Integration complexity: mapping templates for non-proxy integrations"
+    implementation:
+      guidelines:
+        - "Prefer HTTP API over REST API for lower latency and cost (unless features needed)"
+        - "Enable request validation: validate query params, headers, and body before Lambda"
+        - "Use Lambda proxy integration (Lambda_PROXY) for maximum flexibility"
+        - "Configure custom domain with AWS Certificate Manager (ACM) for TLS"
+        - "Set up WAF association for public-facing APIs"
+        - "Enable API caching for read-heavy endpoints with appropriate TTL"
+        - "Use usage plans and API keys for tiered access (free, pro, enterprise)"
+        - "Implement canary release deployments for gradual API rollouts"
+      common_errors:
+        - error: "No API caching for repeated identical requests"
+          impact: "Same data fetched from Lambda on every request, increasing cost and latency"
+          fix: "Enable API Gateway caching with appropriate TTL; invalidate cache on data changes"
+        - error: "Default 29-second timeout not adjusted for long operations"
+          impact: "Lambda operations exceeding timeout return 504 to client"
+          fix: "Set API Gateway integration timeout to match Lambda timeout; use async patterns for > 30s work"
+    maturity:
+      level: standard
+    standards:
+      - name: "AWS API Gateway Best Practices"
+        type: reference
+        role: "Official guidance for API Gateway configuration"
+        status: recommended
+
+  - id: event_driven_functions
+    name: "Event-Driven Functions"
+    description: >
+      Lambda functions triggered by events from AWS services: SQS messages,
+      SNS notifications, EventBridge events, Kinesis/DynamoDB Streams, and
+      S3 events. Functions process events in batches, implement idempotency
+      via deduplication keys, handle partial batch failures, and use
+      Dead-Letter Queues (DLQs) for messages that cannot be processed.
+      This pattern decouples producers from consumers and enables async,
+      resilient processing.
+    use_when:
+      - "Asynchronous processing: image resizing, video transcoding, notifications"
+      - "Decoupling microservices via queues or event buses"
+      - "Stream processing: real-time analytics, log aggregation"
+      - "Change data capture (CDC): DynamoDB Streams, Kinesis"
+    avoid_when:
+      - "Request-response patterns (use API Gateway + Lambda)"
+      - "Very low-latency requirements (event-driven has variable delivery latency)"
+    tradeoffs:
+      pros:
+        - "Loose coupling: producers emit events, consumers process independently"
+        - "Automatic scaling based on event volume (SQS scaling, Kinesis shard count)"
+        - "Built-in retry and DLQ for failed message processing"
+        - "Batch processing for throughput efficiency"
+      cons:
+        - "Debugging is harder: async flow across multiple services"
+        - "Eventual consistency is the default — not suitable for strong consistency"
+        - "Duplicate events possible — functions must be idempotent"
+        - "Cold start impact on streaming (Kinesis/DynamoDB Streams cannot wait)"
+    implementation:
+      guidelines:
+        - "Implement idempotency: deduplication key stored in DynamoDB with TTL"
+        - "Use SQS as event source for reliable message processing with DLQ"
+        - "Enable batch processing with partial batch response (reportBatchItemFailures)"
+        - "Set maximum concurrency on SQS-triggered functions to control downstream load"
+        - "Use EventBridge for complex event routing (filtering, transformation)"
+        - "Configure S3 event notifications with prefix/suffix filters to limit invocations"
+        - "Monitor age of oldest message (ApproximateAgeOfOldestMessage) to detect processing lag"
+        - "Implement circuit breaker: if downstream is failing, stop processing and alert"
+      common_errors:
+        - error: "Non-idempotent functions processing duplicate events"
+          impact: "Duplicate charges, duplicate notifications, data inconsistency from replay"
+          fix: "Implement idempotency key: store processed event IDs in DynamoDB with TTL; check before processing"
+        - error: "Large batch sizes with no partial failure handling"
+          impact: "One bad message causes the entire batch to retry, blocking good messages"
+          fix: "Use partial batch response (reportBatchItemFailures); process messages independently within batch"
+    maturity:
+      level: standard
+    standards:
+      - name: "AWS Lambda Event Source Mappings"
+        type: reference
+        role: "Official documentation for Lambda event sources and configurations"
+        status: recommended
+      - name: "CloudEvents"
+        type: spec
+        role: "Cross-cloud event specification for interoperability"
+        status: recommended
+
+examples:
+  - id: lambda_single_purpose
+    title: "Single-Purpose Lambda — Order Processing"
+    context: "A focused Lambda function that validates and stores an order"
+    correct: |
+      // CORRECT: Single-purpose, stateless, focused handler
+      export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+        const { orderId, items } = JSON.parse(event.body || "{}")
+
+        // Validate input
+        if (!orderId || !items?.length) {
+          return { statusCode: 400, body: JSON.stringify({ error: "Invalid order" }) }
+        }
+
+        // Business logic: store order in DynamoDB
+        await dynamoClient.put({
+          TableName: process.env.ORDERS_TABLE,
+          Item: { orderId, items, status: "PENDING", createdAt: Date.now() },
+        })
+
+        // Publish event for downstream processing
+        await eventBridge.putEvents({
+          Entries: [{ Source: "order.created", DetailType: "OrderCreated", Detail: JSON.stringify({ orderId }) }],
+        })
+
+        return { statusCode: 201, body: JSON.stringify({ orderId, status: "PENDING" }) }
+      }
+    incorrect: |
+      // WRONG: Monolithic handler doing everything
+      export const handler = async (event) => {
+        const path = event.resource
+
+        if (path === "/orders") {
+          // Validate, store, send email, update inventory, generate invoice...
+          await validateOrder(event.body)
+          await storeOrder(event.body)
+          await sendEmail(event.body)      // Coupling: email is separate concern
+          await updateInventory(event.body) // Coupling: inventory is separate concern
+          await generateInvoice(event.body) // Coupling: invoice is separate concern
+        } else if (path === "/users") {
+          // More unrelated logic
+        }
+      }
+    explanation: >
+      The correct version is a single-purpose function: validate input, store
+      the order, emit an event, and return. Downstream processes (email,
+      inventory, invoice) are handled by separate event-driven functions.
+      The incorrect version is monolithic — one function handles multiple
+      API paths and concerns that should be separate functions.
+
+  - id: step_function_workflow
+    title: "Step Functions — Order Fulfillment Workflow"
+    context: "Workflow orchestrating order processing across multiple services"
+    correct: |
+      // Order fulfillment state machine (ASL)
+      {
+        "StartAt": "ProcessPayment",
+        "States": {
+          "ProcessPayment": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:processPayment",
+            "Retry": [{ "ErrorEquals": ["Lambda.ServiceException"], "MaxAttempts": 3, "BackoffRate": 2 }],
+            "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "PaymentFailed" }],
+            "Next": "CheckFraud"
+          },
+          "CheckFraud": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:checkFraud",
+            "Next": "FulfillWith",
+            "Catch": [{ "ErrorEquals": ["States.ALL"], "Next": "ManualReview" }]
+          },
+          "FulfillWith": {
+            "Type": "Choice",
+            "Choices": [
+              { "Variable": "$.fraudResult", "StringEquals": "APPROVED", "Next": "FulfillOrder" }
+            ],
+            "Default": "ManualReview"
+          },
+          "FulfillOrder": {
+            "Type": "Task",
+            "Resource": "arn:aws:lambda:fulfillOrder",
+            "End": true
+          },
+          "PaymentFailed": { "Type": "Fail", "Error": "PaymentFailed", "Cause": "Payment processing failed" },
+          "ManualReview": { "Type": "Task", "Resource": "arn:aws:lambda:notifyReviewer", "End": true }
+        }
+      }
+    incorrect: |
+      // WRONG: Lambda chaining — functions call each other directly
+      // createOrder Lambda calls processPayment Lambda via SDK
+      // processPayment calls checkFraud
+      // checkFraud calls fulfillOrder
+      // No centralized visibility, error handling, or retry policy
+    explanation: >
+      The correct version uses Step Functions to orchestrate the order
+      fulfillment workflow with built-in retry policies, error catching,
+      branching logic, and full execution traceability. The incorrect version
+      chains Lambda functions by having them call each other, creating tight
+      coupling, no centralized error handling, and opaque execution flow.
+
+security_hardening:
+  transport:
+    requirements:
+      - "TLS 1.2+ enforced for all function endpoints (API Gateway, ALB, Function URLs)"
+      - "API Gateway custom domain with ACM certificate"
+  data_protection:
+    requirements:
+      - "Sensitive environment variables encrypted with KMS"
+      - "Lambda function data encrypted at rest via EFS or tmp encryption"
+      - "No sensitive data in CloudWatch logs (implement log masking)"
+  access_control:
+    requirements:
+      - "Lambda execution role follows least privilege — specific actions on specific resources"
+      - "API Gateway resource policies restrict access by IP or VPC"
+      - "Reserved concurrency prevents uncontrolled scaling"
+  input_output:
+    requirements:
+      - "API Gateway request validation enabled for all endpoints"
+      - "Event payloads validated at function entry"
+      - "DLQ poison messages isolated and inspected before reprocessing"
+  secrets:
+    requirements:
+      - "Database credentials and API keys in Secrets Manager, not environment variables"
+      - "Lambda execution role retrieved secrets via IAM auth, not hardcoded"
+      - "KMS keys used to encrypt environment variables with sensitive values"
+  monitoring:
+    requirements:
+      - "Lambda metrics monitored: invocations, errors, duration, throttles"
+      - "Dead-letter queue message count monitored and alerted"
+      - "Cold start rate tracked per function for performance optimization"
+      - "API Gateway 4xx/5xx rates alerted"
+
+compliance:
+  standards:
+    - name: "AWS Well-Architected Serverless Lens"
+      relevance: "Serverless-specific well-architected best practices"
+    - name: "OWASP Serverless Top 10"
+      relevance: "Serverless-specific security risks"
+    - name: "PCI DSS Serverless Guidelines"
+      relevance: "Serverless compliance considerations for cardholder data"
+
+  requirements_mapping:
+    - control: least_privilege_execution
+      description: "Lambda execution roles with minimum required permissions"
+      maps_to:
+        - "OWASP Serverless Top 10"
+        - "PCI DSS 7.1"
+    - control: function_isolation
+      description: "VPC configuration and network isolation for functions"
+      maps_to:
+        - "PCI DSS 1.3"
+    - control: event_processing_integrity
+      description: "DLQ for failed events and idempotent processing"
+      maps_to:
+        - "SOC 2 CC7.1"
+
+prompt_recipes:
+  - id: serverless_function_design
+    scenario: greenfield
+    description: "Design serverless function architecture"
+    prompt: |
+      Design the serverless function architecture.
+
+      Context:
+      - Workload: [what the application does]
+      - Invocation pattern: [API HTTP / event-driven / scheduled / orchestrated]
+      - Expected traffic: [low / moderate / high / extreme]
+      - Execution duration: [<5s / <5min / <15min]
+      - State needs: [stateless / external / workflow]
+
+      Requirements:
+      - Function decomposition: what is a single-purpose function boundary
+      - Event sources and triggers
+      - API Gateway configuration (REST vs HTTP API)
+      - Orchestration needs (Step Functions)
+      - Error handling and DLQ strategy
+      - Observability: monitoring, logging, tracing
+      - Security: execution role, encryption, secrets
+
+  - id: serverless_cold_start_mitigation
+    scenario: performance
+    description: "Mitigate cold starts in serverless functions"
+    prompt: |
+      Design a cold start mitigation strategy.
+
+      Current cold start measurements:
+      - Average cold start: [X ms]
+      - p99 cold start: [Y ms]
+      - Functions affected: [list]
+
+      Mitigation options:
+      1. Provisioned concurrency (keep N instances warm)
+      2. SnapStart (Lambda SnapStart for Java, .NET)
+      3. Smaller deployment packages (reduce dependencies)
+      4. Language selection (Node/Python cold starts faster than Java/C#)
+      5. Warmer functions via scheduled pings
+      6. Function URL keep-alive
+
+      For each: cost impact, complexity, expected latency improvement.
+
+  - id: serverless_security_audit
+    scenario: audit
+    description: "Audit serverless function security"
+    prompt: |
+      Audit the serverless function security posture:
+
+      1. Do execution roles follow least privilege?
+      2. Are environment variables with secrets encrypted?
+      3. Is API Gateway request validation enabled?
+      4. Are reserved concurrency limits configured?
+      5. Are VPC functions placed in private subnets with NAT?
+      6. Are function URLs restricted with IAM auth?
+      7. Is log data sanitized for PII?
+      8. Are Lambda layers scanned for vulnerabilities?
+      9. Are DLQs configured for async event sources?
+      10. Are function timeouts set appropriately?
+
+  - id: serverless_event_migration
+    scenario: migration
+    description: "Migrate synchronous API to async event-driven"
+    prompt: |
+      Migrate the synchronous order processing API to an event-driven
+      architecture.
+
+      Current architecture:
+      [describe current synchronous flow]
+
+      Target architecture:
+      1. API Gateway receives order request
+      2. Lambda validates and queues order (SQS)
+      3. Order processor Lambda consumes from SQS asynchronously
+      4. Downstream services (payment, inventory, shipping) react to events
+      5. Order status updated in DynamoDB for client polling
+
+      Migration steps:
+      1. Implement SQS queue and DLQ
+      2. Deploy order processor function
+      3. Update API handler to queue instead of blocking
+      4. Add order status endpoint for client polling
+      5. Add idempotency key for duplicate detection
+      6. Monitor queue depth and processing latency
+
+anti_patterns:
+  - name: "Monolithic Lambda Function"
+    description: >
+      A single Lambda function handling multiple API endpoints, business
+      operations, and concerns. The function has a large deployment package,
+      long cold start times, and couples operations that should scale and
+      deploy independently.
+    fix: "Split into single-purpose functions per operation; use event-driven architecture for coordination"
+    severity: high
+    related_pattern: single_purpose_lambda
+
+  - name: "Lambda Calling Lambda Directly"
+    description: >
+      Functions invoke other functions synchronously via the Lambda API
+      instead of using Step Functions or event-driven patterns. Creates
+      tight coupling, cascading timeouts, and hidden invocation chains
+      that are hard to monitor and debug.
+    fix: "Use Step Functions for orchestration or SQS/EventBridge for async messaging"
+    severity: high
+    related_pattern: serverless_orchestration_step_functions
+
+  - name: "Ignoring Cold Starts in Production"
+    description: >
+      No cold start mitigation for user-facing latency-sensitive functions.
+      Users experience 1-5 second delays on infrequently called endpoints.
+      Cold starts are not measured, monitored, or optimized.
+    fix: "Use provisioned concurrency for latency-sensitive functions; measure cold starts per function; optimize package size"
+    severity: medium
+    related_pattern: lambda_api_gateway
+
+checklist:
+  - id: SL-01
+    category: design
+    description: "Functions follow single-responsibility principle"
+    severity: high
+    verified_by: single_purpose_lambda
+  - id: SL-02
+    category: security
+    description: "Lambda execution roles follow least privilege"
+    severity: critical
+    verified_by: single_purpose_lambda
+  - id: SL-03
+    category: security
+    description: "API Gateway request validation enabled"
+    severity: high
+    verified_by: lambda_api_gateway
+  - id: SL-04
+    category: reliability
+    description: "DLQs configured for all async event sources"
+    severity: high
+    verified_by: event_driven_functions
+  - id: SL-05
+    category: reliability
+    description: "Reserved concurrency configured per function"
+    severity: high
+    verified_by: single_purpose_lambda
+  - id: SL-06
+    category: reliability
+    description: "Step Functions retry and error handling configured"
+    severity: high
+    verified_by: serverless_orchestration_step_functions
+  - id: SL-07
+    category: performance
+    description: "Provisioned concurrency for latency-sensitive functions"
+    severity: medium
+    verified_by: lambda_api_gateway
+  - id: SL-08
+    category: performance
+    description: "Functions optimized for cold start (package size, language choice)"
+    severity: medium
+    verified_by: single_purpose_lambda
+  - id: SL-09
+    category: correctness
+    description: "Event-driven functions implement idempotency handling"
+    severity: high
+    verified_by: event_driven_functions
+  - id: SL-10
+    category: observability
+    description: "Lambda metrics and CloudWatch Logs configured"
+    severity: high
+    verified_by: single_purpose_lambda
+  - id: SL-11
+    category: security
+    description: "Sensitive environment variables encrypted with KMS"
+    severity: high
+    verified_by: single_purpose_lambda
+  - id: SL-12
+    category: reliability
+    description: "Function timeouts set to appropriate values"
+    severity: medium
+    verified_by: single_purpose_lambda

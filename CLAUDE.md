@@ -1,6 +1,6 @@
 # AI Architecture Cookbook
 
-This repository contains 48 machine-readable architectural standards for AI code assistants.
+This repository contains 82 machine-readable architectural standards for AI code assistants.
 
 ## MCP Server
 
@@ -30,22 +30,22 @@ When implementing or reviewing any architectural component, **use the MCP tools*
 - Reviewing security → `get_checklist { "domain": "encryption", "severity": "critical" }`
 - Starting a new service → `recommend_pattern { "context": { "scale": "enterprise", "needs_login": true } }`
 
-## Standards Catalog (48 entries)
+## Standards Catalog (82 entries)
 
-### Foundational (11)
-authentication, api-design, error-handling, logging-observability, data-persistence, input-validation, messaging-events, configuration-management, authorization, session-management, secrets-management
+### Foundational (15)
+api-design, authentication, authorization, configuration-management, data-persistence, error-handling, input-validation, logging-observability, messaging-events, session-management, secrets-management, api-composition-bff, caching-strategies, api-governance-portals, identity-federation-sso
 
-### Application Architecture (10)
-layered-architecture, service-architecture, domain-driven-design, state-management, ai-agent-architecture, dependency-injection, repository-pattern, design-patterns, resilience-chaos-engineering, feature-flags
+### Application Architecture (28)
+layered-architecture, service-architecture, domain-driven-design, state-management, ai-agent-architecture, dependency-injection, repository-pattern, design-patterns, resilience-chaos-engineering, feature-flags, frontend-component-architecture, micro-frontends, frontend-state-management, styling-design-systems, responsive-mobile-first, form-handling-patterns, internationalization-i18n, frontend-build-performance, pwa-offline-first, real-time-frontend, webassembly-frontend, prompt-engineering-patterns, multi-tenancy, workflow-orchestration, event-sourcing-cqrs, native-mobile-architecture, desktop-application-architecture, monorepo-architecture
 
-### Infrastructure (8)
-containerization, orchestration, ci-cd, infrastructure-as-code, cloud-architecture, database-migration, api-gateway-edge-security, model-serving-inference
+### Infrastructure (12)
+containerization, orchestration, ci-cd, infrastructure-as-code, cloud-architecture, database-migration, api-gateway-edge-security, model-serving-inference, serverless-functions, edge-computing, disaster-recovery-backup, finops-cost-optimization
 
-### Security & Quality (10)
-encryption, rate-limiting, testing-strategies, code-quality, performance-optimization, accessibility, client-platform-security, secure-sdlc, compliance-data-privacy, security-monitoring
+### Security & Quality (14)
+encryption, rate-limiting, testing-strategies, code-quality, performance-optimization, accessibility, client-platform-security, secure-sdlc, compliance-data-privacy, security-monitoring, frontend-testing, zero-trust-networking, observability-sre, threat-modeling
 
-### Integration & Data (9)
-third-party-integration, webhooks, file-storage, search, rag-architecture, llm-integration, vector-databases, data-transformation, versioning
+### Integration & Data (13)
+third-party-integration, webhooks, file-storage, search, rag-architecture, llm-integration, vector-databases, data-transformation, versioning, real-time-streaming, data-resharding-partitioning, data-engineering-pipelines, mlops-lifecycle
 
 ## Workflow
 

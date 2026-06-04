@@ -1,0 +1,791 @@
+# =============================================================================
+# AI Architecture Cookbook — Caching Strategies
+# Schema: v3 | Domain: caching-strategies
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: caching-strategies
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Caching strategies and patterns covering local in-memory caches,
+    distributed caches, CDN/HTTP caching, write-through/write-behind,
+    and cache stampede prevention. Provides context-aware recommendations
+    based on data freshness, read/write patterns, and scale.
+
+  tags:
+    - caching
+    - cache
+    - redis
+    - cdn
+    - stale-while-revalidate
+    - cache-stampede
+    - distributed-cache
+
+  categories:
+    - foundational
+
+  prerequisites:
+    - data-persistence
+    - performance-optimization
+    - api-design
+
+  related_standards:
+    - id: data-persistence
+      relationship: complementary
+      context: "Caching sits in front of persistent storage to reduce read latency"
+    - id: performance-optimization
+      relationship: complementary
+      context: "Caching is a primary performance optimization technique"
+    - id: api-design
+      relationship: complementary
+      context: "HTTP caching headers and API response caching interact closely"
+    - id: messaging-events
+      relationship: complementary
+      context: "Cache invalidation can be driven by async events"
+
+context_inputs:
+  - name: data_freshness_requirement
+    type: enum
+    description: "How fresh the cached data must be"
+    required: true
+    default: stale_ok
+    enum_values:
+      - stale_ok
+      - fresh
+      - real_time
+
+  - name: read_write_ratio
+    type: enum
+    description: "Predominant workload pattern"
+    required: true
+    default: read_heavy
+    enum_values:
+      - read_heavy
+      - write_heavy
+      - balanced
+
+  - name: data_size
+    type: enum
+    description: "Size of cached data per item and total working set"
+    required: true
+    default: medium
+    enum_values:
+      - small
+      - medium
+      - large
+      - very_large
+
+  - name: cache_invalidation_complexity
+    type: enum
+    description: "How complex it is to know when cached data is stale"
+    required: false
+    default: moderate
+    enum_values:
+      - simple
+      - moderate
+      - complex
+
+decision_tree:
+  - id: real_time_freshness_bypass_cache
+    priority: 1
+    if:
+      - data_freshness_requirement == real_time
+    then:
+      pattern: local_in_memory_cache
+      standards:
+        - "Cache-Aside Pattern"
+      notes: "Real-time data must bypass long TTL caches; use in-memory cache with very short TTL or read-through"
+
+  - id: stale_ok_high_volume_use_cdn
+    priority: 2
+    if:
+      - data_freshness_requirement == stale_ok
+      - read_write_ratio == read_heavy
+      - data_size in [small, medium]
+    then:
+      pattern: cdn_http_caching
+      standards:
+        - "HTTP Caching (RFC 9111)"
+        - "Stale-While-Revalidate"
+      notes: "Stale-ok read-heavy content benefits from CDN/HTTP caching with stale-while-revalidate for instant freshness"
+
+  - id: read_heavy_shared_data_needs_distributed
+    priority: 3
+    if:
+      - read_write_ratio == read_heavy
+      - data_size in [medium, large]
+      - cache_invalidation_complexity in [simple, moderate]
+    then:
+      pattern: distributed_cache
+      standards:
+        - "Cache-Aside Pattern"
+      notes: "Read-heavy workloads with moderate-scale data benefit from a shared distributed cache like Redis"
+
+  - id: write_heavy_needs_write_through
+    priority: 4
+    if:
+      - read_write_ratio == write_heavy
+      - cache_invalidation_complexity == simple
+    then:
+      pattern: write_through_write_behind
+      standards:
+        - "Write-Through Pattern"
+        - "Write-Behind Pattern"
+      notes: "Write-heavy workloads use write-through for consistency or write-behind for throughput"
+
+  - id: stampede_risk_at_scale
+    priority: 5
+    if:
+      - read_write_ratio == read_heavy
+      - data_size in [large, very_large]
+    then:
+      pattern: cache_stampede_prevention
+      standards:
+        - "Probabilistic Early Expiration"
+      notes: "Large working sets with high read concurrency need stampede protection to prevent thundering herd on cache miss"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: local_in_memory_cache
+    description: "Simple in-memory cache with TTL — safe default for most applications"
+
+patterns:
+  - id: local_in_memory_cache
+    name: Local In-Memory Cache
+    description: >
+      Caching data in the application process memory for sub-microsecond
+      read latency. No network round-trip required. Limited to single-node
+      memory and lost on process restart. Best for single-instance apps
+      and data that can tolerate staleness.
+
+    use_when:
+      - "Single application instance with no horizontal scaling"
+      - "Data is read-mostly and changes infrequently"
+      - "Sub-millisecond read latency required"
+      - "Cache data is local to one service (not shared)"
+
+    avoid_when:
+      - "Multiple application instances need consistent cache state"
+      - "Working set exceeds available heap memory"
+      - "Cache must survive process restarts"
+      - "High cache churn with frequent invalidations"
+
+    tradeoffs:
+      pros:
+        - "Fastest possible read latency — no network overhead"
+        - "Zero additional infrastructure to manage"
+        - "Simple implementation with minimal dependencies"
+      cons:
+        - "Not shared across instances — cache inconsistency"
+        - "Memory limited to single process heap"
+        - "Lost on process restart (cold cache)"
+        - "No built-in eviction policies beyond basic TTL"
+
+    implementation:
+      guidelines:
+        - "Use bounded cache with max size and eviction policy (LRU, LFU, TTL)"
+        - "Never cache without TTL — always set expiration"
+        - "Wrap cache in repository abstraction for testability"
+        - "Use weak/soft references where supported to avoid OOM"
+        - "Monitor hit rate — below 80% indicates poor strategy"
+        - "Pre-size cache to expected working set + 20% headroom"
+
+      common_errors:
+        - error: "Unbounded cache — no eviction policy"
+          impact: "Memory exhaustion; OutOfMemoryError in production"
+          fix: "Use bounded cache (Guava Cache, Caffeine, LRU map) with max size and eviction"
+        - error: "Caching mutable objects by reference"
+          impact: "Callers mutate cached object, corrupting cache for all consumers"
+          fix: "Return defensive copies or store immutable data in cache"
+        - error: "No TTL on any entry"
+          impact: "Stale data served indefinitely; memory grows unbounded"
+          fix: "Set TTL on every cache entry; match TTL to data change frequency"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: Cache-Aside Pattern
+        type: pattern
+        role: "Lazy-loading cache pattern — load on miss, return cached on hit"
+        status: recommended
+        reference: "https://learn.microsoft.com/en-us/azure/architecture/patterns/cache-aside"
+
+  - id: distributed_cache
+    name: Distributed Cache (Redis/Memcached)
+    description: >
+      Shared in-memory cache accessible from multiple application instances.
+      Provides consistent cache state across a cluster, sub-millisecond reads,
+      and built-in eviction policies. Essential for horizontally scaled apps
+      where local caches would diverge.
+
+    use_when:
+      - "Multiple application instances need consistent cache state"
+      - "Cache working set fits in distributed cache cluster memory"
+      - "Need advanced data structures (sorted sets, pub/sub, streams)"
+      - "Cross-instance locking or rate limiting needed"
+
+    avoid_when:
+      - "Single-instance app with no scaling need (in-memory is faster)"
+      - "Network latency of 1-5ms per cache operation is unacceptable"
+      - "Cache data is very large — network transfer cost outweighs benefit"
+      - "No budget or expertise for operating distributed cache"
+
+    tradeoffs:
+      pros:
+        - "Consistent cache across all application instances"
+        - "Sub-millisecond reads (local network)"
+        - "Built-in eviction policies (LRU, LFU, TTL, volatile-lru)"
+        - "Advanced data structures and atomic operations"
+        - "Persistence options (RDB, AOF) for crash recovery"
+      cons:
+        - "Network round-trip per operation (1-5ms latency)"
+        - "Additional infrastructure to deploy, monitor, and scale"
+        - "Cache cluster complexity (sharding, replication, failover)"
+        - "Memory cost — must size cluster for working set"
+
+    implementation:
+      guidelines:
+        - "Use cache-aside with distributed cache for read-heavy workloads"
+        - "Set TTL on all keys — never cache without expiration"
+        - "Use connection pooling with enough connections for peak concurrency"
+        - "Implement retry with backoff for transient cluster failures"
+        - "Use consistent hashing for client-side sharding"
+        - "Monitor eviction rate — high eviction means under-provisioned cluster"
+        - "Enable persistence for caches that must survive restarts"
+
+      common_errors:
+        - error: "Single Redis instance as single point of failure"
+          impact: "Full cache outage when instance fails; all traffic hits database"
+          fix: "Use Redis Sentinel or Redis Cluster for HA; configure replica for failover"
+        - error: "Oversized cache keys"
+          impact: "Memory waste from key metadata (Redis keys are strings, stored fully)"
+          fix: "Use short, meaningful keys (e.g., user:1234:profile not user/1234/profile/details/verbose)"
+        - error: "No connection pooling"
+          impact: "Connection overhead per request; connection exhaustion under load"
+          fix: "Use connection pool sized to expected concurrency (e.g., 50-200 connections per instance)"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: Redis
+        type: tool
+        role: "In-memory data structure store, used as distributed cache"
+        status: recommended
+        reference: "https://redis.io/"
+
+  - id: cdn_http_caching
+    name: CDN/HTTP Caching
+    description: >
+      Caching at the edge via Content Delivery Networks and HTTP response
+      headers. Cache-Control, ETag, and Last-Modified headers control
+      browser and intermediary cache behavior. Stale-while-revalidate
+      enables instant freshness updates without blocking.
+
+    use_when:
+      - "Public-facing content served over HTTP"
+      - "Static or semi-static assets (images, CSS, JS, HTML)"
+      - "API responses that can be cached per user or globally"
+      - "Global user base needing low-latency content delivery"
+
+    avoid_when:
+      - "User-specific dynamic content that cannot be cached"
+      - "Real-time data requiring instant updates"
+      - "Content behind authentication that varies per user"
+
+    tradeoffs:
+      pros:
+        - "Global edge caching — low latency for all users"
+        - "Offloads requests from origin servers"
+        - "Browsers cache too — instant repeat views"
+        - "CDN handles DDoS absorption at the edge"
+      cons:
+        - "Cache invalidation across edge nodes takes time (purge propagation)"
+        - "Varied content (per user) cannot benefit from CDN"
+        - "CDN costs for high-traffic APIs"
+        - "Debugging cached vs uncached behavior is harder"
+
+    implementation:
+      guidelines:
+        - "Set Cache-Control: public, max-age=3600, stale-while-revalidate=86400 for cacheable content"
+        - "Use ETag/If-None-Match for conditional requests"
+        - "Use Cache-Control: no-cache for sensitive/dynamic data"
+        - "Version assets in URL (style.v2.css) for immutable caching"
+        - "Use CDN purging sparingly — prefer short TTLs + stale-while-revalidate"
+        - "Set vary header correctly (Accept-Encoding, Authorization)"
+
+      common_errors:
+        - error: "Caching authenticated responses publicly"
+          impact: "User A sees User B's data due to shared cache"
+          fix: "Use Cache-Control: private for user-specific content; include Vary: Authorization"
+        - error: "Missing Cache-Control header on cacheable resources"
+          impact: "Browsers and CDNs apply heuristics; inconsistent caching behavior"
+          fix: "Set explicit Cache-Control on every HTTP response"
+        - error: "Using query parameters for cache busting without Vary"
+          impact: "CDN caches only exact URL — query param variants miss cache"
+          fix: "Version assets in URL path; use URL rewrite on CDN to strip cache-busting params"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: HTTP Caching
+        type: rfc
+        role: "HTTP caching semantics defined in RFC 9111"
+        status: recommended
+        reference: "https://httpwg.org/specs/rfc9111.html"
+      - name: Stale-While-Revalidate
+        type: spec
+        role: "Serving stale content while revalidating in background"
+        status: recommended
+        reference: "https://web.dev/stale-while-revalidate/"
+
+  - id: write_through_write_behind
+    name: Write-Through/Write-Behind Cache
+    description: >
+      Write-through updates the cache and database in the same operation,
+      ensuring consistency at the cost of write latency. Write-behind
+      writes to cache immediately and asynchronously persists to the
+      database, offering lower write latency with eventual consistency.
+
+    use_when:
+      - "Write-heavy workloads where database write is the bottleneck"
+      - "Need consistent cache without invalidation logic"
+      - "Tolerate eventual consistency (write-behind)"
+      - "Bursty writes that need smoothing before database"
+
+    avoid_when:
+      - "Strong consistency required between cache and database"
+      - "Write-behind with data that cannot be lost (no persistence guarantee)"
+      - "Simple read-heavy workload (cache-aside is simpler and sufficient)"
+
+    tradeoffs:
+      pros:
+        - "Write-through: strong consistency between cache and DB"
+        - "Write-behind: low write latency, absorbs write bursts"
+        - "No stale reads — cache is always up to date"
+        - "Write-behind reduces database write load"
+      cons:
+        - "Write-through: write latency = cache + database write time"
+        - "Write-behind: risk of data loss on cache failure before DB persist"
+        - "Write-behind: eventual consistency — reads may lag behind writes"
+        - "Complexity: must handle partial failures and retries"
+
+    implementation:
+      guidelines:
+        - "Write-through: use when read-after-write consistency is required"
+        - "Write-behind: use when write throughput exceeds database capacity"
+        - "Write-behind: batch and coalesce writes for efficiency"
+        - "Implement dead-letter queue for persistent write failures"
+        - "Monitor write-behind queue depth to detect slow persistence"
+        - "Use idempotent writes to database for safe retry"
+
+      common_errors:
+        - error: "Data loss in write-behind on cache failure"
+          impact: "Writes acknowledged to user but lost on cache crash"
+          fix: "Use cache persistence (Redis AOF) or add WAL before cache write"
+        - error: "Write-through slowing down every write"
+          impact: "Every write pays cache + database latency (~10-50ms total)"
+          fix: "Use write-behind for throughput; or avoid cache for write-hot keys"
+        - error: "Write-behind queue growing unbounded"
+          impact: "Memory exhaustion; increasing staleness between cache and DB"
+          fix: "Monitor queue depth; throttle writes when backlog grows; scale consumers"
+
+    maturity:
+      level: advanced
+
+    standards:
+      - name: Write-Through Pattern
+        type: pattern
+        role: "Synchronous cache and database update pattern"
+        status: recommended
+        reference: "https://learn.microsoft.com/en-us/azure/architecture/patterns/cache-aside"
+      - name: Write-Behind Pattern
+        type: pattern
+        role: "Async cache update with eventual persistence"
+        status: recommended
+
+  - id: cache_stampede_prevention
+    name: Cache Stampede Prevention
+    description: >
+      Techniques to prevent the thundering herd problem when a popular
+      cache key expires or is invalidated. Without protection, hundreds
+      of concurrent requests all miss the cache simultaneously and hit
+      the database, causing latency spikes and potential outages.
+
+    use_when:
+      - "Popular cache keys with high read concurrency"
+      - "Expensive cache entry computation (complex DB queries, API calls)"
+      - "Working set fits in cache but TTL expiration causes periodic stampedes"
+      - "Cache warming after deployment or restart"
+
+    avoid_when:
+      - "Low concurrency per cache key (<10 concurrent requests)"
+      - "Cheap cache entry reconstruction (<10ms computation)"
+      - "Cache entries rarely accessed (long-tail data)"
+
+    tradeoffs:
+      pros:
+        - "Prevents database load spikes from concurrent cache misses"
+        - "Stable tail latency — no request pile-ups on cache miss"
+        - "Works with both local and distributed cache"
+      cons:
+        - "Lock-based approaches add latency under contention"
+        - "Probabilistic early expiration adds complexity"
+        - "Some approaches require cache-lock coordination"
+
+    implementation:
+      guidelines:
+        - "Use probabilistic early expiration (XFetch algorithm) for simple stampede prevention"
+        - "Use lock-based prevention when cache entry computation is expensive and non-idempotent"
+        - "Combine with circuit breaker on database to prevent overload cascade"
+        - "Keep lock TTL short (1-5s) — never block indefinitely"
+        - "Use double-check pattern: after acquiring lock, re-check cache"
+        - "Monitor stampede events — frequency indicates cache sizing or TTL issues"
+
+      common_errors:
+        - error: "No stampede protection on popular keys"
+          impact: "Cache miss causes database thundering herd; latency spikes 10-100x"
+          fix: "Implement probabilistic early expiration or lock-based protection on hot keys"
+        - error: "Lock timeout too long or too short"
+          impact: "Short: lock expires before entry computed, second request recomputes. Long: request pile-up"
+          fix: "Set lock TTL to 2-3x expected compute time; use watchdog for long computations"
+        - error: "Stampede protection only on read, not on write"
+          impact: "Write invalidation triggers stampede as all subsequent reads miss simultaneously"
+          fix: "Use write-through or gradual TTL decay instead of immediate invalidation"
+
+    maturity:
+      level: advanced
+
+    standards:
+      - name: Probabilistic Early Expiration
+        type: pattern
+        role: "Stochastic cache refresh before TTL expiry"
+        status: recommended
+        reference: "https://cseweb.ucsd.edu/~avattani/papers/cache_stampede.pdf"
+
+examples:
+  - id: cache_aside_with_stampede_protection
+    title: "Cache-Aside with Probabilistic Early Expiration"
+    context: "Read-heavy API endpoint with popular product data"
+    correct: |
+      function get_product(product_id):
+          cached = cache.get("product:" + product_id)
+          if cached is None:
+              return load_and_cache(product_id)
+          # Probabilistic early expiration: randomly refresh before TTL
+          ttl = cache.ttl("product:" + product_id)
+          if ttl and random() < compute_refresh_probability(ttl, initial_ttl):
+              # Refresh in background — don't block the request
+              async_refresh("product:" + product_id, load_and_cache(product_id))
+          return cached.value
+
+      function compute_refresh_probability(remaining_ttl, initial_ttl):
+          # XFetch: probability increases as TTL approaches zero
+          beta = 1.0
+          return exp(-beta * remaining_ttl / initial_ttl)
+    incorrect: |
+      # WRONG: No cache, no stampede protection
+      function get_product(product_id):
+          cached = cache.get("product:" + product_id)
+          if cached is None:
+              product = database.query("SELECT * FROM products WHERE id = $1", product_id)
+              cache.set("product:" + product_id, product, ttl=3600)
+              return product
+          return cached.value
+    explanation: >
+      The correct version implements probabilistic early expiration,
+      refreshing the cache in the background before TTL expiry to prevent
+      stampedes. The incorrect version has no protection — 100 concurrent
+      requests missing the cache simultaneously would all hit the database.
+
+  - id: cdn_caching_headers
+    title: "HTTP Caching with Stale-While-Revalidate"
+    context: "API endpoint serving product catalog data"
+    correct: |
+      # Response headers for cacheable product list
+      HTTP/1.1 200 OK
+      Content-Type: application/json
+      Cache-Control: public, max-age=60, stale-while-revalidate=3600
+      ETag: "abc123"
+
+      # Browser/CDN: serves cached response for 60s
+      # Between 60s and 3660s: serves stale, revalidates in background
+      # After 3660s: must revalidate before serving
+    incorrect: |
+      # WRONG: Missing cache control entirely
+      HTTP/1.1 200 OK
+      Content-Type: application/json
+      # No Cache-Control header — browsers apply heuristics
+    explanation: >
+      The correct version uses stale-while-revalidate to serve instant
+      responses from cache while revalidating in the background. Without
+      Cache-Control each client applies different heuristics, causing
+      unpredictable caching behavior.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Distributed cache connections use TLS for encryption in transit"
+      - "Cache cluster deployed in private subnet — not exposed to public network"
+  data_protection:
+    requirements:
+      - "Sensitive data encrypted before caching (field-level or envelope)"
+      - "Cache data must not contain PII unless encrypted and short TTL"
+      - "Cache persistence files encrypted at rest"
+  access_control:
+    requirements:
+      - "Cache authentication required (Redis AUTH, ACLs)"
+      - "Cache access restricted per service using API keys or network policies"
+      - "Admin commands disabled on production cache instances"
+  input_output:
+    requirements:
+      - "Cache keys sanitized to prevent injection attacks"
+      - "Cache entry size bounded to prevent memory exhaustion"
+  secrets:
+    requirements:
+      - "Cache credentials stored in secrets manager, not in code"
+      - "Cache connection strings never logged or exposed in error messages"
+  monitoring:
+    requirements:
+      - "Monitor cache hit rate — alert below 80%"
+      - "Monitor eviction rate — sustained eviction means under-provisioned"
+      - "Monitor cache latency — p99 latency increase indicates cluster issues"
+      - "Alert on cache connection failures and reconnection storms"
+
+compliance:
+  standards:
+    - name: "HTTP Caching (RFC 9111)"
+      relevance: "Standard for HTTP cache behavior and header semantics"
+      reference: "https://httpwg.org/specs/rfc9111.html"
+    - name: "PCI DSS"
+      relevance: "Cached data must not include sensitive authentication data or PAN"
+      reference: "PCI DSS v4.0 Requirement 3"
+
+  requirements_mapping:
+    - control: cache_ttl
+      description: "All cache entries have a maximum TTL"
+      maps_to:
+        - "Operational best practice"
+    - control: cache_encryption
+      description: "Sensitive data encrypted in cache and at rest"
+      maps_to:
+        - "PCI DSS Requirement 3.5"
+
+prompt_recipes:
+  - id: greenfield_caching
+    scenario: greenfield
+    description: "Design caching strategy for a new application"
+    prompt: |
+      Design a caching strategy for a new application.
+
+      Context:
+      - Data freshness requirement: [stale_ok/fresh/real_time]
+      - Read/write ratio: [read_heavy/write_heavy/balanced]
+      - Cache data size per item: [small/medium/large/very_large]
+      - Invalidation complexity: [simple/moderate/complex]
+
+      Requirements:
+      1. Choose cache type: in-memory, distributed, CDN, or combination
+      2. Define cache patterns: cache-aside, read-through, write-through, write-behind
+      3. Set TTL for each cached entity type
+      4. Implement stampede protection for hot keys
+      5. Define invalidation strategy (TTL expiry, event-driven, manual)
+      6. Plan monitoring: hit rate, eviction rate, latency
+
+  - id: audit_caching
+    scenario: audit
+    description: "Audit existing caching implementation"
+    prompt: |
+      Audit the caching implementation:
+
+      1. Does every cache entry have a TTL?
+      2. Is the cache hit rate above 80%?
+      3. Is stampede protection implemented for hot keys?
+      4. Are cache credentials stored in secrets manager?
+      5. Is sensitive data encrypted before caching?
+      6. Are connections to distributed cache using TLS?
+      7. Is the cache bounded (max size + eviction policy)?
+      8. Is there an eviction monitoring alert?
+      9. Are CDN cache headers set correctly (Cache-Control, ETag)?
+      10. Is write-behind queue depth monitored?
+
+      For each item: report compliant/non-compliant with evidence.
+
+  - id: migration_caching
+    scenario: migration
+    description: "Migrate from local to distributed cache"
+    prompt: |
+      Evaluate migrating from local in-memory cache to distributed cache.
+
+      Current: Local in-memory cache per instance.
+      Target: Shared Redis cluster.
+
+      Evaluate:
+      - Application running multiple instances (Y/N)?
+      - Cache inconsistency causing bugs (Y/N)?
+      - Working set fits in Redis cluster memory (estimate)?
+      - Budget for Redis cluster infrastructure?
+      - Network latency of 1-5ms acceptable?
+
+      Migration plan:
+      1. Deploy Redis cluster alongside existing local cache
+      2. Dual-write: write to both, read from local (verify)
+      3. Migrate reads to Redis one entity at a time
+      4. Monitor hit rate and latency at each step
+      5. Remove local cache after all entities migrated
+
+  - id: debugging_cache_stampede
+    scenario: debugging
+    description: "Debug cache stampede causing database overload"
+    prompt: |
+      Debug a cache stampede causing database overload.
+
+      Symptoms: periodic latency spikes, database CPU 100%, coinciding
+      with cache key expiration.
+
+      Investigation:
+      1. Check which cache keys are causing the stampede
+      2. Verify TTL values — are hot keys expiring simultaneously?
+      3. Check if stampede protection is implemented
+
+      Fixes:
+      - Add probabilistic early expiration for hot keys
+      - Stagger TTLs to prevent simultaneous expiration (add jitter)
+      - Use lock-based prevention for expensive-to-compute entries
+      - Consider write-through instead of TTL-based expiration
+
+  - id: high_security_caching
+    scenario: architecture
+    description: "Design caching for PCI/GDPR regulated data"
+    prompt: |
+      Design caching strategy for regulated data (PCI/GDPR).
+
+      Constraints:
+      - Cardholder data must not be cached
+      - PII must be encrypted at rest and in transit
+      - Cache must support immediate invalidation for right-to-erasure
+      - Audit trail of all cached PII access required
+
+      Design:
+      1. Identify what can and cannot be cached
+      2. Encrypt sensitive cached fields at application level
+      3. Short TTL with proactive invalidation on data change
+      4. Cache not used for data subject to erasure requests
+      5. Log all cache reads of sensitive data for audit trail
+
+anti_patterns:
+  - name: "Cache Everything"
+    description: >
+      Caching all data regardless of access frequency, including data
+      that is rarely read or changes frequently. Wastes memory on cold
+      data, evicts useful entries, and adds invalidation complexity for
+      data that shouldn't be cached.
+    fix: "Cache only frequently accessed data with clear read patterns; monitor hit rate"
+    severity: high
+    related_pattern: local_in_memory_cache
+
+  - name: "No Expiration Policy"
+    description: >
+      Storing data in cache without TTL or maximum size. Cache grows
+      unbounded until memory is exhausted. Data becomes permanently
+      stale after the first write.
+    fix: "Set TTL on every cache entry; configure max size with eviction policy"
+    severity: critical
+    related_pattern: distributed_cache
+
+  - name: "Using Cache for Session Storage Without Persistence"
+    description: >
+      Storing user sessions in cache without persistence or replication.
+      A cache restart or failover loses all active sessions, logging
+      out all users with no recovery path.
+    fix: "Use a persistent session store (Redis with AOF/RDB); configure replication for HA"
+    severity: high
+    related_pattern: distributed_cache
+
+  - name: "Cache-aside Without Stampede Protection"
+    description: >
+      Using cache-aside pattern without any stampede prevention on
+      popular keys. A single cache miss causes a thundering herd that
+      overloads the database.
+    fix: "Implement probabilistic early expiration or lock-based stampede protection for hot keys"
+    severity: high
+    related_pattern: cache_stampede_prevention
+
+checklist:
+  - id: CCH-01
+    category: security
+    description: "Cache credentials stored in secrets manager, not in code"
+    severity: critical
+    verified_by: distributed_cache
+
+  - id: CCH-02
+    category: security
+    description: "Sensitive data encrypted before caching"
+    severity: critical
+    verified_by: distributed_cache
+
+  - id: CCH-03
+    category: performance
+    description: "All cache entries have TTL — no permanent caching"
+    severity: high
+    verified_by: local_in_memory_cache
+
+  - id: CCH-04
+    category: performance
+    description: "Cache hit rate above 80% with monitoring"
+    severity: high
+    verified_by: distributed_cache
+
+  - id: CCH-05
+    category: reliability
+    description: "Cache stampede protection for popular keys"
+    severity: high
+    verified_by: cache_stampede_prevention
+
+  - id: CCH-06
+    category: reliability
+    description: "Cache cluster is highly available (replica/failover)"
+    severity: high
+    verified_by: distributed_cache
+
+  - id: CCH-07
+    category: security
+    description: "Distributed cache connections use TLS"
+    severity: high
+    verified_by: distributed_cache
+
+  - id: CCH-08
+    category: performance
+    description: "Cache eviction rate monitored — no sustained evictions"
+    severity: medium
+    verified_by: distributed_cache
+
+  - id: CCH-09
+    category: design
+    description: "Cache used for appropriate data (read-frequently, write-rarely)"
+    severity: medium
+    verified_by: local_in_memory_cache
+
+  - id: CCH-10
+    category: security
+    description: "Cache not used for sensitive/regulated data without encryption"
+    severity: critical
+    verified_by: local_in_memory_cache
+
+  - id: CCH-11
+    category: reliability
+    description: "CDN purge propagation time accounted for in invalidation plan"
+    severity: medium
+    verified_by: cdn_http_caching
+
+  - id: CCH-12
+    category: observability
+    description: "Cache latency (p99) monitored with alerting"
+    severity: medium
+    verified_by: distributed_cache

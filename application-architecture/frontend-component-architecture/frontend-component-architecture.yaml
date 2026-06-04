@@ -1,0 +1,879 @@
+# =============================================================================
+# AI Architecture Cookbook — Frontend Component Architecture
+# Schema: v3 | Domain: frontend-component-architecture
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: frontend-component-architecture
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Frontend component architecture patterns covering atomic design, compound
+    components, container vs presentational components, composition via
+    slots/children, headless UI libraries, and design system integration.
+
+  tags:
+    - frontend
+    - components
+    - react
+    - vue
+    - angular
+    - composition
+    - design-system
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - id: api-design
+      reason: "Components consume API data; API shape influences component boundaries"
+    - id: input-validation
+      reason: "Form components and user-input components require validation patterns"
+    - id: accessibility
+      reason: "Components must implement accessible patterns (ARIA, keyboard nav)"
+
+  related_standards:
+    - id: styling-design-systems
+      relationship: complementary
+      context: "Component architecture and styling/design tokens are tightly coupled"
+    - id: frontend-state-management
+      relationship: complementary
+      context: "Component architecture defines how state is scoped, lifted, and shared"
+    - id: frontend-testing
+      relationship: complementary
+      context: "Component architecture determines testability and testing strategy"
+
+context_inputs:
+  - name: component_scale
+    type: enum
+    description: "Number of distinct components in the application"
+    required: true
+    default: moderate
+    enum_values:
+      - small
+      - moderate
+      - large
+
+  - name: design_system_maturity
+    type: enum
+    description: "Maturity of the design system or component library"
+    required: true
+    default: none
+    enum_values:
+      - none
+      - emerging
+      - mature
+
+  - name: rendering_approach
+    type: enum
+    description: "How the application renders UI"
+    required: false
+    default: csr
+    enum_values:
+      - csr
+      - ssr
+      - ssg
+      - isr
+
+  - name: state_complexity
+    type: enum
+    description: "Complexity of the component state management needs"
+    required: false
+    default: low
+    enum_values:
+      - low
+      - medium
+      - high
+
+  - name: team_size
+    type: enum
+    description: "Number of developers working on the frontend"
+    required: false
+    default: small
+    enum_values:
+      - small
+      - medium
+      - large
+
+  - name: reuse_requirement
+    type: enum
+    description: "How broadly components must be reusable"
+    required: false
+    default: app
+    enum_values:
+      - app
+      - multi_app
+      - public_library
+
+decision_tree:
+  - id: component_library
+    priority: 1
+    if:
+      - reuse_requirement in [multi_app, public_library]
+    then:
+      pattern: component_library_architecture
+      notes: >
+        When components are shared across apps or published as a library,
+        a formal component library with strict API contracts, versioning,
+        and tree-shakeable exports is essential.
+
+  - id: ds_mature_headless
+    priority: 2
+    if:
+      - design_system_maturity == mature
+    then:
+      pattern: headless_ui_components
+      notes: >
+        Mature design systems benefit from headless UI components that
+        separate behavior from styling. Radix, Headless UI, and
+        React Aria Components provide accessible primitives.
+
+  - id: high_state_complexity
+    priority: 3
+    if:
+      - state_complexity == high
+    then:
+      pattern: container_presentational
+      notes: >
+        When state logic is complex, the container/presentational
+        split keeps business logic testable and presentation reusable.
+
+  - id: server_rendering
+    priority: 4
+    if:
+      - rendering_approach in [ssr, isr]
+    then:
+      pattern: composition_via_slots
+      notes: >
+        Server-rendered frameworks (Next.js, Nuxt) benefit from
+        slot-based composition (layouts, named slots, children) to
+        manage hydration boundaries and shared layouts.
+
+  - id: use_atomic_design
+    priority: 5
+    if:
+      - component_scale in [moderate, large]
+    then:
+      pattern: atomic_compound_components
+      notes: >
+        Atomic design with compound components is the recommended
+        foundation for most applications, providing consistent
+        abstraction and clear component hierarchy.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: atomic_compound_components
+    description: "Atomic design with compound components is the safe default"
+
+patterns:
+  - id: atomic_compound_components
+    name: "Atomic Design + Compound Components"
+    description: >
+      Atomic design decomposes UI into atoms (buttons, inputs),
+      molecules (form fields with label + input + error), organisms
+      (sign-up form), templates (page layout), and pages. Compound
+      components extend this with a parent-child API (e.g.,
+      <Select> with <Select.Option>, <Select.Trigger>).
+
+      This is the most widely-adopted pattern, supported by React,
+      Vue, Angular, and Svelte. Compound components provide
+      implicit state sharing via React Context / provide-inject,
+      creating a declarative, composable API.
+    use_when:
+      - "Most applications as the default component architecture"
+      - "Building a new design system or component library"
+      - "Component count is moderate to large (20+ components)"
+      - "Multiple designers and frontend developers collaborating"
+      - "When encapsulation of state and behavior is needed"
+    avoid_when:
+      - "Very small applications (< 5 components) — over-engineering"
+      - "Static content pages where components are rarely reused"
+      - "When third-party design system already provides components"
+      - "Excessive prop-drilling without state management"
+    tradeoffs:
+      pros:
+        - "Clear, predictable component hierarchy"
+        - "Compound components provide intuitive, declarative API"
+        - "State shared implicitly via context (no prop drilling)"
+        - "Scalable: works from 5 to 500+ components"
+        - "Well-documented pattern with broad community support"
+      cons:
+        - "Can lead to deep nesting and wrapper hell"
+        - "Context-based compound components are opaque to type-checking"
+        - "Atomic design boundaries require judgment and can be inconsistent"
+        - "Compound components add indirection for simple cases"
+    implementation:
+      guidelines:
+        - "Compose atoms into molecules, molecules into organisms, never skip levels"
+        - "Use compound component pattern with Context for shared state"
+        - "Export each sub-component individually for tree-shaking"
+        - "Use forwardRef / ref forwarding for accessibility and tooling"
+        - "Define clear prop contracts at each level"
+        - "Name components semantically, not by layout (use <UserCard> not <CardWrapper>)"
+        - "Use TypeScript/PropTypes for component prop validation"
+        - "Co-locate styles, tests, and stories with the component"
+        - "Avoid deep nesting beyond 3-4 levels of composition"
+      common_errors:
+        - error: "Skipping abstraction levels (molecule → page instead of molecule → organism → page)"
+          impact: "Inconsistent component hierarchy, reduced reusability, confusion"
+          fix: "Enforce strict nesting rules: atoms → molecules → organisms → templates → pages"
+        - error: "Prop drilling through >3 levels instead of using composition or context"
+          impact: "Components become coupled, fragile to changes, hard to refactor"
+          fix: "Use composition (slot/children) or context for deeply shared state"
+        - error: "Monolithic components that mix data fetching, state, and rendering"
+          impact: "Hard to test, reuse, or optimize — violates single responsibility"
+          fix: "Split into container (data/state) + presentational (rendering) components"
+    maturity:
+      level: standard
+    standards:
+      - name: "React Compound Components"
+        type: pattern
+        role: "React idiom for implicit state sharing via Context"
+        status: recommended
+      - name: "Vue provide/inject"
+        type: pattern
+        role: "Vue pattern for compound component state sharing"
+        status: recommended
+      - name: "Angular Content Projection (ng-content)"
+        type: pattern
+        role: "Angular pattern for slot-based component composition"
+        status: recommended
+
+  - id: container_presentational
+    name: "Container / Presentational (Smart / Dumb)"
+    description: >
+      Split components into containers (concerned with data fetching,
+      state, and business logic) and presentational components (concerned
+      with rendering, styles, and layout). Containers pass data down
+      via props; presentational components emit events/actions upward.
+
+      Also known as smart/dumb components. Strongly separates concerns:
+      containers can be tested for state logic, presentational components
+      can be tested visually and reused across different data sources.
+    use_when:
+      - "Complex state logic mixed with rendering"
+      - "Need to reuse presentational components with different data sources"
+      - "Component is both rendering UI and managing server state"
+      - "Unit testing: easy to mock data for presentational tests"
+    avoid_when:
+      - "Simple components with minimal state (adds unnecessary indirection)"
+      - "When using hooks/composables that already encapsulate state logic"
+      - "Server components (RSC, Nuxt server components) blur this separation"
+      - "Smaller apps where over-architecture slows development"
+    tradeoffs:
+      pros:
+        - "Clear separation of concerns: data vs presentation"
+        - "Presentational components are highly reusable"
+        - "Easier to unit test each concern independently"
+        - "Designers can work on presentational components with mock data"
+      cons:
+        - "Boilerplate: every interaction needs a wrapper component"
+        - "Props threading can become verbose with many props"
+        - "Early over-splitting adds cognitive overhead"
+        - "React Server Components challenge this pattern's relevance"
+    implementation:
+      guidelines:
+        - "Containers handle: data fetching, state, event handlers, business logic"
+        - "Presentational handle: rendering, styles, layout, accessibility"
+        - "Containers call hooks/composables; presentational receive props"
+        - "Presentational components should be pure functions of their props"
+        - "Presentational emit callbacks, never call data-fetching directly"
+        - "Use container components as named exports, not default (tree-shaking)"
+        - "Colocate container and presentational in same file or adjacent files"
+      common_errors:
+        - error: "Presentational component making API calls directly"
+          impact: "Not reusable with different data sources; hard to test"
+          fix: "Remove data fetching; pass data as props; use container wrapper"
+        - error: "Splitting every component into container + presentational prematurely"
+          impact: "Boilerplate bloat, decreased velocity for simple components"
+          fix: "Apply the pattern only when state complexity warrants separation"
+    maturity:
+      level: standard
+    standards:
+      - name: "React Hooks + Server Components"
+        type: pattern
+        role: "Evolution of container pattern — hooks encapsulate logic"
+        status: emerging
+      - name: "Vue Composables"
+        type: pattern
+        role: "Composable functions replace container components"
+        status: recommended
+
+  - id: composition_via_slots
+    name: "Composition via Slots / Children"
+    description: >
+      Use slots, children, or render props to compose components
+      instead of inheritance or prop-based configuration. The parent
+      component defines the structure; the consumer provides the
+      content. This inverts control — the consumer decides what
+      renders inside each slot.
+
+      Implemented as: React children/slots, Vue slots (<slot>),
+      Angular ng-content/ngTemplateOutlet, Svelte snippets.
+      Enables flexible layouts, shared shell components (layouts,
+      dialogs, tabs), and avoids prop drilling.
+    use_when:
+      - "Building shared layout components (page shell, card, dialog, tabs)"
+      - "Multiple consumers need different content in the same container"
+      - "Avoiding prop drilling for deeply nested component structures"
+      - "Server-rendered layouts: Next.js layouts, Nuxt layouts"
+    avoid_when:
+      - "Content is always the same (use direct children, not slots)"
+      - "Simple wrappers without structure (a plain <div> wrapper is fine)"
+      - "When slots make data flow harder to trace (excessive indirection)"
+    tradeoffs:
+      pros:
+        - "Highly flexible — consumer controls what renders where"
+        - "No prop drilling — parent doesn't need to know about children's props"
+        - "Natural fit for layout components, headers, sidebars, footers"
+        - "Composition over inheritance — the React/Vue/Svelte philosophy"
+      cons:
+        - "Parent has limited control over what's passed in slots"
+        - "Can lead to inconsistent slot usage across the team"
+        - "Named slots with many options become API surface to document"
+        - "Type-checking slot content is framework-specific and can be complex"
+    implementation:
+      guidelines:
+        - "Use named slots when a component has multiple insertion points"
+        - "Use a default slot for the primary content area"
+        - "Document each slot's purpose: what content should go there, what props it receives"
+        - "Prefer composition of slot components over configuring via props"
+        - "For SSR: leverage server component slots (Next.js parallel routes)"
+        - "Test slot-based components by passing different slot content"
+        - "Provide fallback content in slots for default behavior"
+      common_errors:
+        - error: "Using a single default slot when named slots would be clearer"
+          impact: "Ambiguous where content renders; inconsistent usage"
+          fix: "Define explicit named slots for each content region"
+        - error: "Slot content tightly coupled to parent implementation details"
+          impact: "Breaking parent internals breaks all slot consumers"
+          fix: "Define a stable slot context API; avoid accessing parent internals"
+    maturity:
+      level: standard
+    standards:
+      - name: "React children / slots pattern"
+        type: pattern
+        role: "Composition via props.children and render props"
+        status: recommended
+      - name: "Vue Slots"
+        type: pattern
+        role: "Built-in slot system with named, scoped, and fallback slots"
+        status: recommended
+      - name: "Angular Content Projection"
+        type: pattern
+        role: "ng-content with select attribute for multi-slot projection"
+        status: recommended
+      - name: "Svelte Snippets"
+        type: pattern
+        role: "Svelte 5 composition via {#snippet} blocks"
+        status: recommended
+
+  - id: headless_ui_components
+    name: "Headless UI Components"
+    description: >
+      Headless UI components provide behavior, accessibility, and state
+      management for UI patterns (dropdown, dialog, combobox, tabs,
+      menu) without imposing any styling. The consumer brings their own
+      markup, styles, and design tokens.
+
+      Libraries: Radix UI (React), Headless UI (React/Vue),
+      React Aria Components, Ark UI (framework-agnostic),
+      zag.js (vanilla JS state machines).
+
+      This pattern is ideal for design systems with custom styling
+      while relying on battle-tested accessibility and behavior.
+    use_when:
+      - "Building a custom design system or component library"
+      - "Need production-grade accessibility with custom styling"
+      - "Existing UI library doesn't match the design language"
+      - "Multiple brands or themes must use the same component behaviors"
+      - "Legal/compliance requires WCAG 2.1 AA or AAA"
+    avoid_when:
+      - "Rapid prototyping with no custom design requirements"
+      - "Small team with limited bandwidth (headless adds complexity)"
+      - "When a styled library (MUI, Chakra, PrimeVue) already matches the design"
+      - "Components with non-standard interaction patterns headless libraries don't support"
+    tradeoffs:
+      pros:
+        - "Complete visual control — no fighting library styles"
+        - "Production-grade accessibility baked in (ARIA, keyboard nav, focus management)"
+        - "Works with any styling approach: Tailwind, CSS-in-JS, vanilla CSS"
+        - "Framework-agnostic options available (Ark, zag.js)"
+        - "Easier design system updates — behavior and styling are decoupled"
+      cons:
+        - "More code to write — consumer provides all markup and styles"
+        - "Learning curve: each headless library has its own API conventions"
+        - "Upgrade risk: breaking changes in headless library behavior"
+        - "Limited to the patterns the headless library supports"
+    implementation:
+      guidelines:
+        - "Evaluate accessibility support before choosing a headless library"
+        - "Wrap headless primitives in styled components for consistent usage"
+        - "Provide a single import path for each wrapped component"
+        - "Document which headless library version and which primitives are used"
+        - "Test with screen readers (VoiceOver, NVDA, JAWS)"
+        - "Version headless library separately from the design system"
+        - "Prefer framework-agnostic (Ark, zag) for multi-framework teams"
+      common_errors:
+        - error: "Not wrapping headless primitives — exposing raw library API everywhere"
+          impact: "Upgrading the headless library requires changes across the codebase"
+          fix: "Create a thin wrapper for each primitive; consumers import from wrapper"
+        - error: "Ignoring keyboard navigation expectations"
+          impact: "Headless provides keyboard support but custom markup breaks expected behavior"
+          fix: "Preserve the rendered DOM structure the headless library expects"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Radix UI"
+        type: framework
+        role: "Headless React component primitives with full accessibility"
+        status: recommended
+      - name: "Headless UI"
+        type: framework
+        role: "Tailwind CSS-compatible headless components for React/Vue"
+        status: recommended
+      - name: "React Aria Components"
+        type: framework
+        role: "Adobe's accessible React component primitives"
+        status: recommended
+      - name: "Ark UI"
+        type: framework
+        role: "Framework-agnostic headless UI primitives (React, Vue, Solid, Svelte)"
+        status: emerging
+
+  - id: component_library_architecture
+    name: "Component Library Architecture"
+    description: >
+      Formal component library structure for sharing components across
+      applications or publishing publicly. Includes: build system
+      (Rollup, tsup, Vite library mode), tree-shakeable exports,
+      versioning (semver), TypeScript declarations, CSS extraction,
+      and documentation (Storybook, Styleguidist).
+
+      Important considerations: dependency management (peer dependencies
+      for React/Vue), bundle size budgets, CSS scoping (CSS Modules,
+      CSS-in-JS, CSS Layers), and automated visual regression testing.
+    use_when:
+      - "Components shared across multiple applications in the organization"
+      - "Publishing a public component library or design system"
+      - "Enterprise with >100 developers consuming the library"
+      - "Need for strict versioning and changelogs per component"
+    avoid_when:
+      - "Single-application codebase (library overhead isn't justified)"
+      - "Rapidly changing components without stable API contracts"
+      - "Small team that can't maintain the library and the consuming apps"
+    tradeoffs:
+      pros:
+        - "Consistent design across all applications"
+        - "Single source of truth for component behavior"
+        - "Breaking changes are versioned and communicated"
+        - "Tree-shaking ensures apps only ship what they use"
+      cons:
+        - "Significant maintenance overhead (build, test, docs, releases)"
+        - "Library release cycle can block consuming teams"
+        - "Dependency conflicts between library and consumer versions"
+        - "Contributing to the library requires process and coordination"
+    implementation:
+      guidelines:
+        - "Use a build tool with library mode: Rollup, tsup, Vite library mode"
+        - "Export components as named exports from a single barrel file"
+        - "Ensure tree-shakeable: each component is a separate module"
+        - "Use peer dependencies for framework (React, Vue, Angular)"
+        - "Generate TypeScript declaration files (.d.ts)"
+        - "Use CSS Modules or CSS-in-JS for scoped styles"
+        - "Set up Storybook for development and documentation"
+        - "Implement visual regression testing (Chromatic, Percy)"
+        - "Publish semantic versioning with automated changelogs"
+        - "Provide codemods for breaking changes"
+      common_errors:
+        - error: "Not tree-shaking — importing one component bundles all components"
+          impact: "Consumer bundles include unused components, increasing bundle size"
+          fix: "Ensure each component has its own export; use sideEffects: false in package.json"
+        - error: "Pinning framework as a dependency instead of peer dependency"
+          impact: "Two copies of React/Vue in the consumer app"
+          fix: "Move React/Vue to peerDependencies; consumers provide their own version"
+        - error: "No visual regression tests for library components"
+          impact: "Style regressions go unnoticed until a consumer deploys"
+          fix: "Integrate Chromatic/Percy into CI; block releases on visual diffs"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Storybook"
+        type: tool
+        role: "Component development, documentation, and testing environment"
+        status: recommended
+      - name: "Rollup / tsup"
+        type: tool
+        role: "Library bundling with tree-shaking and TypeScript support"
+        status: recommended
+      - name: "Chromatic"
+        type: tool
+        role: "Visual regression testing and review for component libraries"
+        status: recommended
+      - name: "semver"
+        type: standard
+        role: "Semantic versioning for library releases"
+        status: recommended
+
+examples:
+  - id: compound_selector
+    title: "Compound Select Component vs Monolithic Select"
+    context: "Building a reusable select/dropdown component"
+    correct: |
+      // CORRECT: Compound component with implicit state sharing
+
+      // SelectContext.ts — shared context for compound children
+      const SelectContext = createContext<SelectContextType | null>(null)
+
+      function useSelectContext() {
+        const ctx = useContext(SelectContext)
+        if (!ctx) throw new Error("<Select.Option> must be inside <Select>")
+        return ctx
+      }
+
+      // Select.tsx — root wrapper, provides context
+      function Select({ children, value, onChange }) {
+        const [open, setOpen] = useState(false)
+
+        return (
+          <SelectContext.Provider value={{ value, onChange, open, setOpen }}>
+            <div className="relative">{children}</div>
+          </SelectContext.Provider>
+        )
+      }
+
+      // Sub-components that access shared state via context
+      Select.Trigger = function Trigger({ children }) {
+        const { open, setOpen } = useSelectContext()
+        return <button onClick={() => setOpen(!open)}>{children}</button>
+      }
+
+      Select.Option = function Option({ value: optionValue, children }) {
+        const { value, onChange } = useSelectContext()
+        return <div onClick={() => onChange(optionValue)}>{children}</div>
+      }
+
+      Select.Options = function Options({ children }) {
+        const { open } = useSelectContext()
+        return open ? <div className="absolute z-50">{children}</div> : null
+      }
+
+      // Usage — intuitive, declarative, self-documenting
+      <Select value={country} onChange={setCountry}>
+        <Select.Trigger>{country || "Select country"}</Select.Trigger>
+        <Select.Options>
+          {countries.map(c => <Select.Option value={c}>{c}</Select.Option>)}
+        </Select.Options>
+      </Select>
+    incorrect: |
+      // WRONG: Monolithic component with all props at the top level
+
+      function Select({
+        value, onChange, options, placeholder,
+        triggerClassName, optionsClassName, optionClassName,
+        renderTrigger, renderOption, zIndex, position, maxHeight,
+      }) {
+        // 15+ props, all at one level — no composition, no context
+        // Every consumer must learn the entire API surface
+      }
+
+      // Usage — unclear which props are required, which optional
+      <Select
+        value={country}
+        onChange={setCountry}
+        options={countries}
+        placeholder="Select country"
+        triggerClassName="btn"
+        optionsClassName="absolute z-50"
+      />
+    explanation: >
+      The compound component uses React Context to share state implicitly
+      between Select, Trigger, Option, and Options. The API is declarative
+      and self-documenting: consumers see exactly which sub-components are
+      available. The monolithic version forces all options into a single
+      component with 15+ props, making the API hard to learn, hard to
+      customize, and impossible to tree-shake.
+
+  - id: container_vs_presentational
+    title: "Container/Presentational Separation"
+    context: "User profile component with data fetching"
+    correct: |
+      // CORRECT: Container + Presentational separation
+
+      // UserProfileContainer.ts — handles data, passes to presentational
+      function UserProfileContainer({ userId }) {
+        const { data: user, isLoading, error } = useQuery({
+          queryKey: ['user', userId],
+          queryFn: () => fetchUser(userId),
+        })
+
+        if (isLoading) return <Skeleton />
+        if (error) return <ErrorState message={error.message} />
+
+        return <UserProfile user={user} onUpdate={handleUpdate} />
+      }
+
+      // UserProfile.ts — pure presentational, no data fetching
+      function UserProfile({ user, onUpdate }) {
+        return (
+          <div>
+            <Avatar src={user.avatar} name={user.name} />
+            <h2>{user.name}</h2>
+            <p>{user.bio}</p>
+            <button onClick={() => onUpdate(user.id)}>Edit</button>
+          </div>
+        )
+      }
+
+      // UserProfile tests — no mocking needed
+      // <UserProfile user={mockUser} onUpdate={vi.fn()} />
+    incorrect: |
+      // WRONG: Data fetching mixed with rendering
+
+      function UserProfile({ userId }) {
+        const [user, setUser] = useState(null)
+        const [loading, setLoading] = useState(true)
+
+        useEffect(() => {
+          fetchUser(userId).then(data => {
+            setUser(data)
+            setLoading(false)
+          })
+        }, [userId])
+
+        if (loading) return <Skeleton />
+        if (!user) return <ErrorState />
+
+        return (
+          <div>
+            {/* Data fetching, state, and rendering all in one */}
+            <Avatar src={user.avatar} />
+            <h2>{user.name}</h2>
+            {user.role === 'admin' && <AdminBadge />}
+          </div>
+        )
+      }
+
+      // Testing this requires mocking fetch, wrapping in providers,
+      // and dealing with async effects
+    explanation: >
+      The correct version separates data concerns (UserProfileContainer)
+      from rendering (UserProfile). The presentational component can be
+      tested with mock props without any mocking infrastructure. The
+      container can be tested separately with query hooks mocked. The
+      incorrect version mixes all concerns in one component, making it
+      hard to test, reuse, or optimize.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Dependencies loaded over HTTPS; subresource integrity (SRI) for CDN-loaded deps"
+  data_protection:
+    requirements:
+      - "Sensitive data never passed to presentational components without sanitization"
+  access_control:
+    requirements:
+      - "Component-level role-based rendering with consistent authorization check patterns"
+      - "Admin-only components guarded by a single <Authorize> wrapper component"
+  input_output:
+    requirements:
+      - "All text rendered via component props uses appropriate encoding (JSX auto-escaping)"
+      - "dangerouslySetInnerHTML/v-html avoided; use a sanitized component if HTML is required"
+      - "User-provided content rendered through a dedicated <SafeHTML> component"
+  secrets:
+    requirements:
+      - "API keys, tokens, and secrets never passed through component props"
+      - "Environment variables consumed only in server/container components, never presentational"
+  monitoring:
+    requirements:
+      - "Component render count and re-render frequency tracked in development"
+      - "Error boundaries catch and report component rendering errors"
+
+compliance:
+  standards:
+    - name: "WCAG 2.1 AA"
+      relevance: "All interactive components must meet accessibility guidelines for screen readers, keyboard navigation, and color contrast"
+    - name: "WAI-ARIA Authoring Practices"
+      relevance: "Component interaction patterns (dialog, combobox, tabs, menu) must follow ARIA design patterns"
+
+  requirements_mapping:
+    - control: component_accessibility
+      description: "All interactive components implement ARIA roles, states, and keyboard navigation"
+      maps_to:
+        - "WCAG 2.1 AA: 2.1.1 Keyboard, 4.1.2 Name Role Value"
+        - "WAI-ARIA design patterns"
+    - control: semantic_html
+      description: "Components use semantic HTML elements where possible, with ARIA enhancements"
+      maps_to:
+        - "WCAG 2.1 AA: 1.3.1 Info and Relationships"
+
+prompt_recipes:
+  - id: component_greenfield
+    scenario: greenfield
+    description: "Design component hierarchy from a UI mockup"
+    prompt: |
+      Design the component architecture for {feature_name}.
+
+      Context:
+      - Component count: [small/moderate/large]
+      - Design system: [none/emerging/mature]
+      - Rendering: [csr/ssr/ssg]
+      - Reuse: [app/multi_app/public]
+
+      Tasks:
+      1. Identify atomic components (button, input, label, icon)
+      2. Group atoms into molecules (form-field, card-header)
+      3. Compose molecules into organisms (sign-up-form, user-card)
+      4. Design the compound component API for each organism
+      5. Identify container vs presentational boundaries
+      6. Define prop interfaces for each component level
+
+  - id: migrate_to_compound
+    scenario: migration
+    description: "Migrate monolithic components to compound pattern"
+    prompt: |
+      Refactor {component_name} from monolithic to compound component pattern.
+
+      Current state: a single component with {prop_count} props handling
+      multiple concerns (state, rendering, event handling).
+
+      Migration plan:
+      1. Identify sub-components: Trigger, Content, Item, etc.
+      2. Create a shared Context for implicit state
+      3. Move each concern to its own sub-component
+      4. Expose sub-components as static properties on the root
+      5. Update tests for each sub-component individually
+      6. Remove unused props from the root component
+
+  - id: component_accessibility_audit
+    scenario: audit
+    description: "Audit components for WCAG and ARIA compliance"
+    prompt: |
+      Audit {component_list} for accessibility compliance.
+
+      Checklist per component:
+      1. Are ARIA roles correct for the interaction pattern?
+      2. Is keyboard navigation complete (Tab, Enter, Escape, Arrow keys)?
+      3. Is focus management correct (autofocus, focus trap, restore)?
+      4. Are all states communicated to screen readers (aria-expanded, aria-selected)?
+      5. Is color contrast ≥ 4.5:1 for text, ≥ 3:1 for large text?
+      6. Are error messages associated via aria-describedby?
+
+  - id: component_tree_shaking
+    scenario: performance
+    description: "Optimize component library for tree-shaking"
+    prompt: |
+      Optimize {library_name} for tree-shaking.
+
+      Current bundle: {current_size}kB
+      Target: ≤{target_size}kB
+
+      Tasks:
+      1. Verify sideEffects: false in package.json
+      2. Ensure each component is in its own file with named export
+      3. Verify barrel exports only re-export, never re-export + side effects
+      4. Check for internal circular dependencies
+      5. Verify the bundler (Rollup/tsup) configuration removes unused exports
+      6. Analyze final bundle with `npx vite-bundle-analyzer` or similar
+      7. Add CI check that fails if bundle exceeds budget
+
+anti_patterns:
+  - name: "Wrapper Hell"
+    description: >
+      Deeply nested wrapper divs, providers, and HOCs around every
+      component. Each wrapper adds indirection, increases DOM size,
+      and makes the component tree harder to debug.
+    fix: "Use composition patterns (slots, children, render props) instead of wrapping components. For context providers, colocate with the nearest consumer."
+    severity: medium
+    related_pattern: composition_via_slots
+
+  - name: "God Component"
+    description: >
+      A single component with 20+ props, handling data fetching, state
+      management, complex rendering, and multiple interaction patterns.
+      Impossible to reuse, hard to test, and a frequent source of bugs.
+    fix: "Split into container/presentational, extract sub-components, and use compound component pattern for complex APIs."
+    severity: high
+    related_pattern: container_presentational
+
+  - name: "Prop Drilling Through 5+ Levels"
+    description: >
+      Passing a prop through 5+ layers of intermediate components that
+      don't use it themselves. Creates tight coupling, makes refactoring
+      painful, and obscures the true dependencies between components.
+    fix: "Use composition (pass component via slot/children instead of data via props) or shared state (Context, provide/inject)."
+    severity: medium
+    related_pattern: composition_via_slots
+
+  - name: "Not Wrapping Headless Primitives"
+    description: >
+      Directly importing and using Radix / Headless UI primitives
+      throughout the codebase instead of wrapping them in styled
+      components. Upgrading the library requires changes everywhere.
+    fix: "Create a styled wrapper for each headless primitive; consumers import from the wrapper layer only."
+    severity: high
+    related_pattern: headless_ui_components
+
+checklist:
+  - id: FC-01
+    category: maintainability
+    description: "Component hierarchy follows atomic/compound pattern consistently"
+    severity: high
+    verified_by: atomic_compound_components
+
+  - id: FC-02
+    category: maintainability
+    description: "No component has more than 10 props (consider splitting)"
+    severity: medium
+    verified_by: container_presentational
+
+  - id: FC-03
+    category: maintainability
+    description: "No prop drilling beyond 3 levels"
+    severity: high
+    verified_by: composition_via_slots
+
+  - id: FC-04
+    category: correctness
+    description: "Every interactive component has keyboard navigation and ARIA attributes"
+    severity: critical
+    verified_by: headless_ui_components
+
+  - id: FC-05
+    category: performance
+    description: "Component library has tree-shakeable exports (sideEffects: false)"
+    severity: high
+    verified_by: component_library_architecture
+
+  - id: FC-06
+    category: maintainability
+    description: "Components co-located with tests, stories, and styles"
+    severity: medium
+    verified_by: atomic_compound_components
+
+  - id: FC-07
+    category: reliability
+    description: "Error boundary wraps each major feature area"
+    severity: high
+    verified_by: container_presentational
+
+  - id: FC-08
+    category: security
+    description: "No dangerouslySetInnerHTML/v-html without explicit security review"
+    severity: critical
+    verified_by: atomic_compound_components
+
+  - id: FC-09
+    category: maintainability
+    description: "Compound component sub-components documented with usage examples"
+    severity: medium
+    verified_by: atomic_compound_components
+
+  - id: FC-10
+    category: performance
+    description: "Unused component imports flagged by lint rules"
+    severity: medium
+    verified_by: component_library_architecture

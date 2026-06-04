@@ -1,0 +1,408 @@
+# =============================================================================
+# AI Architecture Cookbook — WebAssembly Frontend
+# Schema: v3 | Domain: webassembly-frontend
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: webassembly-frontend
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    WebAssembly (Wasm) frontend patterns covering when to use Wasm, boundaries
+    between JS and Wasm, bundle size considerations, async module loading,
+    memory management, and interoperability with Rust (wasm-pack), C++ (Emscripten),
+    and AssemblyScript.
+
+  tags:
+    - webassembly
+    - wasm
+    - performance
+    - rust
+    - assemblyscript
+    - compilation
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - id: frontend-build-performance
+      reason: "Wasm modules affect bundle strategy and loading performance"
+    - id: performance-optimization
+      reason: "Wasm is a performance optimization tool for compute-heavy tasks"
+
+  related_standards:
+    - id: frontend-testing
+      relationship: complementary
+      context: "Wasm modules require specific testing strategies"
+
+context_inputs:
+  - name: compute_intensity
+    type: enum
+    description: "How compute-intensive the task is"
+    required: true
+    default: low
+    enum_values:
+      - low
+      - medium
+      - high
+
+  - name: data_volume
+    type: enum
+    description: "Volume of data processed client-side"
+    required: false
+    default: small
+    enum_values:
+      - small
+      - medium
+      - large
+
+  - name: js_interop_complexity
+    type: enum
+    description: "How much the Wasm module interacts with the DOM/JS"
+    required: false
+    default: minimal
+    enum_values:
+      - minimal
+      - moderate
+      - heavy
+
+  - name: team_language
+    type: enum
+    description: "Team's programming language expertise"
+    required: false
+    default: js_only
+    enum_values:
+      - js_only
+      - multi_language
+
+decision_tree:
+  - id: high_compute
+    priority: 1
+    if:
+      - compute_intensity == high
+    then:
+      pattern: compute_intensive_wasm
+      notes: "High compute tasks (video encoding, crypto, image processing) benefit most from Wasm"
+
+  - id: large_data_client
+    priority: 2
+    if:
+      - data_volume in [medium, large]
+      - compute_intensity in [medium, high]
+    then:
+      pattern: large_data_processing
+      notes: "Client-side processing of large data (parsing, compression) is a good Wasm candidate"
+
+  - id: minimal_interop
+    priority: 3
+    if:
+      - js_interop_complexity == minimal
+    then:
+      pattern: pure_wasm_module
+      notes: "Minimal DOM interaction is ideal for Wasm (expensive serialization boundary)"
+
+  - id: standard_wasm
+    priority: 4
+    if:
+      - compute_intensity in [low, medium, high]
+    then:
+      pattern: standard_wasm_integration
+      notes: "Standard Wasm integration with lazy loading for compute-heavy tasks"
+
+decision_metadata:
+  confidence: medium
+  risk_if_wrong: medium
+  fallback:
+    pattern: standard_wasm_integration
+    description: "Start with standard Wasm and profile before further optimization"
+
+patterns:
+  - id: compute_intensive_wasm
+    name: "Compute-Intensive Wasm"
+    description: >
+      Offload CPU-bound computations to WebAssembly: image/video processing
+      (canvas filters, compression), cryptographic operations, data
+      compression/decompression, game physics, and ML inference. Wasm can
+      approach native performance for these tasks.
+    use_when:
+      - "CPU-bound tasks that block the main thread (long tasks > 50ms)"
+      - "Image/video/audio processing on the client"
+      - "Crypto operations (hashing, encryption)"
+      - "Physics simulations or game logic"
+      - "Parsing large binary formats (PDF, ZIP, protobuf)"
+    avoid_when:
+      - "I/O-bound tasks (network requests, disk access)"
+      - "DOM manipulation (Wasm can't touch the DOM)"
+      - "Tiny computations where Wasm loading cost outweighs benefit"
+    tradeoffs:
+      pros:
+        - "Near-native performance for compute tasks"
+        - "Offloads work from main thread (Worker + Wasm)"
+        - "Single compilation target for multiple source languages"
+      cons:
+        - "Wasm module size adds to bundle (300kB-2MB typical)"
+        - "JS-Wasm boundary crossing has overhead"
+        - "Limited DOM and Web API access"
+        - "Debugging harder than JS"
+    implementation:
+      guidelines:
+        - "Run Wasm in a Web Worker to avoid blocking the main thread"
+        - "Measure before and after: only use Wasm if JS is slower"
+        - "Use streaming instantiation (WebAssembly.instantiateStreaming)"
+        - "Keep Wasm-to-JS calls minimal (batch operations when possible)"
+        - "Profile the JS-Wasm boundary: each crossing has overhead"
+        - "Use wasm-pack (Rust) or Emscripten (C++) for compilation"
+        - "Share memory via SharedArrayBuffer when applicable"
+      common_errors:
+        - error: "Using Wasm for a simple task that JS does efficiently"
+          impact: "Slower overall due to Wasm loading + boundary crossing overhead"
+          fix: "Benchmark JS vs Wasm before committing. Wasm has ~1ms boundary cost per call"
+    maturity:
+      level: advanced
+    standards:
+      - name: "WebAssembly"
+        type: spec
+        role: "Binary instruction format for near-native performance in browsers"
+        status: recommended
+      - name: "wasm-pack"
+        type: tool
+        role: "Rust → Wasm compilation and npm package generation"
+        status: recommended
+      - name: "Emscripten"
+        type: tool
+        role: "C/C++ → Wasm compilation with JS glue code"
+        status: recommended
+
+  - id: standard_wasm_integration
+    name: "Standard Wasm Integration"
+    description: >
+      Lazy-load Wasm modules with streaming instantiation. Use async loading
+      with loading states. Expose a clean JS API wrapping Wasm internals.
+      Most projects using Wasm start with this pattern.
+    use_when:
+      - "First time using Wasm in a project"
+      - "Compute-intensive tasks with clear boundaries"
+      - "Existing Rust/C++ codebase to compile to Wasm"
+    avoid_when:
+      - "Very simple tasks that don't need Wasm"
+      - "Heavy DOM interaction needed"
+    tradeoffs:
+      pros:
+        - "Progressive enhancement: app works without Wasm (JS fallback)"
+        - "Lazy loading keeps initial bundle small"
+      cons:
+        - "Loading state: Wasm can be 300kB-2MB compressed"
+        - "Two versions (JS + Wasm) to maintain for fallback"
+    implementation:
+      guidelines:
+        - "Use WebAssembly.instantiateStreaming with Response for fast loading"
+        - "Provide a JS fallback for environments without Wasm support"
+        - "Expose Wasm functionality behind a clean async API"
+        - "Show a loading indicator while Wasm is fetching"
+        - "Compile Wasm with optimization flags (-O3 for Rust, -O3 for Emscripten)"
+        - "Use gzip/brotli compression on .wasm files (compresses well)"
+      common_errors:
+        - error: "Block-instantiate: waiting for Wasm to load before showing any UI"
+          impact: "User stares at blank screen while 2MB Wasm downloads"
+          fix: "Lazy-load Wasm; show UI immediately; display loading when Wasm feature is triggered"
+    maturity:
+      level: standard
+
+  - id: large_data_processing
+    name: "Large Data Processing"
+    description: >
+      Process large datasets client-side using Wasm: parse binary formats
+      (PDF, CSV, JSON), transform data (compression, encoding), and run
+      data analysis (statistics, ML preprocessing). Wasm excels at bulk
+      memory operations without garbage collection pauses.
+    use_when:
+      - "Parsing or generating binary formats client-side"
+      - "Data compression/decompression on the client"
+      - "Large dataset transformations"
+    avoid_when:
+      - "Small datasets (JS is usually fast enough)"
+      - "Data best processed on the server"
+    tradeoffs:
+      pros:
+        - "Can process large datasets without GC pauses"
+        - "Fine-grained memory control via WebAssembly.Memory"
+      cons:
+        - "Data serialization overhead (copy data into Wasm linear memory)"
+    implementation:
+      guidelines:
+        - "Use SharedArrayBuffer for zero-copy data sharing when possible"
+        - "Batch data transfers to minimize boundary crossings"
+        - "Use WebAssembly.Memory.grow() for dynamic memory needs"
+        - "Stream data into Wasm via ReadableStream + wasm streaming"
+        - "Compile with bulk-memory operations enabled"
+      common_errors:
+        - error: "Copying data byte-by-byte between JS and Wasm"
+          impact: "Massive overhead from N boundary crossings"
+          fix: "Copy data in bulk (entire array at once) into Wasm linear memory"
+    maturity:
+      level: advanced
+
+  - id: pure_wasm_module
+    name: "Pure Wasm Module Pattern"
+    description: >
+      A Wasm module with minimal JS interaction: receives input, processes,
+      returns output. No DOM access. Ideal self-contained compute tasks like
+      compression, hashing, encoding. Best pattern for Wasm performance since
+      JS-Wasm boundary crossing is minimized.
+    use_when:
+      - "Self-contained computation (input → process → output)"
+      - "No DOM or Web API access required"
+      - "Performance-critical hot path"
+    avoid_when:
+      - "Task requires DOM manipulation or complex JS interop"
+    tradeoffs:
+      pros:
+        - "Maximum performance benefit from Wasm"
+        - "Portable: same module can run in Worker, Node.js, Deno"
+      cons:
+        - "Limited to pure computation"
+        - "Must serialize/deserialize all inputs and outputs"
+    implementation:
+      guidelines:
+        - "Design a clean function signature: (input_buffer) → output_buffer"
+        - "Use linear memory for pass-by-reference (avoid copying)"
+        - "Export a single init() and process() function"
+        - "Use Struct of Arrays layout for performance"
+        - "Benchmark with actual data sizes before production"
+      common_errors:
+        - error: "Complex object passing across Wasm boundary (needless serialization)"
+          impact: "Serialization cost outweighs Wasm performance gain"
+          fix: "Pass flat buffers (Uint8Array) and handle structuring in JS"
+    maturity:
+      level: advanced
+
+examples:
+  - id: wasm_integration
+    title: "Wasm Module Integration (Rust)"
+    context: "Image processing with Wasm"
+    correct: |
+      // CORRECT: Lazy-loaded Wasm with streaming instantiation
+      import init, { grayscale } from "./pkg/image_processor.js"
+
+      async function processImage(pixels) {
+        await init() // Load and instantiate Wasm
+        return grayscale(pixels) // Call Wasm function
+      }
+
+      // UI uses it progressively
+      button.onclick = async () => {
+        button.disabled = true
+        button.textContent = "Processing..."
+        const result = await processImage(imageData)
+        canvas.putImageData(result, 0, 0)
+        button.disabled = false
+      }
+    incorrect: |
+      // WRONG: Synchronous load, no loading state
+      import { grayscale } from "./pkg/image_processor.js"
+      // Synchronous import blocks rendering while Wasm loads
+
+      button.onclick = () => {
+        const result = grayscale(imageData)
+        canvas.putImageData(result, 0, 0)
+        // No loading indicator — app freezes
+        // No error handling if Wasm fails to load
+      }
+    explanation: >
+      The correct version uses wasm-pack's async init() with streaming
+      instantiation, shows a loading state, and has proper error handling.
+      The incorrect version synchronously blocks rendering and provides
+      no feedback or fallback.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All communication uses HTTPS"
+  data_protection:
+    requirements:
+      - "Sensitive data not exposed in client-visible state"
+  access_control:
+    requirements:
+      - "Feature-based access control enforced"
+  input_output:
+    requirements:
+      - "All user input sanitized"
+  secrets:
+    requirements:
+      - "No secrets in client-side code"
+  monitoring:
+    requirements:
+      - "Errors logged with context for debugging"
+
+compliance:
+  standards:
+    - name: "OWASP"
+      relevance: "Frontend security best practices"
+  requirements_mapping:
+    - control: secure_communication
+      description: "All frontend communication uses secure channels"
+      maps_to:
+        - "OWASP: secure communication"
+
+prompt_recipes:
+  - id: wasm_evaluation
+    scenario: greenfield
+    description: "Evaluate if Wasm is right for a task"
+    prompt: "Evaluate whether WebAssembly is appropriate for {task_name}.\n\nContext:\n- Compute intensity: low/medium/high\n- Data volume: small/medium/large\n- JS interop: minimal/moderate/heavy\n\nDecision: Wasm or JS with rationale."
+  - id: wasm_migration
+    scenario: migration
+    description: "Migrate JS computation to Wasm"
+    prompt: "Migrate {function_name} from JS to WebAssembly.\n\nSteps:\n1. Profile current JS performance (measure, set baseline)\n2. Write Rust/C++ implementation\n3. Compile to Wasm with wasm-pack/Emscripten\n4. Integrate with streaming instantiation\n5. Add JS fallback for non-Wasm environments\n6. Benchmark Wasm vs JS\n7. Set up CI for Wasm compilation"
+  - id: wasm_debugging
+    scenario: audit
+    description: "Debug Wasm module issues"
+    prompt: "Debug Wasm module issues in {app_name}.\n\nSteps:\n1. Check Wasm module loading (instantiateStreaming)\n2. Profile JS-Wasm boundary crossing overhead\n3. Verify memory management (no leaks)\n4. Test JS fallback path works\n5. Check bundle size impact of Wasm module\n6. Debug Wasm in browser DevTools"
+  - id: worker_wasm_integration
+    scenario: greenfield
+    description: "Integrate Wasm with Web Workers"
+    prompt: "Set up Wasm module in a Web Worker for {app_name}.\n\nSteps:\n1. Create Worker script that loads Wasm module\n2. Use streaming instantiation in worker context\n3. Set up message passing between main thread and worker\n4. Handle worker lifecycle (terminate on unmount)\n5. Benchmark main thread vs worker performance\n6. Add fallback: run directly on main thread if Workers unavailable"
+
+anti_patterns:
+  - name: "Wasm for Everything"
+    description: "Rewriting entire app in Wasm because it's fast, ignoring that most UI work is DOM manipulation (which Wasm can't do)."
+    fix: "Only use Wasm for pure compute tasks. JS is still best for DOM/API interaction. Use Wasm + JS hybrid."
+    severity: high
+    related_pattern: compute_intensive_wasm
+  - name: "No JS Fallback"
+    description: "App depends on Wasm with no fallback. Breaks in environments without Wasm support."
+    fix: "Provide a JS fallback implementation for all Wasm functions. Detect Wasm support and fall back gracefully."
+    severity: medium
+    related_pattern: standard_wasm_integration
+  - name: "Tiny Computations in Wasm"
+    description: "Using Wasm for a trivial computation (sum of array) where JS is equally fast or faster, ignoring Wasm loading and boundary overhead."
+    fix: "Only use Wasm when benchmarked JS performance improvement is significant (>2x with data > 1MB)."
+    severity: medium
+    related_pattern: compute_intensive_wasm
+
+checklist:
+  - id: WA-01
+    category: performance
+    description: "Wasm module loaded via streaming instantiation (not synchronous)"
+    severity: high
+    verified_by: standard_wasm_integration
+  - id: WA-02
+    category: reliability
+    description: "JS fallback implementation provided for all Wasm functions"
+    severity: high
+    verified_by: standard_wasm_integration
+  - id: WA-03
+    category: performance
+    description: "JS-Wasm boundary calls minimized (batch operations)"
+    severity: high
+    verified_by: compute_intensive_wasm
+  - id: WA-04
+    category: performance
+    description: "Wasm module in Web Worker for non-blocking main thread"
+    severity: high
+    verified_by: compute_intensive_wasm
+  - id: WA-05
+    category: maintainability
+    description: "Wasm functions wrapped in clean async JS API"
+    severity: medium
+    verified_by: standard_wasm_integration

@@ -1,0 +1,442 @@
+# =============================================================================
+# AI Architecture Cookbook — Frontend Build & Performance
+# Schema: v3 | Domain: frontend-build-performance
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: frontend-build-performance
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Frontend build and performance optimization patterns covering bundling
+    (Vite, Webpack, esbuild, Rollup), code splitting (route-based,
+    component-based), tree shaking, lazy loading, Core Web Vitals optimization,
+    bundle analysis, and performance budgets.
+
+  tags:
+    - build
+    - performance
+    - bundler
+    - vite
+    - webpack
+    - code-splitting
+    - core-web-vitals
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - id: performance-optimization
+      reason: "General performance optimization patterns apply to frontend builds"
+    - id: ci-cd
+      reason: "Build performance and bundle budgets enforced in CI/CD"
+
+  related_standards:
+    - id: pwa-offline-first
+      relationship: complementary
+      context: "PWA caching strategies depend on build-time asset handling"
+    - id: micro-frontends
+      relationship: complementary
+      context: "Module federation is a build-time concern"
+
+context_inputs:
+  - name: app_type
+    type: enum
+    description: "Type of frontend application"
+    required: true
+    default: spa
+    enum_values:
+      - spa
+      - ssr
+      - ssg
+      - pwa
+
+  - name: build_tool
+    type: enum
+    description: "Current build tool"
+    required: false
+    default: vite
+    enum_values:
+      - vite
+      - webpack
+      - parcel
+      - turbopack
+      - rspack
+
+  - name: code_splitting_strategy
+    type: enum
+    description: "How the app currently splits code"
+    required: false
+    default: none
+    enum_values:
+      - none
+      - route
+      - component
+      - vendor
+
+  - name: bundle_size_target
+    type: enum
+    description: "Target initial bundle size"
+    required: false
+    default: medium
+    enum_values:
+      - strict
+      - medium
+      - relaxed
+
+decision_tree:
+  - id: strict_budget
+    priority: 1
+    if:
+      - bundle_size_target == strict
+    then:
+      pattern: aggressive_code_splitting
+      notes: "Strict bundle budgets require aggressive route-based splitting, lazy loading, and tree shaking"
+
+  - id: ssr_performance
+    priority: 2
+    if:
+      - app_type in [ssr, ssg]
+    then:
+      pattern: ssr_build_optimization
+      notes: "SSR/SSG apps need optimized server bundles, streaming, and ISR"
+
+  - id: no_splitting
+    priority: 3
+    if:
+      - code_splitting_strategy == none
+      - app_type == spa
+    then:
+      pattern: route_based_splitting
+      notes: "Most SPAs benefit from route-based code splitting as the first optimization"
+
+  - id: vendor_split
+    priority: 4
+    if:
+      - build_tool in [webpack, vite, rspack]
+    then:
+      pattern: vendor_dependency_optimization
+      notes: "Vendor chunk splitting and dependency optimization for faster builds"
+
+  - id: standard_build
+    priority: 5
+    if:
+      - build_tool in [vite, webpack, parcel, turbopack, rspack]
+    then:
+      pattern: build_tool_optimization
+      notes: "Standard build tool optimization applies to all apps"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: medium
+  fallback:
+    pattern: route_based_splitting
+    description: "Route-based code splitting is the standard performance optimization"
+
+patterns:
+  - id: build_tool_optimization
+    name: "Build Tool Optimization"
+    description: "Optimize build tool configuration for faster dev builds and smaller production builds. Includes HMR improvements, esbuild minification, CSS extraction, and caching."
+    use_when:
+      - "Slow dev server rebuilds affecting developer productivity"
+      - "Large production bundles needing optimization"
+    avoid_when:
+      - "Build performance is already acceptable"
+    tradeoffs:
+      pros:
+        - "Faster dev iteration (HMR < 100ms target)"
+        - "Smaller production builds"
+      cons:
+        - "Configuration complexity with advanced optimization"
+    implementation:
+      guidelines:
+        - "Use Vite or Turbopack for fast HMR (leverage esbuild/swc)"
+        - "Use esbuild for production minification instead of Terser"
+        - "Extract CSS to separate files for parallel loading"
+        - "Enable build caching (Webpack persistent cache, Vite cacheDir)"
+        - "Use SWC or esbuild for TypeScript compilation (not tsc)"
+        - "Use image optimization plugins (imagemin, sharp)"
+        - "Set up bundle analysis (vite-bundle-analyzer, webpack-bundle-analyzer)"
+      common_errors:
+        - error: "Using babel-loader + tsc for TypeScript in production"
+          impact: "Slow compilation; 2-5x slower than esbuild or SWC"
+          fix: "Use esbuild-loader or SWC-loader for TypeScript compilation"
+    maturity:
+      level: standard
+    standards:
+      - name: "Vite"
+        type: tool
+        role: "Next-gen frontend build tool with fast HMR and esbuild"
+        status: recommended
+      - name: "Turbopack"
+        type: tool
+        role: "Incremental bundler by Vercel (Next.js)"
+        status: emerging
+
+  - id: route_based_splitting
+    name: "Route-Based Code Splitting"
+    description: "Split JavaScript bundles per route. Each page loads only the code for that route. Uses dynamic imports (React.lazy, Vue defineAsyncComponent) with Suspense boundaries."
+    use_when:
+      - "SPA with 3+ routes"
+      - "Current bundle is a single chunk"
+      - "Initial load time is a concern"
+    avoid_when:
+      - "SSR app with server-rendered pages"
+      - "Single-page app with one route"
+    tradeoffs:
+      pros:
+        - "Significantly reduces initial bundle size"
+        - "Routes load on demand — no upfront cost for unused pages"
+      cons:
+        - "Navigation adds brief loading state (mitigate with preloading)"
+        - "Route boundaries must be clear"
+    implementation:
+      guidelines:
+        - "Create route-specific entry points with dynamic imports"
+        - "Use Suspense/fallback UI during chunk loading"
+        - "Preload likely routes on idle (intersection observer, hover)"
+        - "Keep shared vendor code in a separate chunk (not split with routes)"
+        - "Use named exports for route components (for better chunk naming)"
+        - "Preload critical route chunks via <link rel='modulepreload'>"
+      common_errors:
+        - error: "Route splitting that duplicates shared code across chunks"
+          impact: "Same component loaded in multiple route chunks — no size benefit"
+          fix: "Ensure shared dependencies are extracted into a common chunk"
+    maturity:
+      level: standard
+
+  - id: aggressive_code_splitting
+    name: "Aggressive Code Splitting"
+    description: "Beyond route splitting: component-level lazy loading, conditional polyfill loading, vendor chunk splitting, and imports on interaction (hover, click). Targets initial bundle < 100kB gzipped."
+    use_when:
+      - "Strict initial bundle budget (< 100kB)"
+      - "Large application with many features"
+      - "Performance-critical landing pages"
+    avoid_when:
+      - "Moderate bundle size is acceptable"
+    tradeoffs:
+      pros:
+        - "Smallest possible initial bundle"
+        - "Optimal for Core Web Vitals (FCP, LCP, TBT)"
+      cons:
+        - "More code and complexity for lazy boundaries"
+        - "Risk of visible loading states for too many components"
+    implementation:
+      guidelines:
+        - "Lazy load below-the-fold components (intersection observer)"
+        - "Lazy load heavy libraries (chart libraries, WYSIWYG editors)"
+        - "Use import() on interaction (hover: dropdown, button: modal)"
+        - "Split vendor chunks by framework (react-dom, lodash, moment)"
+        - "Preload critical chunks, preconnect to CDN origins"
+        - "Inline critical CSS in <head> for first paint"
+        - "Use 128/TTFB, FCP < 1.8s, LCP < 2.5s, TBT < 200ms"
+      common_errors:
+        - error: "Lazy loading everything including critical above-fold components"
+          impact: "CLS and LCP worsen because layout shifts when components load"
+          fix: "Only lazy load below-the-fold; eagerly load above-fold critical components"
+    maturity:
+      level: advanced
+
+  - id: vendor_dependency_optimization
+    name: "Vendor & Dependency Optimization"
+    description: "Optimize vendor bundles: split stable dependencies (framework, utils) from app code, deduplicate, remove unused exports, replace heavy libraries with lighter alternatives."
+    use_when:
+      - "Large vendor bundle (> 100kB framework alone)"
+      - "Multiple versions of the same library in the bundle"
+    avoid_when:
+      - "Small app with minimal dependencies"
+    tradeoffs:
+      pros:
+        - "Vendor chunks cached independently from app code"
+        - "Smaller app chunks since framework is excluded"
+      cons:
+        - "Extra HTTP request for vendor chunk"
+    implementation:
+      guidelines:
+        - "Extract vendor chunk (react, react-dom, vue, lodash) as stable cacheable chunk"
+        - "Use Webpack splitChunks or Vite manualChunks for vendor splitting"
+        - "Remove moment.js: use date-fns or dayjs (90% smaller)"
+        - "Replace lodash with lodash-es for tree shaking"
+        - "Use bundlephobia.com to evaluate dependency cost before adding"
+        - "Run npx webpack-bundle-analyzer or vite-bundle-analyzer in CI"
+        - "Set up bundle size check in CI (fail if exceeds budget)"
+      common_errors:
+        - error: "No vendor chunk — framework code included in every route chunk"
+          impact: "Each route chunk includes React/Vue — duplicate framework code"
+          fix: "Extract vendor chunk: all node_modules into a single stable chunk"
+    maturity:
+      level: standard
+
+  - id: ssr_build_optimization
+    name: "SSR Build Optimization"
+    description: "Optimize SSR/SSG builds: server bundle size, streaming, ISR (Incremental Static Regeneration), partial prerendering, and hydration optimization."
+    use_when:
+      - "Next.js, Nuxt, or other SSR framework"
+      - "Server-rendered pages with client hydration"
+    avoid_when:
+      - "Client-only SPA"
+    tradeoffs:
+      pros:
+        - "Faster Time to First Byte (TTFB)"
+        - "Streaming enables progressive HTML delivery"
+      cons:
+        - "Server bundle can be large (include server-only code)"
+    implementation:
+      guidelines:
+        - "Avoid importing client-only libraries in server bundle"
+        - "Use server-only utilities with 'use server' boundaries"
+        - "Use streaming SSR for faster TTFB (renderToPipeableStream)"
+        - "Use ISR for static content with periodic regeneration"
+        - "Partial prerendering: static shell + dynamic content"
+        - "Optimize hydration: suppress hydration for static regions"
+      common_errors:
+        - error: "Importing client-only APIs (window, document) in server render"
+          impact: "SSR crashes or hydration mismatch errors"
+          fix: "Use dynamic imports with ssr: false for client-only components"
+    maturity:
+      level: advanced
+
+examples:
+  - id: route_splitting
+    title: "Route-Based Code Splitting"
+    context: "React SPA with admin dashboard"
+    correct: |
+      // CORRECT: Route-based lazy loading
+      import { createBrowserRouter } from "react-router-dom"
+
+      const routes = [
+        {
+          path: "/",
+          element: <Layout />,
+          children: [
+            { index: true, element: <HomePage /> },
+            {
+              path: "dashboard",
+              lazy: () => import("./routes/Dashboard"),
+            },
+            {
+              path: "settings",
+              lazy: () => import("./routes/Settings"),
+            },
+            {
+              path: "reports",
+              lazy: () => import("./routes/Reports"),
+            },
+          ],
+        },
+      ]
+
+      const router = createBrowserRouter(routes)
+    incorrect: |
+      // WRONG: All routes eagerly imported
+      import HomePage from "./routes/HomePage"
+      import Dashboard from "./routes/Dashboard"
+      import Settings from "./routes/Settings"
+      import Reports from "./routes/Reports"
+      // All components loaded on initial page load
+
+      // Also: no vendor chunk splitting
+      // The entire app is in one bundle: app.js (1.2MB)
+    explanation: >
+      The correct version uses React Router v6.4 lazy() for route-based
+      code splitting. Each route's component is loaded only when the user
+      navigates to it. The incorrect version eagerly imports all routes,
+      loading the entire app on first page visit.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All communication uses HTTPS"
+  data_protection:
+    requirements:
+      - "Sensitive data not exposed in client-visible state"
+  access_control:
+    requirements:
+      - "Feature-based access control enforced"
+  input_output:
+    requirements:
+      - "All user input sanitized"
+  secrets:
+    requirements:
+      - "No secrets in client-side code"
+  monitoring:
+    requirements:
+      - "Errors logged with context for debugging"
+
+compliance:
+  standards:
+    - name: "OWASP"
+      relevance: "Frontend security best practices"
+  requirements_mapping:
+    - control: secure_communication
+      description: "All frontend communication uses secure channels"
+      maps_to:
+        - "OWASP: secure communication"
+
+prompt_recipes:
+  - id: bundle_optimization
+    scenario: performance
+    description: "Optimize bundle size and load time"
+    prompt: "Optimize bundle for {app_name}. Current size: {current_size}kB. Target: {target_size}kB.\n\nSteps:\n1. Run bundle analysis to identify large dependencies\n2. Replace heavy libraries with lighter alternatives\n3. Set up route-based code splitting\n4. Extract vendor chunk\n5. Lazy load non-critical components\n6. Inline critical CSS\n7. Set up bundle check in CI"
+  - id: build_speed
+    scenario: performance
+    description: "Improve build speed"
+    prompt: "Improve build speed for {app_name}. Current build time: {time}s.\n\nStrategies:\n1. Switch to Vite or Turbopack\n2. Use SWC/esbuild for compilation\n3. Enable persistent build cache\n4. Split CI build caching per branch\n5. Parallelize CI build steps"
+  - id: build_audit
+    scenario: audit
+    description: "Audit build configuration for performance issues"
+    prompt: "Audit build configuration for {app_name}.\n\nChecklist:\n1. Review current build tool configuration\n2. Analyze bundle composition with analyzer\n3. Measure dev and production build times\n4. Check for missing code splitting\n5. Verify tree shaking is effective\n6. Review dependency cost vs value"
+  - id: ci_bundle_check
+    scenario: operations
+    description: "Set up bundle size CI checks"
+    prompt: "Set up bundle size enforcement in CI for {app_name}.\n\nSteps:\n1. Add bundle analysis tool (vite-bundle-analyzer, webpack-bundle-analyzer)\n2. Define size budgets per entry point\n3. Add CI step to fail on budget exceeded\n4. Generate size report in PR comments\n5. Set up size regression alerts"
+
+anti_patterns:
+  - name: "No Code Splitting"
+    description: "Single bundle containing all routes, components, and libraries. Users download the entire app for every page."
+    fix: "Implement route-based code splitting as the first optimization. Lazy load non-critical components."
+    severity: high
+    related_pattern: route_based_splitting
+  - name: "Loading Everything Eagerly"
+    description: "Importing large libraries (chart.js, moment.js, lodash) at the top level even when used in one route or component."
+    fix: "Use dynamic imports for heavy libraries used in specific routes or components."
+    severity: medium
+    related_pattern: aggressive_code_splitting
+  - name: "No Bundle Analysis in CI"
+    description: "No visibility into bundle size changes. A new dependency adds 200kB with no one noticing."
+    fix: "Integrate bundle analysis into CI pipeline. Fail builds that exceed budget."
+    severity: medium
+    related_pattern: vendor_dependency_optimization
+
+checklist:
+  - id: BP-01
+    category: performance
+    description: "Route-based code splitting implemented for all routes"
+    severity: high
+    verified_by: route_based_splitting
+  - id: BP-02
+    category: performance
+    description: "Vendor chunk extracted and cached independently"
+    severity: high
+    verified_by: vendor_dependency_optimization
+  - id: BP-03
+    category: performance
+    description: "Initial bundle < 200kB gzipped (or budget defined)"
+    severity: high
+    verified_by: aggressive_code_splitting
+  - id: BP-04
+    category: performance
+    description: "Bundle analysis tool integrated into CI"
+    severity: medium
+    verified_by: vendor_dependency_optimization
+  - id: BP-05
+    category: performance
+    description: "Heavy dependencies lazy-loaded, not eagerly imported"
+    severity: high
+    verified_by: aggressive_code_splitting
+  - id: BP-06
+    category: maintainability
+    description: "Build cache enabled for faster CI/dev builds"
+    severity: medium
+    verified_by: build_tool_optimization

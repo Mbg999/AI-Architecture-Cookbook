@@ -1,0 +1,657 @@
+# =============================================================================
+# AI Architecture Cookbook — Event Sourcing & CQRS
+# Schema: v3 | Domain: event-sourcing-cqrs
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: event-sourcing-cqrs
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Event sourcing and CQRS architecture patterns for applications requiring
+    complete audit trails, temporal querying, and separate read/write models.
+    Covers pure event sourcing, CQRS integration, projection strategies, and
+    snapshot management.
+
+  tags:
+    - event-sourcing
+    - cqrs
+    - projections
+    - snapshots
+    - event-store
+    - domain-events
+
+  categories:
+    - application-architecture
+
+  prerequisites:
+    - messaging-events
+    - data-persistence
+
+  related_standards:
+    - id: messaging-events
+      relationship: complementary
+      context: "Domain events from event sourcing flow through messaging infrastructure"
+    - id: data-persistence
+      relationship: complementary
+      context: "Event store replaces traditional persistence for write models"
+    - id: domain-driven-design
+      relationship: complementary
+      context: "DDD aggregates and domain events are the foundation of event sourcing"
+
+context_inputs:
+  - name: audit_requirement
+    type: boolean
+    description: "Does the system need a complete audit trail of all state changes?"
+    required: true
+    default: false
+
+  - name: read_write_ratio
+    type: enum
+    description: "Ratio of read operations to write operations"
+    required: true
+    default: balanced
+    enum_values:
+      - read_heavy
+      - write_heavy
+      - balanced
+
+  - name: consistency_requirement
+    type: enum
+    description: "How strong must read-after-write consistency be?"
+    required: true
+    default: strong
+    enum_values:
+      - strong
+      - eventual
+      - read_your_writes
+
+  - name: event_volume
+    type: enum
+    description: "Expected volume of events per day"
+    required: true
+    default: moderate
+    enum_values:
+      - low
+      - moderate
+      - high
+
+  - name: query_complexity
+    type: enum
+    description: "Complexity of query patterns against event history"
+    required: true
+    default: simple
+    enum_values:
+      - simple
+      - complex
+      - temporal
+
+decision_tree:
+  - id: audit_requirement_triggers_event_sourcing
+    priority: 1
+    if:
+      - audit_requirement == true
+    then:
+      pattern: pure_event_sourcing
+      standards:
+        - "Event Sourcing Pattern (Martin Fowler)"
+      notes: "Complete audit trails require event sourcing — every state change as an immutable event"
+
+  - id: read_heavy_with_complex_queries_uses_cqrs
+    priority: 2
+    if:
+      - read_write_ratio == read_heavy
+      - query_complexity in [complex, temporal]
+    then:
+      pattern: projections_read_models
+      standards:
+        - "CQRS Pattern (Greg Young)"
+      notes: "Read-heavy workloads with complex queries benefit from optimized read models"
+
+  - id: high_event_volume_requires_snapshots
+    priority: 3
+    if:
+      - event_volume == high
+    then:
+      pattern: snapshot_strategy
+      standards:
+        - "Snapshot Strategy Pattern"
+      notes: "High event volume requires snapshots to avoid unbounded event replay"
+
+  - id: eventual_consistency_allows_projection_decoupling
+    priority: 4
+    if:
+      - consistency_requirement in [eventual, read_your_writes]
+      - query_complexity in [complex, temporal]
+    then:
+      pattern: event_sourcing_cqrs
+      standards:
+        - "CQRS with Event Sourcing"
+      notes: "Eventual consistency allows full separation of read and write models"
+
+  - id: balanced_load_with_simple_queries
+    priority: 5
+    if:
+      - read_write_ratio == balanced
+      - query_complexity == simple
+    then:
+      pattern: pure_event_sourcing
+      standards:
+        - "Event Sourcing Pattern"
+      notes: "Balanced workloads with simple queries benefit from pure event sourcing without CQRS overhead"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: pure_event_sourcing
+    description: "Pure event sourcing is the safest initial starting point for event-sourced systems"
+
+patterns:
+  - id: pure_event_sourcing
+    name: "Pure Event Sourcing"
+    description: >
+      Store the complete state history as an append-only event stream. Current
+      state is derived by replaying all events. Provides perfect audit trail,
+      temporal querying, and the ability to rebuild state from history.
+    use_when:
+      - "Complete audit trail is a non-negotiable requirement"
+      - "Need temporal querying (state at any point in time)"
+      - "Event replay for debugging and analysis is valuable"
+      - "Domain model naturally produces meaningful domain events"
+    avoid_when:
+      - "Simple CRUD with no audit requirements"
+      - "Event storage and replay overhead is not justified"
+      - "Team is unfamiliar with event sourcing concepts"
+      - "Strong consistency requirements that conflict with eventual reads"
+    tradeoffs:
+      pros:
+        - "Complete audit trail — every state change recorded"
+        - "Temporal queries — reconstruct past state for debugging or compliance"
+        - "Event replay — rebuild projections from scratch"
+        - "Natural fit for DDD — domain events drive the model"
+      cons:
+        - "Event store infrastructure adds complexity"
+        - "Schema evolution for events is challenging"
+        - "Read performance depends on replay speed"
+        - "Steep learning curve for the team"
+    implementation:
+      guidelines:
+        - "Store events as immutable facts — never modify or delete past events"
+        - "Use an append-only event store (EventStoreDB, PostgreSQL as event store)"
+        - "Design event schemas for backward compatibility — add fields, never remove"
+        - "Implement event versioning and upcasting for schema evolution"
+        - "Separate event production from event consumption (publish after store)"
+      common_errors:
+        - error: "Modifying or deleting past events"
+          impact: "Destroys audit trail; state reconstruction produces incorrect results"
+          fix: "Events are immutable — issue corrective events (compensation or correction events)"
+        - error: "No event versioning — events have no schema version marker"
+          impact: "Cannot evolve event schemas; old events break new consumers"
+          fix: "Add a version field to every event; implement upcasters for old version events"
+        - error: "Inline event handlers — side effects during event storage"
+          impact: "Event store transaction includes side effects; partial failures leave inconsistent state"
+          fix: "Store event first, then publish asynchronously for handlers to consume"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Event Sourcing (Martin Fowler)"
+        type: pattern
+        role: "Original event sourcing pattern definition"
+        status: recommended
+        reference: "https://martinfowler.com/eaaDev/EventSourcing.html"
+
+  - id: event_sourcing_cqrs
+    name: "Event Sourcing + CQRS"
+    description: >
+      Combine event sourcing with Command-Query Responsibility Segregation.
+      Commands produce events stored in the event store. Separate read models
+      (projections) are built asynchronously from the event stream for optimized
+      querying. Write and read models evolve independently.
+    use_when:
+      - "Different read and write data shapes are needed"
+      - "Read model requires different optimization than write model"
+      - "Multiple read models serve different query patterns"
+      - "Team is comfortable with eventual consistency"
+    avoid_when:
+      - "Strong consistency is required between read and write models"
+      - "Simple application where CRUD would suffice"
+      - "Team has no experience with eventual consistency debugging"
+    tradeoffs:
+      pros:
+        - "Read models optimized per query pattern"
+        - "Write model focused on business rules, not query optimization"
+        - "Read and write models can scale independently"
+        - "Natural data flow for event-driven microservices"
+      cons:
+        - "Eventual consistency — read model may lag behind write model"
+        - "Twice the data model to maintain (read + write)"
+        - "Projection rebuilds can be costly for large event streams"
+        - "Higher operational complexity than single-model approaches"
+    implementation:
+      guidelines:
+        - "Commands validate business rules and emit events — never read from projections"
+        - "Build projections idempotently — same event replayed produces same read state"
+        - "Use separate databases for write (event store) and read (projection database)"
+        - "Implement catch-up subscriptions for new projections on existing event streams"
+        - "Version command and projection schemas independently"
+      common_errors:
+        - error: "Commands reading from projections for business decisions"
+          impact: "Stale read model leads to incorrect command validation"
+          fix: "Commands can only read from the write model (aggregate state); projections are for queries only"
+        - error: "Non-idempotent projection handlers"
+          impact: "Duplicate events produce incorrect read state"
+          fix: "Make projection handlers idempotent — use upsert, not insert; track last processed event"
+        - error: "Projection falling behind under load"
+          impact: "Users see stale data; time-to-consistency SLA breached"
+          fix: "Monitor projection lag; scale projection consumers; use batch processing"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "CQRS (Greg Young)"
+        type: pattern
+        role: "Command-query separation pattern"
+        status: recommended
+
+  - id: projections_read_models
+    name: "Projections/Read Models"
+    description: >
+      Build optimized, denormalized read models projected from the event stream.
+      Each projection serves a specific query use case — a specialized view of
+      the data designed for fast reads without join overhead.
+    use_when:
+      - "Complex query patterns that are slow against normalized data"
+      - "Multiple distinct views of the same underlying data"
+      - "Read performance is critical and requires optimization"
+      - "Read workload is significantly heavier than write workload"
+    avoid_when:
+      - "Simple queries on the current state are sufficient"
+      - "Read model duplicates write model with no optimization"
+      - "Projection maintenance cost exceeds the query performance benefit"
+    tradeoffs:
+      pros:
+        - "Read model optimized for specific query patterns — no joins at read time"
+        - "Multiple projections for different use cases"
+        - "Projections can be rebuilt from event history on schema change"
+        - "Materialized views without database-level materialized view limitations"
+      cons:
+        - "Storage cost — each projection duplicates data"
+        - "Projection maintenance — every new read pattern may need a new projection"
+        - "Eventual consistency — read model lag"
+        - "Harder to reason about system state when data exists in multiple forms"
+    implementation:
+      guidelines:
+        - "One projection per query concern — keep them focused and small"
+        - "Use incremental updates, not full rebuilds, for ongoing projections"
+        - "Store projection state idempotently — progress tracking per event"
+        - "Provide catch-up subscriptions for new projections"
+        - "Monitor projection lag as a key operational metric"
+      common_errors:
+        - error: "Single projection handling all use cases"
+          impact: "God projection with complex denormalization; hard to maintain and version"
+          fix: "One projection per query concern; compose queries by combining projections"
+        - error: "Full projection rebuild on every schema change"
+          impact: "Expensive rebuild that grows with event count; service downtime during rebuild"
+          fix: "Version projections; support parallel old and new projections during migration"
+        - error: "No deduplication in projection handlers"
+          impact: "Replayed events create duplicate rows"
+          fix: "Use upsert semantics and track last-processed event ID per projection"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Projections Pattern"
+        type: pattern
+        role: "Read model projection from event streams"
+        status: recommended
+
+  - id: snapshot_strategy
+    name: "Snapshot Strategy"
+    description: >
+      Periodic snapshots of aggregate state reduce event replay time. Instead of
+      replaying all events from the beginning, start from the latest snapshot and
+      replay only events after it. Critical for high-volume event streams.
+    use_when:
+      - "High event volume makes full replay expensive"
+      - "Aggregates with long lifetimes accumulate many events"
+      - "Read performance is degraded by long replay chains"
+      - "New projection catch-up needs acceleration"
+    avoid_when:
+      - "Low event volume — full replay is cheap enough"
+      - "Aggregates with short lifetimes produce few events"
+      - "Snapshot storage overhead exceeds replay savings"
+    tradeoffs:
+      pros:
+        - "Dramatically faster aggregate state reconstruction"
+        - "Accelerates new projection catch-up"
+        - "Reduces event store read load for common queries"
+        - "Enables archiving old events after verified snapshots"
+      cons:
+        - "Additional storage for snapshots"
+        - "Synchronization — ensuring snapshot and event stream are consistent"
+        - "Snapshot creation adds write overhead"
+        - "Deciding snapshot frequency requires tuning"
+    implementation:
+      guidelines:
+        - "Take snapshots at a configurable interval (every N events or time-based)"
+        - "Store snapshots in the same transaction as the latest event (or eventually consistent)"
+        - "Version snapshot schema independently from event schema"
+        - "Implement fallback to full replay when snapshot is missing or corrupted"
+        - "Monitor snapshot staleness as a key metric"
+      common_errors:
+        - error: "Snapshots not stored atomically with the event"
+          impact: "Snapshot may reference state that never existed if the event fails"
+          fix: "Store snapshot in same transaction as the event or after event is confirmed"
+        - error: "Snapshot frequency too low for typical aggregate lifetime"
+          impact: "Most aggregates don't trigger a snapshot; no performance benefit"
+          fix: "Set snapshot threshold based on aggregate event count distribution (e.g., every 100 events)"
+        - error: "No validation when loading from snapshot"
+          impact: "Corrupted snapshot restores incorrect state without detection"
+          fix: "Validate snapshot checksum; on mismatch, fall back to full event replay"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Snapshot Pattern"
+        type: pattern
+        role: "Event sourcing performance optimization"
+        status: recommended
+
+examples:
+  - id: event_store_design
+    title: "Event Store Schema"
+    context: "Designing an event store table for order events"
+    correct: |
+      -- Append-only event store
+      CREATE TABLE events (
+          event_id       UUID PRIMARY KEY,
+          stream_type    VARCHAR(50)     NOT NULL,  -- e.g., 'order'
+          stream_id      VARCHAR(255)    NOT NULL,  -- aggregate ID
+          version        INTEGER         NOT NULL,
+          event_type     VARCHAR(100)    NOT NULL,  -- 'OrderPlaced'
+          data           JSONB           NOT NULL,  -- event payload
+          metadata       JSONB           NOT NULL,  -- correlation ID, timestamp
+          created_at     TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+
+          UNIQUE (stream_id, version)
+      );
+
+      -- Index for stream replay
+      CREATE INDEX idx_events_stream ON events(stream_type, stream_id, version);
+    incorrect: |
+      -- Mutable state table — no event history
+      CREATE TABLE orders (
+          id          UUID PRIMARY KEY,
+          status      VARCHAR(50)  NOT NULL,
+          updated_at  TIMESTAMPTZ  NOT NULL
+      );
+      -- Previous values are overwritten; no audit trail
+    explanation: >
+      Event sourcing uses an append-only event store where every state change
+      is a new event. The incorrect example uses mutable state that overwrites
+      earlier values, losing all history.
+
+  - id: projection_handler
+    title: "Idempotent Projection Handler"
+    context: "Building a read model projection from the event stream"
+    correct: |
+      class OrderSummaryProjection:
+          def handle(self, event):
+              # Idempotent — track last processed event
+              if event.event_id in self.processed_events:
+                  return  # Already processed
+
+              if event.event_type == "OrderPlaced":
+                  self.db.execute("""
+                      INSERT INTO order_summary (id, customer, total, placed_at)
+                      VALUES ($1, $2, $3, $4)
+                      ON CONFLICT (id) DO NOTHING
+                  """, [event.data.order_id, event.data.customer,
+                        event.data.total, event.created_at])
+
+              elif event.event_type == "OrderShipped":
+                  self.db.execute("""
+                      UPDATE order_summary SET status = 'shipped' WHERE id = $1
+                  """, [event.data.order_id])
+
+              # Record progress
+              self.processed_events.add(event.event_id)
+    incorrect: |
+      class OrderSummaryProjection:
+          def handle(self, event):
+              # Not idempotent — INSERT will fail on replay
+              if event.event_type == "OrderPlaced":
+                  self.db.execute(
+                      "INSERT INTO order_summary (id, customer, total) VALUES ($1, $2, $3)",
+                      [event.data.order_id, event.data.customer, event.data.total]
+                  )
+              # Duplicate events cause constraint violation on replay
+    explanation: >
+      Projection handlers must be idempotent. The correct version uses ON CONFLICT
+      DO NOTHING and tracks processed events. The incorrect version fails on replay
+      when the same event is processed twice.
+
+security_hardening:
+  transport:
+    requirements:
+      - "TLS 1.2+ for event store connections and projection consumer communication"
+      - "Mutual TLS for event store client authentication"
+  data_protection:
+    requirements:
+      - "Event data encrypted at rest in the event store"
+      - "PII in events should be separated or encrypted — events are immutable"
+      - "Snapshot data encrypted at the same level as the event store"
+  access_control:
+    requirements:
+      - "Event streams access-controlled per aggregate type"
+      - "Projection readers have read-only access to the event store"
+      - "Command producers have append-only access to their streams"
+  input_output:
+    requirements:
+      - "All event payloads validated against event schema before storage"
+      - "Projection inputs sanitized — events are trusted, but projection DB is not"
+      - "Command input validated before producing events"
+  secrets:
+    requirements:
+      - "Event store credentials stored in secrets manager, not app config"
+      - "Projection consumers authenticate with scoped tokens"
+      - "Event encryption keys managed via KMS with key rotation"
+  monitoring:
+    requirements:
+      - "Monitor event store append latency and disk usage"
+      - "Alert on projection lag exceeding SLA threshold"
+      - "Track event type distribution for capacity planning"
+
+compliance:
+  standards:
+    - name: "GDPR"
+      relevance: "Event sourcing immutable event store conflicts with right to erasure — must plan for deletion"
+      reference: "https://gdpr-info.eu/"
+    - name: "SOX (Sarbanes-Oxley)"
+      relevance: "Complete audit trail from event sourcing satisfies financial audit requirements"
+    - name: "HIPAA"
+      relevance: "Medical data changes must be fully auditable — event sourcing provides this natively"
+
+  requirements_mapping:
+    - control: audit_trail_completeness
+      description: "Every state change recorded as an immutable event with timestamp and actor"
+      maps_to:
+        - "SOX Section 404 — Financial Controls"
+        - "HIPAA §164.312 — Audit Controls"
+    - control: data_erasure
+      description: "Event sourcing supports right to erasure via event suppression or anonymization"
+      maps_to:
+        - "GDPR — Article 17 Right to Erasure"
+
+prompt_recipes:
+  - id: es_greenfield
+    scenario: greenfield
+    description: "Design event sourcing architecture for a new domain"
+    prompt: |
+      Design an event sourcing architecture for {domain_name}.
+
+      Context:
+      - Audit requirement: {audit_requirement}
+      - Read/write ratio: {read_write_ratio}
+      - Consistency requirement: {consistency_requirement}
+      - Event volume: {event_volume}
+      - Query complexity: {query_complexity}
+
+      1. Choose event sourcing approach based on audit and consistency needs
+      2. Design event schema with versioning strategy
+      3. Plan projection architecture for read models
+      4. Define snapshot strategy for performance
+      5. Design event store schema and infrastructure
+
+  - id: es_audit
+    scenario: audit
+    description: "Audit event sourcing implementation for common mistakes"
+    prompt: |
+      Audit this event sourcing implementation:
+
+      {implementation_details}
+
+      Check for:
+      1. Are events immutable — never modified or deleted?
+      2. Are event schemas versioned with upcasters?
+      3. Are projection handlers idempotent?
+      4. Are snapshots stored atomically with events?
+      5. Are commands separated from queries (CQRS applied)?
+      6. Is there projection lag monitoring?
+      7. Is event schema evolution supported?
+
+  - id: es_migration
+    scenario: migration
+    description: "Migrate from CRUD to event sourcing"
+    prompt: |
+      Plan migration from CRUD-based persistence to event sourcing.
+
+      Current: {current_data_model}
+      Target: Event sourcing with {target_pattern}
+
+      Steps:
+      1. Identify domain events from existing state transitions
+      2. Build event store alongside existing database (dual-write)
+      3. Reverse-engineer past state into seed events
+      4. Build projections for existing query patterns
+      5. Migrate read path to projections first
+      6. Migrate write path to command → event pattern
+      7. Decommission old CRUD tables
+
+  - id: es_edge_case
+    scenario: edge-case
+    description: "Handle GDPR right to erasure with immutable events"
+    prompt: |
+      Design a GDPR-compliant data erasure strategy for event sourcing.
+
+      Domain: {domain_description}
+      PII locations: {pii_locations}
+
+      Approach:
+      1. Anonymize PII in events via corrective events (cannot delete past events)
+      2. Encrypt PII in events with per-user keys; on erasure, delete the key
+      3. Maintain erasure record — list of anonymized event IDs
+      4. Projections must exclude erased data at read time
+      5. Document the erasure approach for compliance audit
+
+  - id: es_high_security
+    scenario: high-security
+    description: "Harden event store for security-sensitive applications"
+    prompt: |
+      Harden this event sourcing infrastructure for security-sensitive workloads.
+
+      Event store: {event_store_technology}
+      Security standard: {security_standard}
+
+      Controls:
+      1. Event encryption at rest and in transit
+      2. Append-only access control per stream
+      3. Immutable event storage verification
+      4. Snapshot integrity checks and validation
+      5. Audit logging of all event store access
+      6. Backup and disaster recovery for event streams
+
+anti_patterns:
+  - name: "Mutable Event Store"
+    description: >
+      Allowing deletion or modification of past events to fix data quality
+      issues. Destroys the audit trail and makes state reconstruction unreliable.
+    fix: "Issue compensating events instead; events are immutable by design"
+    severity: critical
+    related_pattern: pure_event_sourcing
+
+  - name: "Read Model as Source of Truth"
+    description: >
+      Treating a projection (read model) as the authoritative data source.
+      When the projection drifts or is rebuilt, data loss occurs.
+    fix: "Event store is the source of truth; projections are derived views"
+    severity: critical
+    related_pattern: projections_read_models
+
+  - name: "No Snapshot Strategy"
+    description: >
+      Running event sourcing without snapshots in a high-volume system.
+      Aggregate state reconstruction slows linearly with event count.
+    fix: "Implement periodic snapshots; tune frequency to aggregate event distribution"
+    severity: high
+    related_pattern: snapshot_strategy
+
+checklist:
+  - id: ES-01
+    category: correctness
+    description: "Events are immutable — past events never modified or deleted"
+    severity: critical
+    verified_by: pure_event_sourcing
+
+  - id: ES-02
+    category: correctness
+    description: "Event schemas versioned with upcasters for backward compatibility"
+    severity: high
+    verified_by: pure_event_sourcing
+
+  - id: ES-03
+    category: design
+    description: "Commands validated against write model, not read model projections"
+    severity: critical
+    verified_by: event_sourcing_cqrs
+
+  - id: ES-04
+    category: correctness
+    description: "Projection handlers are idempotent with deduplication"
+    severity: critical
+    verified_by: projections_read_models
+
+  - id: ES-05
+    category: reliability
+    description: "Snapshot frequency tuned to aggregate event distribution"
+    severity: high
+    verified_by: snapshot_strategy
+
+  - id: ES-06
+    category: reliability
+    description: "Projection lag monitored with SLA-based alerting"
+    severity: high
+    verified_by: projections_read_models
+
+  - id: ES-07
+    category: compliance
+    description: "GDPR erasure strategy documented and implemented for immutable events"
+    severity: high
+    verified_by: pure_event_sourcing
+
+  - id: ES-08
+    category: reliability
+    description: "Event store append latency and disk usage monitored"
+    severity: medium
+    verified_by: pure_event_sourcing
+
+  - id: ES-09
+    category: design
+    description: "One projection per query concern — no god projections"
+    severity: medium
+    verified_by: projections_read_models
+
+  - id: ES-10
+    category: security
+    description: "Event store access control enforces append-only for producers"
+    severity: high
+    verified_by: event_sourcing_cqrs

@@ -92,3 +92,35 @@ entries:
     prerequisites: ["encryption", "authentication"]
     pattern_count: 4
     anti_pattern_count: 3
+
+  - domain: api-composition-bff
+    version: "1.0.0"
+    description: "API composition and BFF patterns: backend-for-frontend, API gateways, GraphQL federation, schema stitching"
+    tags: ["api-composition", "bff", "backend-for-frontend", "api-gateway", "graphql-federation", "schema-stitching"]
+    prerequisites: ["api-design", "authentication"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: caching-strategies
+    version: "1.0.0"
+    description: "Caching strategies: HTTP caching, CDN, in-memory caches, distributed caches, cache invalidation, write policies"
+    tags: ["caching", "cache", "redis", "memcached", "cdn", "cache-invalidation", "http-caching"]
+    prerequisites: ["api-design", "performance-optimization"]
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: api-governance-portals
+    version: "1.0.0"
+    description: "API governance and portals: API catalogs, developer portals, version management, API lifecycle, rate limit policies"
+    tags: ["api-governance", "api-portal", "developer-portal", "api-lifecycle", "api-catalog", "api-management"]
+    prerequisites: ["api-design", "authentication", "rate-limiting"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: identity-federation-sso
+    version: "1.0.0"
+    description: "Identity federation and SSO: SAML, OIDC, OAuth2, social login, SCIM provisioning, cross-domain SSO"
+    tags: ["identity", "federation", "sso", "saml", "oidc", "oauth2", "scim", "social-login"]
+    prerequisites: ["authentication", "session-management"]
+    pattern_count: 4
+    anti_pattern_count: 3

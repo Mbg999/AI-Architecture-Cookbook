@@ -1,0 +1,421 @@
+# =============================================================================
+# AI Architecture Cookbook — MLOps Lifecycle
+# Schema: v3 | Domain: mlops-lifecycle
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: mlops-lifecycle
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    MLOps lifecycle patterns: experiment tracking with MLflow, model registry
+    and versioning, A/B testing and shadow deployment, and drift detection
+    with automated retraining. Reproducible ML workflows, model governance,
+    and production ML monitoring.
+
+  tags:
+    - mlops
+    - mlflow
+    - experiment-tracking
+    - model-registry
+    - drift-detection
+    - model-governance
+
+  categories:
+    - integration-data
+
+  prerequisites:
+    - model-serving-inference
+    - data-engineering-pipelines
+    - ci-cd
+
+  related_standards:
+    - id: model-serving-inference
+      relationship: complementary
+      context: "MLOps lifecycle produces models for inference infrastructure"
+    - id: data-engineering-pipelines
+      relationship: complementary
+      context: "Feature pipelines feed ML training and inference"
+
+context_inputs:
+  - name: ml_maturity
+    type: enum
+    description: "MLOps maturity level"
+    required: true
+    default: manual
+    enum_values: [manual, automated, ci_cd_pipelines, full_mlops]
+
+  - name: deployment_strategy
+    type: enum
+    description: "How models are deployed"
+    required: true
+    default: direct
+    enum_values: [direct, shadow, canary, a_b_testing, blue_green]
+
+  - name: monitoring_capability
+    type: enum
+    description: "Production model monitoring level"
+    required: false
+    default: basic
+    enum_values: [none, basic, advanced, automated_remediation]
+
+  - name: compliance_level
+    type: enum
+    description: "Model governance requirements"
+    required: false
+    default: standard
+    enum_values: [standard, regulated, auditable]
+
+decision_tree:
+  - id: experiment_tracking_foundation
+    priority: 1
+    if:
+      - ml_maturity in [automated, ci_cd_pipelines, full_mlops]
+    then:
+      pattern: experiment_tracking
+      standards: ["MLflow Tracking"]
+      notes: "Foundation of MLOps: every training run logged with params, metrics, artifacts, and environment for reproducibility."
+
+  - id: model_registry_governance
+    priority: 2
+    if:
+      - compliance_level in [regulated, auditable]
+      - ml_maturity in [ci_cd_pipelines, full_mlops]
+    then:
+      pattern: model_registry_versioning
+      standards: ["MLflow Model Registry"]
+      notes: "Regulated environments need model lineage, approval workflows, and stage-based promotion."
+
+  - id: shadow_deploy_safety
+    priority: 3
+    if:
+      - deployment_strategy in [shadow, canary, a_b_testing]
+      - monitoring_capability in [advanced, automated_remediation]
+    then:
+      pattern: ab_testing_shadow_deploy
+      standards: ["Kubernetes Istio"]
+      notes: "Shadow deploy runs new model alongside production without serving predictions. Validate before user-facing traffic."
+
+  - id: drift_detection_monitoring
+    priority: 4
+    if:
+      - monitoring_capability in [advanced, automated_remediation]
+    then:
+      pattern: drift_detection_retraining
+      standards: ["Evidently AI"]
+      notes: "Automated drift detection monitors input distributions and prediction accuracy. Triggers retraining on degradation."
+
+  - id: basic_start
+    priority: 5
+    if:
+      - ml_maturity == manual
+    then:
+      pattern: experiment_tracking
+      notes: "Start MLOps with experiment tracking for reproducibility and comparison."
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: experiment_tracking
+    description: "Experiment tracking is the safest first step"
+
+patterns:
+  - id: experiment_tracking
+    name: "Experiment Tracking"
+    description: >
+      Systematic logging of ML experiments: hyperparameters, metrics, code version,
+      data version, environment, and artifacts. MLflow Tracking is the most widely
+      adopted open-source tool.
+    use_when:
+      - "Any ML training process from exploration to production"
+      - "Multiple team members training concurrently"
+      - "Need to compare results across hyperparameter trials"
+    avoid_when:
+      - "Exploratory analysis with no model training"
+    tradeoffs:
+      pros: ["Reproducible training with full context", "Easy comparison across experiments", "Artifact storage alongside metrics"]
+      cons: ["Additional tracking server infrastructure", "Overhead of logging calls in code", "Storage cost for artifacts"]
+    implementation:
+      guidelines:
+        - "Log all hyperparameters, not just changed ones"
+        - "Log code version (git commit) and data version automatically"
+        - "Log metrics per epoch for convergence analysis"
+        - "Tag runs with descriptive names"
+        - "Register promising runs to model registry"
+      common_errors:
+        - error: "Logging only final metrics without intermediate steps"
+          impact: "Cannot analyze training dynamics or overfitting"
+          fix: "Log metrics per epoch for train, validation, and test sets"
+        - error: "No data version or code version logged"
+          impact: "Impossible to reproduce the run"
+          fix: "Auto-log git commit and dataset version in every run"
+    maturity:
+      level: standard
+    standards:
+      - name: "MLflow Tracking"
+        type: framework
+        role: "Experiment tracking with metrics, params, and artifacts"
+        status: recommended
+
+  - id: model_registry_versioning
+    name: "Model Registry and Versioning"
+    description: >
+      Centralized registry storing and versioning ML models through lifecycle
+      stages. Supports approval workflows for promotion to production.
+    use_when:
+      - "Multiple model versions to manage"
+      - "Compliance requires lineage and approvals"
+      - "Different models per environment"
+    avoid_when:
+      - "Single model version; file storage suffices"
+    tradeoffs:
+      pros: ["Full model lineage", "Stage-based promotion with approvals", "Rollback capability"]
+      cons: ["Additional infrastructure", "Process overhead for promotions", "Storage for each version"]
+    implementation:
+      guidelines:
+        - "Register every validated model, not just production ones"
+        - "Use semantic versioning (MAJOR.MINOR.PATCH)"
+        - "Promote through stages: none → staging → production → archived"
+        - "Attach model card with intended use, metrics, limitations"
+        - "Link registry entry to training run ID"
+      common_errors:
+        - error: "Registering without linking to training run"
+          impact: "No lineage — cannot reproduce or audit"
+          fix: "Always pass run_id on registration; validate the link"
+        - error: "No model card with registry entry"
+          impact: "Consumers don't know limitations or intended use"
+          fix: "Require model card with metrics, data, and limitations"
+    maturity:
+      level: advanced
+    standards:
+      - name: "MLflow Model Registry"
+        type: framework
+        role: "Model versioning and governance"
+        status: recommended
+
+  - id: ab_testing_shadow_deploy
+    name: "A/B Testing and Shadow Deployment"
+    description: >
+      Safe model deployment: shadow runs new model parallel without serving;
+      canary routes small traffic percentage; A/B tests with statistical comparison.
+    use_when:
+      - "Validating new model before full rollout"
+      - "Comparing multiple candidates in production"
+      - "Risk-averse deployments"
+    avoid_when:
+      - "No user impact (internal batch predictions)"
+    tradeoffs:
+      pros: ["Zero risk in shadow deployment", "Statistical performance comparison", "Gradual rollout with rollback"]
+      cons: ["2x infra cost for dual models", "A/B test needs statistical power", "Complex routing logic"]
+    implementation:
+      guidelines:
+        - "Start shadow: log predictions without serving"
+        - "Move canary: 1-5% traffic, monitor 24-48h"
+        - "Use consistent splitting: hash user ID"
+        - "Define success criteria and experiment duration upfront"
+        - "Implement automatic rollback on metric degradation"
+      common_errors:
+        - error: "A/B test stopped before statistical significance"
+          impact: "Decisions based on noise; wrong model deployed"
+          fix: "Pre-calculate required sample size; enforce minimum experiment duration"
+        - error: "No automatic rollback on degradation"
+          impact: "Bad model serves users until manual intervention"
+          fix: "Implement automated rollback triggers; test rollback mechanism"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Kubernetes Istio"
+        type: tool
+        role: "Traffic splitting for canary and A/B deployments"
+        status: recommended
+
+  - id: drift_detection_retraining
+    name: "Drift Detection and Retraining"
+    description: >
+      Continuous monitoring of model inputs (data drift) and predictions
+      (concept drift). Statistical tests compare distributions; triggers
+      alerts or automated retraining on threshold breach.
+    use_when:
+      - "Production models in continuous operation"
+      - "Input distributions change over time"
+      - "Concept drift expected (behavior changes)"
+    avoid_when:
+      - "One-time analysis or batch predictions"
+    tradeoffs:
+      pros: ["Early detection of model degradation", "Automated retraining reduces manual work", "Also serves as data quality monitoring"]
+      cons: ["Needs ground truth for concept drift", "Threshold tuning difficulty", "Monitoring infra cost"]
+    implementation:
+      guidelines:
+        - "Monitor both data drift and concept drift"
+        - "Use PSI or Kolmogorov-Smirnov for distribution comparison"
+        - "Set thresholds based on business impact, not just statistical significance"
+        - "Store baseline distributions from training data"
+        - "Implement alerting with severity levels"
+      common_errors:
+        - error: "Monitoring only data drift without concept drift"
+          impact: "Accuracy degrades even without input shift; undetected"
+          fix: "Monitor both input distributions and accuracy (when labels arrive)"
+        - error: "Drift thresholds too sensitive"
+          impact: "Constant alerts desensitize team"
+          fix: "Set thresholds from observed variance; implement alert cooldowns"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Evidently AI"
+        type: tool
+        role: "ML model monitoring and drift detection"
+        status: recommended
+
+examples:
+  - id: mlflow_instrumentation
+    title: "MLflow Experiment Tracking"
+    context: "Instrumenting training with MLflow"
+    correct: |
+      with mlflow.start_run(run_name="experiment-1") as run:
+        mlflow.log_param("learning_rate", 0.001)
+        mlflow.log_param("git_commit", git_hash)
+        mlflow.log_param("dataset_version", ds_version)
+        for epoch in range(10):
+          train_loss = train_one_epoch()
+          mlflow.log_metric("train_loss", train_loss, step=epoch)
+        mlflow.pytorch.log_model(model, "model")
+        mlflow.register_model(f"runs:/{run.info.run_id}/model", "classifier-v1")
+    incorrect: |
+      model = train_model(data, lr=0.001)
+      torch.save(model, "model.pt")
+      print(accuracy)
+    explanation: "Correct: logs params, metrics, artifacts, and registers model. Incorrect: non-reproducible, no context."
+
+security_hardening:
+  transport:
+    requirements:
+      - "TLS for model artifact downloads from registry"
+      - "Encrypted connections between training and data sources"
+  data_protection:
+    requirements:
+      - "Training data encrypted at rest"
+      - "No PII logged in experiment tracking"
+  access_control:
+    requirements:
+      - "Model registry write access restricted to ML team"
+      - "Production promotion requires approval"
+  input_output:
+    requirements:
+      - "Validate prediction inputs against expected schema"
+      - "Sanitize model outputs for downstream consumers"
+  secrets:
+    requirements:
+      - "Training credentials in secret manager"
+      - "Model registry API keys rotated regularly"
+  monitoring:
+    requirements:
+      - "Monitor model latency and error rates"
+      - "Alert on traffic changes to inference endpoints"
+      - "Log all model deployments and rollbacks"
+
+compliance:
+  standards:
+    - name: "EU AI Act"
+      relevance: "Models classified by risk; high-risk require docs, monitoring, human oversight"
+    - name: "SR 11-7 (Model Risk Management)"
+      relevance: "Model validation, documentation, and governance"
+
+  requirements_mapping:
+    - control: experiment_reproducibility
+      description: "Every run reproducible from logged params, code, data"
+      maps_to: ["SR 11-7 §3.2", "EU AI Act Article 12"]
+    - control: model_documentation
+      description: "Model card with intended use, metrics, limitations"
+      maps_to: ["EU AI Act Article 13"]
+    - control: production_monitoring
+      description: "Continuous model performance monitoring"
+      maps_to: ["SR 11-7 §5.2"]
+
+prompt_recipes:
+  - id: mlops_greenfield
+    scenario: greenfield
+    description: "Design MLOps lifecycle"
+    prompt: |
+      Design MLOps for maturity=[manual/automated/ci-cd/full-mlops],
+      deploy=[direct/shadow/canary/ab-testing], monitoring=[none/basic/advanced].
+      Components: experiment tracking, model registry, automated training pipeline,
+      deployment strategy, drift detection.
+
+  - id: mlops_audit
+    scenario: audit
+    description: "Audit MLOps implementation"
+    prompt: |
+      Audit: 1. All runs tracked with params and artifacts? 2. Git commit logged? 3. Models in registry? 4. Stage promotion workflow? 5. Model cards? 6. Shadow/canary process? 7. Drift detection configured? 8. Automated retraining?
+
+  - id: mlops_drift_setup
+    scenario: greenfield
+    description: "Set up drift detection"
+    prompt: |
+      Setup: 1. Identify top 10 features by importance 2. Capture training baseline distributions
+      3. Choose tests (numeric=KS, categorical=chi-square) 4. Set thresholds 5. Configure alerting
+      6. Implement delayed label collection 7. Set up retraining trigger.
+
+  - id: mlops_compliance
+    scenario: high-security
+    description: "Meet ML compliance"
+    prompt: |
+      Document per model: 1. Intended use and limitations 2. Training data provenance and bias
+      3. Performance across demographic groups 4. Drift monitoring history 5. Human oversight.
+
+anti_patterns:
+  - name: "Manual Model Handoff"
+    description: "Data scientist trains locally and hands file to engineering. No tracking, no reproducibility."
+    fix: "Adopt experiment tracking and model registry; automate training-to-deployment pipeline"
+    severity: critical
+    related_pattern: experiment_tracking
+
+  - name: "Deploy and Forget"
+    description: "Deploy model, never monitor. Data shifts degrade accuracy without detection."
+    fix: "Implement drift detection for all production models; set up alerting"
+    severity: high
+    related_pattern: drift_detection_retraining
+
+  - name: "Train-Serve Skew"
+    description: "Different feature code between training and serving. Model works offline, fails in production."
+    fix: "Use feature store serving identical values for training and inference"
+    severity: critical
+    related_pattern: ab_testing_shadow_deploy
+
+checklist:
+  - id: MLOPS-01
+    category: reliability
+    description: "All training runs tracked with params, metrics, artifacts"
+    severity: high
+    verified_by: experiment_tracking
+  - id: MLOPS-02
+    category: correctness
+    description: "Git commit and data version logged per run"
+    severity: high
+    verified_by: experiment_tracking
+  - id: MLOPS-03
+    category: maintainability
+    description: "Model registry with versioning and stage promotion"
+    severity: high
+    verified_by: model_registry_versioning
+  - id: MLOPS-04
+    category: reliability
+    description: "Shadow/canary deployment before full rollout"
+    severity: high
+    verified_by: ab_testing_shadow_deploy
+  - id: MLOPS-05
+    category: reliability
+    description: "Automatic rollback on metric degradation"
+    severity: critical
+    verified_by: ab_testing_shadow_deploy
+  - id: MLOPS-06
+    category: observability
+    description: "Drift detection configured for all production models"
+    severity: critical
+    verified_by: drift_detection_retraining
+  - id: MLOPS-07
+    category: security
+    description: "Model registry access controlled with RBAC"
+    severity: high
+    verified_by: model_registry_versioning

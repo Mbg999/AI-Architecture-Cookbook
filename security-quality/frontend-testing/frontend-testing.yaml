@@ -1,0 +1,499 @@
+# =============================================================================
+# AI Architecture Cookbook — Frontend Testing
+# Schema: v3 | Domain: frontend-testing
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: frontend-testing
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Frontend testing patterns covering unit testing (Vitest, Jest), component
+    testing (Testing Library, Storybook interactions), visual regression
+    (Chromatic, Percy), accessibility testing (axe), E2E testing (Playwright,
+    Cypress), and mocking strategies (MSW).
+
+  tags:
+    - testing
+    - frontend
+    - vitest
+    - playwright
+    - testing-library
+    - visual-regression
+    - e2e
+
+  categories:
+    - security-quality
+
+  prerequisites:
+    - id: testing-strategies
+      reason: "General testing strategies apply to frontend"
+    - id: frontend-component-architecture
+      reason: "Component architecture determines testability"
+
+  related_standards:
+    - id: code-quality
+      relationship: complementary
+      context: "Frontend code quality includes lint rules for test patterns"
+
+context_inputs:
+  - name: app_criticality
+    type: enum
+    description: "How critical is the application"
+    required: true
+    default: standard
+    enum_values:
+      - prototype
+      - standard
+      - critical
+
+  - name: team_experience
+    type: enum
+    description: "Team's testing experience"
+    required: false
+    default: moderate
+    enum_values:
+      - beginner
+      - moderate
+      - expert
+
+  - name: testing_gap
+    type: enum
+    description: "Current testing weakness"
+    required: false
+    default: e2e
+    enum_values:
+      - unit
+      - integration
+      - visual
+      - accessibility
+      - e2e
+
+decision_tree:
+  - id: critical_app
+    priority: 1
+    if:
+      - app_criticality == critical
+    then:
+      pattern: full_testing_pyramid
+      notes: "Critical apps need all testing levels: unit, component, visual, a11y, E2E, and security"
+
+  - id: a11y_gap
+    priority: 2
+    if:
+      - testing_gap == accessibility
+    then:
+      pattern: accessibility_testing
+      notes: "Accessibility testing with axe should be part of CI"
+
+  - id: visual_gap
+    priority: 3
+    if:
+      - testing_gap == visual
+    then:
+      pattern: visual_regression_testing
+      notes: "Visual regression testing catches unintended style changes"
+
+  - id: e2e_gap
+    priority: 4
+    if:
+      - testing_gap == e2e
+    then:
+      pattern: e2e_testing
+      notes: "E2E testing covers critical user flows across the full stack"
+
+  - id: standard_testing
+    priority: 5
+    if:
+      - app_criticality in [prototype, standard, critical]
+    then:
+      pattern: component_integration_testing
+      notes: "Component testing with Testing Library covers most frontend scenarios"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: low
+  fallback:
+    pattern: component_integration_testing
+    description: "Component tests with Testing Library are the standard approach"
+
+patterns:
+  - id: component_integration_testing
+    name: "Component & Integration Testing"
+    description: >
+      Test components in isolation (unit) and in groups (integration) using
+      Testing Library. Tests user interactions (click, type) and verify
+      rendered output (screen queries). Avoid testing implementation details
+      (state, internal methods). Use vitest for fast TypeScript testing.
+    use_when:
+      - "Testing individual component behavior"
+      - "Testing component interaction (form submission, modal open)"
+      - "Verifying rendered output matches expectations"
+      - "Most frontend testing scenarios"
+    avoid_when:
+      - "Testing visual appearance (use visual regression)"
+      - "Testing full user flows across pages (use E2E)"
+      - "Testing accessibility (use axe)"
+    tradeoffs:
+      pros:
+        - "Fast to write and execute"
+        - "Tests behavior, not implementation (refactor-friendly)"
+        - "Catches logic errors and rendering issues early"
+      cons:
+        - "Doesn't catch visual/style regressions"
+        - "Doesn't test browser APIs or network behavior"
+    implementation:
+      guidelines:
+        - "Use Testing Library queries by role: getByRole, findByRole (accessible queries)"
+        - "Test user interactions with userEvent (not fireEvent) for realistic behavior"
+        - "Mock API calls with MSW (Mock Service Worker) — don't mock fetch"
+        - "Use vitest for fast execution and TypeScript support"
+        - "Test error states, loading states, and empty states"
+        - "Use within() to scope queries to a specific element"
+        - "Prefer getByText for dynamic content, getByRole for structure"
+      common_errors:
+        - error: "Testing implementation details (state values, internal methods)"
+          impact: "Tests break on refactor even when behavior is unchanged"
+          fix: "Test rendered output and user interactions, not internal state"
+    maturity:
+      level: standard
+    standards:
+      - name: "Testing Library"
+        type: framework
+        role: "DOM testing utilities focusing on user-accessible queries"
+        status: recommended
+      - name: "Vitest"
+        type: tool
+        role: "Vite-native test runner with Jest-compatible API"
+        status: recommended
+      - name: "MSW (Mock Service Worker)"
+        type: framework
+        role: "API mocking at the network level for realistic tests"
+        status: recommended
+
+  - id: full_testing_pyramid
+    name: "Full Testing Pyramid"
+    description: >
+      Complete frontend testing strategy: unit tests (15% of effort), component
+      tests (30%), integration/visual tests (30%), E2E tests (20%), accessibility
+      tests (5%). Each level catches different types of bugs. CI enforces
+      coverage thresholds and visual diff review.
+    use_when:
+      - "Critical production applications (banking, healthcare, e-commerce)"
+      - "Teams with dedicated QA or testing expertise"
+      - "Compliance requirements (SOC2, PCI, HIPAA)"
+    avoid_when:
+      - "Prototypes or internal tools"
+      - "Small team with limited testing bandwidth"
+    tradeoffs:
+      pros:
+        - "Comprehensive coverage catching bugs at every level"
+        - "Early detection (unit/component) saves debug time"
+        - "Regression safety net for refactoring"
+      cons:
+        - "High maintenance cost (tests need updating too)"
+        - "Slow CI pipeline with full E2E suite"
+    implementation:
+      guidelines:
+        - "Run unit + component tests on every commit (fast feedback)"
+        - "Run visual regression and E2E on PR/merge (slower feedback)"
+        - "Use Playwright for E2E: trace viewer, component testing, API testing"
+        - "Integrate visual regression (Chromatic/Percy) in Storybook"
+        - "Set coverage thresholds: 80% line, 70% branch minimum"
+        - "Use MSW for API mocking across all test levels"
+        - "Run accessibility tests (axe) as part of component tests"
+      common_errors:
+        - error: "Over-investing in E2E tests (slow, flaky, expensive)"
+          impact: "Test suite takes hours, flaky tests ignored, no trust in tests"
+          fix: "Shift left: more component tests, fewer E2E. Keep E2E for critical paths only"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "Playwright"
+        type: tool
+        role: "Cross-browser E2E testing with trace viewer and codegen"
+        status: recommended
+      - name: "Chromatic"
+        type: tool
+        role: "Visual regression testing for Storybook components"
+        status: recommended
+
+  - id: visual_regression_testing
+    name: "Visual Regression Testing"
+    description: >
+      Capture screenshots of components at various states and compare against
+      baselines. Detect unintended visual changes (spacing, color, layout).
+      Integrates with Storybook via Chromatic or Percy. Requires manual review
+      of visual diffs before accepting changes.
+    use_when:
+      - "Design system or component library"
+      - "Strict visual consistency requirements"
+      - "Team wants to catch CSS/style bugs automatically"
+    avoid_when:
+      - "Frequent design iterations (baselines change too often)"
+      - "Low visual quality requirements"
+    tradeoffs:
+      pros:
+        - "Catches visual bugs no other test type can detect"
+        - "Storybook integration makes setup straightforward"
+      cons:
+        - "Requires human review of diffs (manual process)"
+        - "Flaky screenshots from dynamic content or font loading"
+    implementation:
+      guidelines:
+        - "Set up Chromatic/Percy with Storybook"
+        - "Define viewport sizes for snapshot (mobile, tablet, desktop)"
+        - "Test component states: default, hover, focus, active, error, loading"
+        - "Use deterministic data (no Date.now(), no Math.random()) for stable snapshots"
+        - "Set up CI to block merge on unreviewed visual diffs"
+        - "Document allowed diffs (animations, dynamic content)"
+      common_errors:
+        - error: "Dynamic content causing frequent false positive diffs"
+          impact: "Team stops trusting/reviewing visual diffs"
+          fix: "Mock dates, random values, and API data to keep snapshots deterministic"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Chromatic"
+        type: tool
+        role: "Visual regression review and CI integration for Storybook"
+        status: recommended
+      - name: "Percy"
+        type: tool
+        role: "Visual testing and review platform"
+        status: recommended
+
+  - id: accessibility_testing
+    name: "Accessibility Testing"
+    description: >
+      Automated accessibility testing with axe-core integrated into component
+      and E2E tests. Checks for: missing ARIA labels, insufficient color
+      contrast, keyboard focus issues, incorrect heading hierarchy, and
+      missing form labels. Complements manual accessibility audit.
+    use_when:
+      - "WCAG compliance required (AA or AAA)"
+      - "All component and E2E test suites"
+    avoid_when:
+      - "No accessibility requirements"
+    tradeoffs:
+      pros:
+        - "Catches ~40% of accessibility issues automatically"
+        - "Integrates into existing test suites easily"
+      cons:
+        - "Doesn't catch all issues (manual testing still needed)"
+        - "False positives for some custom components"
+    implementation:
+      guidelines:
+        - "Use vitest-axe or jest-axe for Testing Library integration"
+        - "Run axe on every component test after rendering"
+        - "Use @axe-core/playwright for E2E accessibility audits"
+        - "Set up CI to fail on accessibility violations"
+        - "Include keyboard navigation tests (Tab, Enter, Escape)"
+        - "Test with screen reader announcements via NVDA or VoiceOver"
+      common_errors:
+        - error: "Running accessibility tests only on the final page (too late)"
+          impact: "Issues found deep in development cycle"
+          fix: "Test accessibility at component level — catch issues at build time"
+    maturity:
+      level: standard
+    standards:
+      - name: "axe-core"
+        type: framework
+        role: "Accessibility testing engine for automated audit"
+        status: recommended
+
+  - id: e2e_testing
+    name: "E2E Testing"
+    description: >
+      Full-stack end-to-end tests simulating real user flows. Playwright or
+      Cypress launches a browser, navigates the app, and asserts on the final
+      state. Tests critical business paths: login, purchase, search, settings.
+      Runs against a real or mocked backend.
+    use_when:
+      - "Testing critical user flows (login, checkout, payment)"
+      - "Cross-page interactions that component tests can't cover"
+      - "Validating that the full stack works together"
+    avoid_when:
+      - "Testing individual component behavior (use component tests)"
+      - "Rapidly changing UI (E2E tests are expensive to maintain)"
+    tradeoffs:
+      pros:
+        - "Tests real user scenarios across the full stack"
+        - "Catches integration bugs between frontend and backend"
+      cons:
+        - "Slow execution (minutes per test suite)"
+        - "Flaky tests from timing, network, and browser inconsistencies"
+        - "Expensive to maintain"
+    implementation:
+      guidelines:
+        - "Use Playwright for cross-browser support and trace viewer"
+        - "Test critical paths only (login, main user flow, payment)"
+        - "Use data-testid attributes for stable selectors"
+        - "Mock external APIs, not the backend (use MSW or Playwright route)"
+        - "Set up test data via API calls before test starts"
+        - "Use trace viewer for debugging failed test runs"
+        - "Run in CI with retry-on-failure for flaky tests"
+      common_errors:
+        - error: "Testing every edge case with E2E instead of component tests"
+          impact: "Slow, flaky test suite that developers avoid running"
+          fix: "Use component tests for edge cases, E2E only for critical user flows"
+    maturity:
+      level: standard
+    standards:
+      - name: "Playwright"
+        type: tool
+        role: "Cross-browser E2E testing with trace viewer"
+        status: recommended
+
+examples:
+  - id: component_test
+    title: "Component Test with Testing Library"
+    context: "Login form component test"
+    correct: |
+      // CORRECT: Behavioral component test
+      import { render, screen } from "@testing-library/react"
+      import userEvent from "@testing-library/user-event"
+      import { LoginForm } from "./LoginForm"
+
+      test("shows error on invalid email", async () => {
+        render(<LoginForm />)
+
+        await userEvent.type(screen.getByLabelText("Email"), "invalid")
+        await userEvent.click(screen.getByRole("button", { name: "Submit" }))
+
+        expect(screen.getByText(/valid email/i)).toBeInTheDocument()
+      })
+    incorrect: |
+      // WRONG: Implementation detail test
+      import { render } from "@testing-library/react"
+      import LoginForm from "./LoginForm"
+
+      test("sets email state", () => {
+        const { container } = render(<LoginForm />)
+        const input = container.querySelector('input[type="email"]')
+
+        fireEvent.change(input, { target: { value: "test@test.com" } })
+        expect(input.value).toBe("test@test.com")
+        // Tests internal state, not user-visible behavior
+        // Uses fireEvent instead of userEvent (not realistic)
+        // Uses CSS selector instead of accessible query
+      })
+    explanation: >
+      The correct test uses getByLabelText (accessible query) and getByRole
+      (button query), simulates real user interactions with userEvent, and
+      asserts on visible output. The incorrect test queries by CSS selector,
+      tests internal state, and uses fireEvent which doesn't simulate full
+      browser events.
+
+security_hardening:
+  transport:
+    requirements:
+      - "All communication uses HTTPS"
+  data_protection:
+    requirements:
+      - "Sensitive data not exposed in client-visible state"
+  access_control:
+    requirements:
+      - "Feature-based access control enforced"
+  input_output:
+    requirements:
+      - "All user input sanitized"
+  secrets:
+    requirements:
+      - "No secrets in client-side code"
+  monitoring:
+    requirements:
+      - "Errors logged with context for debugging"
+
+compliance:
+  standards:
+    - name: "OWASP"
+      relevance: "Frontend security best practices"
+  requirements_mapping:
+    - control: secure_communication
+      description: "All frontend communication uses secure channels"
+      maps_to:
+        - "OWASP: secure communication"
+
+prompt_recipes:
+  - id: frontend_test_setup
+    scenario: greenfield
+    description: "Set up frontend testing infrastructure"
+    prompt: "Set up frontend testing for {app_name}.\n\nTools:\n- Runner: Vitest\n- Component: Testing Library\n- E2E: Playwright\n- Visual: Chromatic\n- A11y: axe\n\nConfigure:\n1. vitest.config coverage thresholds\n2. Component test examples\n3. E2E test for critical paths\n4. CI integration"
+  - id: add_component_tests
+    scenario: migration
+    description: "Add tests to existing components"
+    prompt: "Add component tests for {component_list}.\n\nFor each component:\n1. Render component with mock data\n2. Test default state renders correctly\n3. Test user interactions (click, type, submit)\n4. Test error and loading states\n5. Verify error messages visible\n6. Test accessibility with axe"
+  - id: test_coverage_audit
+    scenario: audit
+    description: "Audit frontend test coverage"
+    prompt: "Audit frontend test coverage for {app_name}.\n\nChecklist:\n1. Measure current coverage (line, branch, function)\n2. Identify untested components and critical paths\n3. Check for missing test levels (unit, component, E2E)\n4. Verify accessibility tests exist for all components\n5. Review test quality (behavioral vs implementation)\n6. Check E2E tests cover critical user flows"
+  - id: e2e_critical_paths
+    scenario: greenfield
+    description: "Write E2E tests for critical paths"
+    prompt: "Write E2E tests for critical user paths in {app_name}.\n\nPaths to cover:\n1. User login and authentication flow\n2. Main content creation/submission flow\n3. Payment or checkout flow\n4. Search and navigation\n5. Settings update flow\n\nUse Playwright: stable selectors (data-testid), mock APIs, retry flaky tests."
+
+anti_patterns:
+  - name: "Testing Implementation Details"
+    description: "Tests accessing internal state, private methods, or internal DOM structure. Break on refactoring even when behavior is unchanged."
+    fix: "Test rendered output and user interactions only. Use accessible queries (getByRole, getByLabelText)."
+    severity: high
+    related_pattern: component_integration_testing
+  - name: "Flaky E2E Tests Without Retries"
+    description: "E2E tests that fail intermittently due to timing, network, or animation, with no retry mechanism."
+    fix: "Use Playwright auto-retry assertions and retry-on-failure in CI. Mock network for deterministic tests."
+    severity: medium
+    related_pattern: e2e_testing
+  - name: "No Accessibility Tests"
+    description: "Shipping components without any accessibility testing. Keyboard users and screen reader users encounter barriers."
+    fix: "Add axe-core tests to every component test. Run keyboard navigation tests."
+    severity: high
+    related_pattern: accessibility_testing
+  - name: "Over-Mocking (Testing Mocks, Not the App)"
+    description: "Mocking every dependency to the point that the test no longer resembles how the component is used."
+    fix: "Use MSW for API mocking (network level). Avoid mocking child components or hooks."
+    severity: medium
+    related_pattern: component_integration_testing
+
+checklist:
+  - id: FT-01
+    category: maintainability
+    description: "Tests use accessible queries (getByRole, getByLabelText)"
+    severity: high
+    verified_by: component_integration_testing
+  - id: FT-02
+    category: maintainability
+    description: "Component tests avoid testing implementation details"
+    severity: high
+    verified_by: component_integration_testing
+  - id: FT-03
+    category: correctness
+    description: "E2E tests cover all critical user flows"
+    severity: high
+    verified_by: e2e_testing
+  - id: FT-04
+    category: design
+    description: "axe-core integrated into component tests"
+    severity: high
+    verified_by: accessibility_testing
+  - id: FT-05
+    category: correctness
+    description: "Visual regression tests for key components"
+    severity: medium
+    verified_by: visual_regression_testing
+  - id: FT-06
+    category: maintainability
+    description: "CI enforces coverage thresholds (80% line, 70% branch)"
+    severity: medium
+    verified_by: full_testing_pyramid
+  - id: FT-07
+    category: reliability
+    description: "E2E tests retry on failure (max 2 retries)"
+    severity: medium
+    verified_by: e2e_testing
+  - id: FT-08
+    category: maintainability
+    description: "API calls mocked with MSW, not by mocking fetch"
+    severity: medium
+    verified_by: component_integration_testing

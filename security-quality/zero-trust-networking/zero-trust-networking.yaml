@@ -1,0 +1,692 @@
+# =============================================================================
+# AI Architecture Cookbook — Zero Trust Networking
+# Schema: v3 | Domain: zero-trust-networking
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: zero-trust-networking
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Zero-trust networking patterns covering mutual TLS (mTLS) for all
+    service-to-service communication, identity-aware proxies that verify
+    every request regardless of network origin, micro-segmentation to
+    limit lateral movement, and the BeyondCorp / zero-trust network
+    access model. No implicit trust based on IP, network segment, or VPN.
+
+  tags:
+    - zero-trust
+    - networking
+    - mtls
+    - identity-aware
+    - micro-segmentation
+    - beyondcorp
+    - security
+
+  categories:
+    - security-quality
+
+  prerequisites:
+    - id: api-gateway-edge-security
+      reason: "API gateway is the enforcement point for zero-trust access policies"
+    - id: authentication
+      reason: "Zero trust requires per-request authentication and identity verification"
+    - id: secrets-management
+      reason: "mTLS certificates and workload identities require secure storage and rotation"
+    - id: encryption
+      reason: "Transport encryption is foundational to zero-trust networking"
+
+  related_standards:
+    - id: api-gateway-edge-security
+      relationship: complementary
+      context: "Gateway enforces zero-trust policies at the edge; zero-trust extends to all east-west traffic"
+    - id: authentication
+      relationship: complementary
+      context: "Zero-trust requires proof of identity on every request"
+    - id: encryption
+      relationship: complementary
+      context: "mTLS provides both encryption and mutual authentication"
+
+context_inputs:
+  - name: network_model
+    type: enum
+    description: "Current network trust model"
+    required: true
+    default: perimeter_based
+    enum_values:
+      - perimeter_based
+      - hybrid
+      - zero_trust
+
+  - name: service_mesh_adoption
+    type: enum
+    description: "Use of service mesh for workload communication"
+    required: true
+    default: none
+    enum_values:
+      - none
+      - partial
+      - full
+
+  - name: workload_type
+    type: enum
+    description: "Type of workloads in the environment"
+    required: true
+    default: mixed
+    enum_values:
+      - containerized
+      - vm_based
+      - serverless
+      - mixed
+
+  - name: compliance_level
+    type: enum
+    description: "Regulatory compliance requirements"
+    required: false
+    default: standard
+    enum_values:
+      - standard
+      - fedramp
+      - pci_dss
+      - hipaa
+
+decision_tree:
+  - id: mesh_zero_trust
+    priority: 1
+    if:
+      - service_mesh_adoption in [full, partial]
+      - network_model == zero_trust
+    then:
+      pattern: mtls_everywhere
+      notes: >
+        Full service mesh adoption combined with zero-trust model is the ideal
+        state. Enforce strict mTLS, per-service authorization policies, and
+        continuous verification of every request.
+
+  - id: iap_external_access
+    priority: 2
+    if:
+      - workload_type in [mixed, vm_based]
+      - network_model in [perimeter_based, hybrid]
+    then:
+      pattern: identity_aware_proxy
+      notes: >
+        Identity-aware proxy provides a smooth migration path from perimeter
+        to zero-trust. Applications gain per-request access control without
+        requiring a full service mesh.
+
+  - id: microseg_containers
+    priority: 3
+    if:
+      - workload_type == containerized
+      - network_model in [hybrid, zero_trust]
+    then:
+      pattern: micro_segmentation
+      notes: >
+        Micro-segmentation for containerized workloads leverages Kubernetes
+        network policies and Cilium to enforce least-privilege communication
+        between pods and namespaces.
+
+  - id: beyondcorp_remote
+    priority: 4
+    if:
+      - compliance_level in [fedramp, pci_dss, hipaa]
+      - network_model in [perimeter_based, hybrid]
+    then:
+      pattern: beyondcorp_zero_trust
+      notes: >
+        BeyondCorp-style zero-trust network access replaces VPN-based remote
+        access. Access is granted based on device posture and user identity,
+        not network location.
+
+  - id: perimeter_migration
+    priority: 5
+    if:
+      - network_model == perimeter_based
+    then:
+      pattern: identity_aware_proxy
+      notes: >
+        Start the zero-trust journey by deploying an identity-aware proxy in
+        front of existing applications. This provides immediate access control
+        improvements without disrupting existing network architecture.
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: critical
+  fallback:
+    pattern: identity_aware_proxy
+    description: "Identity-aware proxy is the safest starting point for any zero-trust migration"
+
+patterns:
+  - id: mtls_everywhere
+    name: "mTLS Everywhere"
+    description: >
+      Mutual TLS (mTLS) for all service-to-service communication. Every
+      request is both encrypted and mutually authenticated using X.509
+      certificates issued by an internal certificate authority. No plaintext
+      communication is permitted between workloads, regardless of network
+      segment or deployment model.
+    use_when:
+      - "Service mesh (Istio, Linkerd, Consul) is deployed or planned"
+      - "Zero-trust architecture is the target state"
+      - "East-west traffic between microservices needs authentication"
+      - "Compliance requires encrypted and authenticated service communication"
+    avoid_when:
+      - "Monolithic application with no internal network requests"
+      - "Ephemeral serverless functions (use workload identity instead)"
+    tradeoffs:
+      pros:
+        - "Every request authenticated and encrypted — no exceptions"
+        - "Certificate-based identity works across network boundaries"
+        - "Automatic certificate rotation with mesh or SPIFFE/SPIRE"
+        - "Defense against machine-in-the-middle attacks"
+      cons:
+        - "Certificate management complexity (internal CA, rotation, revocation)"
+        - "Performance overhead per-connection TLS handshake"
+        - "Debugging encrypted traffic requires proxy or sidecar access"
+    implementation:
+      guidelines:
+        - "Deploy SPIRE or cloud-native workload identity for certificate issuance"
+        - "Issue short-lived certificates (1-24 hours) with automatic rotation"
+        - "Enforce strict mTLS: reject plaintext and unauth TLS connections"
+        - "Monitor certificate expiry and rotation failures — alert immediately"
+        - "Use SPIFFE Verifiable Identity Document (SVID) for workload identity"
+        - "Implement certificate revocation with CRL or OCSP"
+        - "Allowlist only the required cipher suites: ECDHE+AES-GCM or ChaCha20-Poly1305"
+        - "Gradually enable strict mTLS: permissive mode first, validate, then strict"
+      common_errors:
+        - error: "Long-lived certificates (months or years) in production"
+          impact: "Compromised certificate grants prolonged access; rotation is manual and often missed"
+          fix: "Use short-lived certificates (1-24 hours) with automated renewal via SPIRE or cert-manager"
+        - error: "mTLS enabled but no authorization policy"
+          impact: "Any service with a valid certificate can call any other service (flat trust)"
+          fix: "Pair mTLS with service-level authorization policies that restrict which identities can communicate"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "SPIFFE/SPIRE"
+        type: standard
+        role: "Workload identity platform for issuing and rotating mTLS certificates"
+        status: recommended
+      - name: "RFC 5246 (TLS 1.2)"
+        type: rfc
+        role: "Transport security protocol for mutual TLS"
+        status: recommended
+
+  - id: identity_aware_proxy
+    name: "Identity-Aware Proxy"
+    description: >
+      An identity-aware proxy (IAP) sits in front of applications and enforces
+      access control based on user identity and context, not network origin.
+      Every request must present a valid identity token. The proxy verifies the
+      token, checks authorization, and only forwards authenticated requests.
+      Works across VPN, internet, and private network connections.
+    use_when:
+      - "Remote workforce needs access without VPN"
+      - "Migrating from perimeter to zero-trust incrementally"
+      - "Legacy applications that cannot embed auth logic"
+      - "Multi-cloud or hybrid deployments"
+    avoid_when:
+      - "All services already enforce their own per-request auth"
+    tradeoffs:
+      pros:
+        - "No VPN needed — users connect from any network"
+        - "Zero-trust without application changes"
+        - "Centralized access policy management"
+        - "Supports context-aware access (device, location, time)"
+      cons:
+        - "Proxy is a potential bottleneck (must be HA)"
+        - "Adds latency per request (token verification)"
+        - "Not all protocols proxiable (e.g., non-HTTP)"
+    implementation:
+      guidelines:
+        - "Use Google Cloud IAP, Cloudflare Access, or open-source alternatives like Pomerium"
+        - "Integrate with your identity provider (Okta, Azure AD, Keycloak) for token issuance"
+        - "Require short-lived tokens (5-60 minutes) with refresh token rotation"
+        - "Log all access attempts — especially denials — for audit"
+        - "Configure session length limits and re-authentication for sensitive apps"
+        - "Implement device posture checks for high-security apps"
+        - "Deploy IAP in multiple regions for HA"
+      common_errors:
+        - error: "IAP deployed but backend services trust internal network"
+          impact: "Bypassing IAP by directly accessing backend from internal network"
+          fix: "Remove network-based trust; all requests must go through IAP, including internal"
+        - error: "Long token lifetimes reducing security"
+          impact: "Stolen tokens remain valid for hours, granting access without re-authentication"
+          fix: "Keep access tokens short-lived (5-15 min); use refresh tokens for session continuity"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Google Cloud Identity-Aware Proxy"
+        type: framework
+        role: "Reference implementation for IAP architecture"
+        status: recommended
+      - name: "OAuth 2.0 / OpenID Connect"
+        type: spec
+        role: "Token-based authentication protocol underpinning IAP"
+        status: recommended
+
+  - id: micro_segmentation
+    name: "Micro-Segmentation"
+    description: >
+      Divide the network into fine-grained segments, each with its own access
+      policies. Workloads in one segment cannot communicate with workloads in
+      another segment unless explicitly allowed. Limits lateral movement:
+      a compromised workload cannot reach sensitive services outside its
+      segment. Implemented via Kubernetes Network Policies, Cilium, or
+      cloud-native security groups.
+    use_when:
+      - "Containerized workloads on Kubernetes"
+      - "Compliance requiring network isolation (PCI DSS)"
+      - "Multi-tenant environments needing tenant isolation"
+      - "Reducing blast radius of a security breach"
+    avoid_when:
+      - "Simple single-tier applications (overhead not justified)"
+      - "Fully serverless architectures (network boundaries are platform-managed)"
+    tradeoffs:
+      pros:
+        - "Lateral movement blocked at network level"
+        - "Compliance-friendly: clear network isolation boundaries"
+        - "Works with existing workloads — no app changes needed"
+        - "Expressible as code (Kubernetest Network Policies, CiliumNetworkPolicy)"
+      cons:
+        - "Policy management at scale is complex"
+        - "Overly restrictive policies break legitimate communication"
+        - "Debugging blocked traffic requires network flow visibility"
+    implementation:
+      guidelines:
+        - "Apply least-privilege network policies: deny all by default, allow explicitly"
+        - "Use Kubernetes Network Policies for namespace-level isolation"
+        - "Adopt Cilium for L3-L7 policies including HTTP methods and paths"
+        - "Label workloads consistently to build policy match selectors"
+        - "Audit policy violations: monitor dropped packets and denied connections"
+        - "Implement defense in depth: network policies + mTLS + authorization"
+        - "Document which services communicate and why for policy review"
+        - "Test policy changes in staging: a misconfigured policy can break production"
+      common_errors:
+        - error: "Policies too permissive — allow-all within namespace"
+          impact: "No real segmentation; any pod in the namespace can attack any other"
+          fix: "Default-deny ingress and egress; explicitly allow only required communication paths"
+        - error: "Policies not tested before production deployment"
+          impact: "Misconfigured policy blocks legitimate traffic, causing service outage"
+          fix: "Stage policy changes in non-production; use network policy analyzer tools"
+    maturity:
+      level: advanced
+    standards:
+      - name: "Kubernetest Network Policies"
+        type: standard
+        role: "Native Kubernetes API for pod-level network segmentation"
+        status: recommended
+      - name: "Cilium"
+        type: tool
+        role: "eBPF-based networking and security for L3-L7 policies"
+        status: recommended
+
+  - id: beyondcorp_zero_trust
+    name: "BeyondCorp / Zero Trust Network Access"
+    description: >
+      Google's BeyondCorp model replaces VPN-based remote access with
+      zero-trust network access (ZTNA). Access decisions are based on user
+      identity, device posture, and context — never on network location.
+      Users connect directly to applications through an access proxy, and
+      all traffic is encrypted and authenticated per-session. No VPN gateway,
+      no internal network trust.
+    use_when:
+      - "Remote or hybrid workforce with no corporate network"
+      - "Compliance requiring audited access controls"
+      - "Replacing legacy VPN infrastructure"
+      - "Multi-cloud access to internal applications"
+    avoid_when:
+      - "Small team in a single office with no remote access needs"
+    tradeoffs:
+      pros:
+        - "No VPN infrastructure to manage — users connect from anywhere"
+        - "Access decisions based on identity, device, and context"
+        - "Granular per-application access control"
+        - "Full audit trail of every access request"
+      cons:
+        - "Requires device management (MDM) for device posture checks"
+        - "User experience changes — browser-based or client-based access"
+        - "Legacy applications may need HTTP wrapping for proxy compatibility"
+    implementation:
+      guidelines:
+        - "Deploy a ZTNA proxy (Cloudflare Access, Twingate, OpenZiti) in front of applications"
+        - "Integrate with identity provider for user authentication"
+        - "Implement device posture checks: OS version, disk encryption, patch level"
+        - "Use short-lived sessions with continuous re-evaluation"
+        - "Log all access attempts — successful and denied — to SIEM"
+        - "Start with a single application, validate, then expand"
+        - "Remove VPN-based access after all applications are behind ZTNA"
+        - "Implement fallback access procedures for device enrollment failures"
+      common_errors:
+        - error: "ZTNA deployed but VPN remains as backup"
+          impact: "Users fall back to VPN when ZTNA is inconvenient; no real migration to zero-trust"
+          fix: "Remove VPN access after ZTNA rollout; provide training and support for migration"
+        - error: "No device posture checks for sensitive applications"
+          impact: "Compromised or unpatched devices can access sensitive data"
+          fix: "Require device posture checks for high-sensitivity apps; block non-compliant devices"
+    maturity:
+      level: enterprise
+    standards:
+      - name: "NIST SP 800-207 (Zero Trust Architecture)"
+        type: standard
+        role: "Foundational zero-trust architecture reference"
+        status: recommended
+        reference: "https://csrc.nist.gov/publications/detail/sp/800-207/final"
+      - name: "Google BeyondCorp"
+        type: reference
+        role: "Industry reference implementation for zero-trust network access"
+        status: recommended
+
+examples:
+  - id: mtls_sidecar_config
+    title: "mTLS Configuration with Istio Sidecar"
+    context: "Enabling strict mTLS in an Istio service mesh"
+    correct: |
+      # PeerAuthentication: strict mTLS across the mesh
+      apiVersion: security.istio.io/v1beta1
+      kind: PeerAuthentication
+      metadata:
+        name: default
+        namespace: istio-system
+      spec:
+        mtls:
+          mode: STRICT  # Reject plaintext connections
+      ---
+      # AuthorizationPolicy: only allow specific service callers
+      apiVersion: security.istio.io/v1beta1
+      kind: AuthorizationPolicy
+      metadata:
+        name: payments-service
+        namespace: prod
+      spec:
+        selector:
+          matchLabels:
+            app: payments
+        action: ALLOW
+        rules:
+          - from:
+              - source:
+                  principals: ["cluster.local/ns/prod/sa/orders"]
+            to:
+              - operation:
+                  methods: ["POST"]
+                  paths: ["/api/charge"]
+    incorrect: |
+      # WRONG: Permissive mTLS — accepts both TLS and plaintext
+      apiVersion: security.istio.io/v1beta1
+      kind: PeerAuthentication
+      metadata:
+        name: default
+        namespace: istio-system
+      spec:
+        mtls:
+          mode: PERMISSIVE  # Accepts plaintext — no real security!
+      # No AuthorizationPolicy — any service in mesh can call any other
+    explanation: >
+      The correct configuration enforces strict mTLS and pairs it with
+      per-service authorization policies. Only authenticated services with
+      the correct workload identity can call the payments endpoint.
+      The incorrect version uses permissive mode (plaintext accepted) and
+      has no authorization, providing no actual zero-trust guarantees.
+
+  - id: kubernetes_network_policy
+    title: "Micro-Segmentation with Kubernetes Network Policies"
+    context: "Isolating a payments service in Kubernetes"
+    correct: |
+      # Default-deny ingress for the payments namespace
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: default-deny-ingress
+        namespace: payments
+      spec:
+        podSelector: {}
+        policyTypes:
+          - Ingress
+      ---
+      # Allow only orders service to call payments
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-orders
+        namespace: payments
+      spec:
+        podSelector:
+          matchLabels:
+            app: payments-api
+        policyTypes:
+          - Ingress
+        ingress:
+          - from:
+              - namespaceSelector:
+                  matchLabels:
+                    name: orders
+                podSelector:
+                  matchLabels:
+                    app: orders-api
+            ports:
+              - port: 8080
+    incorrect: |
+      # WRONG: No network policies — all pods can communicate freely
+      # apiVersion: networking.k8s.io/v1
+      # kind: NetworkPolicy
+      # (No policies defined — every pod can reach every other pod)
+    explanation: >
+      The correct configuration applies default-deny ingress in the payments
+      namespace, then selectively allows only the orders service to reach the
+      payments API. This limits lateral movement: if a different service is
+      compromised, it cannot access payments. The incorrect version has no
+      policies, allowing unrestricted communication.
+
+security_hardening:
+  transport:
+    requirements:
+      - "TLS 1.2+ enforced for all service-to-service communication"
+      - "Strict cipher suite allowlist: ECDHE+AES-GCM and ChaCha20-Poly1305 only"
+      - "mTLS mutual authentication required for all east-west traffic"
+  data_protection:
+    requirements:
+      - "All data in transit encrypted regardless of network segment"
+      - "No data transmitted over plaintext — no exceptions for internal networks"
+      - "Short-lived session keys rotated per-session"
+  access_control:
+    requirements:
+      - "Every request authenticated and authorized — no trust based on network location"
+      - "Access policies deny by default; allow explicitly per identity and resource"
+      - "Device posture checks enforced for remote access"
+  input_output:
+    requirements:
+      - "All requests validated at the identity-aware proxy before reaching applications"
+      - "Deny requests without valid identity tokens"
+  secrets:
+    requirements:
+      - "mTLS private keys stored in secure key management or HSM"
+      - "Certificate authorities and signing keys in isolated, access-controlled storage"
+      - "Short-lived certificates: never persist private keys to disk"
+  monitoring:
+    requirements:
+      - "All access decisions logged: allowed, denied, and errored"
+      - "Alert on denied access attempts (potential reconnaissance)"
+      - "Monitor certificate expiry and rotation failures"
+      - "Track lateral movement: inter-service connections logged and analyzed"
+
+compliance:
+  standards:
+    - name: "NIST SP 800-207 (Zero Trust Architecture)"
+      relevance: "Core framework for zero-trust architecture principles and implementation"
+      reference: "https://csrc.nist.gov/publications/detail/sp/800-207/final"
+    - name: "PCI DSS Requirement 1 (Network Security)"
+      relevance: "Network segmentation and access control requirements"
+    - name: "FedRAMP (Zero Trust Architecture)"
+      relevance: "Federal zero-trust requirements for cloud services"
+
+  requirements_mapping:
+    - control: network_segmentation
+      description: "Micro-segmentation to limit lateral movement"
+      maps_to:
+        - "PCI DSS 1.0"
+        - "NIST SP 800-207"
+    - control: mutual_authentication
+      description: "mTLS for authenticated service-to-service communication"
+      maps_to:
+        - "NIST SP 800-207"
+        - "FedRAMP ZTA"
+    - control: identity_based_access
+      description: "Access decisions based on identity and context, not network"
+      maps_to:
+        - "NIST SP 800-207"
+        - "PCI DSS 7.0"
+
+prompt_recipes:
+  - id: zt_network_greenfield
+    scenario: greenfield
+    description: "Design zero-trust network from scratch"
+    prompt: |
+      Design a zero-trust network architecture for a new system.
+
+      Context:
+      - Workload type: [containerized/vm-based/mixed]
+      - Deployment: [single-cloud/multi-cloud/on-prem/hybrid]
+      - Remote access: [yes/no]
+      - Compliance: [standard/fedramp/pci-dss/hipaa]
+
+      Requirements:
+      - mTLS for all service-to-service communication
+      - Identity-aware proxy for user-facing applications
+      - Micro-segmentation between workload tiers
+      - No VPN-based access
+      - Full audit logging of all access decisions
+      - Certificate lifecycle management
+
+  - id: zt_migration_plan
+    scenario: migration
+    description: "Migrate from perimeter to zero-trust"
+    prompt: |
+      Create a migration plan from perimeter-based to zero-trust networking.
+
+      Phase 1: Assessment
+      - Inventory all services and their communication patterns
+      - Identify privileged access paths and network trust boundaries
+      - Map user access patterns (VPN, direct, public)
+
+      Phase 2: IAP Deployment
+      - Deploy identity-aware proxy for user-facing applications
+      - Remove direct network access — all traffic through proxy
+      - Enable logging and monitor for breakage
+
+      Phase 3: mTLS Rollout
+      - Deploy workload identity platform (SPIRE or cloud-native)
+      - Enable permissive mTLS; verify all services can connect
+      - Switch to strict mTLS one service at a time
+
+      Phase 4: Micro-Segmentation
+      - Define deny-all default network policies
+      - Explicitly allow known communication paths
+      - Enable continuous monitoring
+
+  - id: zt_audit
+    scenario: audit
+    description: "Audit zero-trust implementation"
+    prompt: |
+      Audit the zero-trust networking implementation:
+
+      1. Is mTLS enabled for all service-to-service communication?
+      2. Are certificates short-lived (hours, not months)?
+      3. Is certificate rotation automated and monitored?
+      4. Are authorization policies defined per service pair?
+      5. Is there an identity-aware proxy for user access?
+      6. Are network policies deny-all with explicit allows?
+      7. Is VPN access removed or scheduled for removal?
+      8. Are all access decisions logged to SIEM?
+      9. Are device posture checks enforced for remote access?
+      10. Is there a fallback for device enrollment failures?
+
+  - id: zt_compliance
+    scenario: remediation
+    description: "Meet compliance requirements with zero-trust"
+    prompt: |
+      Document how the zero-trust network architecture satisfies compliance.
+
+      Compliance requirements:
+      - NIST SP 800-207 zero-trust principles
+      - PCI DSS network segmentation requirements
+      - FedRAMP access control requirements
+
+      For each requirement:
+      1. Explain how zero-trust architecture satisfies it
+      2. Provide evidence (policy documents, logs, configurations)
+      3. Identify any gaps and remediation plans
+
+anti_patterns:
+  - name: "VPN as Zero-Trust"
+    description: >
+      Claiming zero-trust while relying on VPN for access control. VPN grants
+      full network-level access to authenticated users, creating an implicit
+      trust zone. Once inside the VPN, users have broad access to internal
+      resources without per-request authorization.
+    fix: "Replace VPN with identity-aware proxy; enforce per-application authorization regardless of network"
+    severity: critical
+    related_pattern: beyondcorp_zero_trust
+
+  - name: "mTLS Without Authorization"
+    description: >
+      Enabling mutual TLS but not defining per-service authorization policies.
+      Every service with a valid certificate can call every other service,
+      making mTLS authentication-only without access control.
+    fix: "Define authorization policies per service pair; use service mesh or policy engine"
+    severity: high
+    related_pattern: mtls_everywhere
+
+  - name: "Flat Network with Label-Based Segmentation Only"
+    description: >
+      Relying solely on application-level labels or tags for segmentation
+      without network-level enforcement. A compromised workload can still
+      forge labels or bypass application-level checks to reach sensitive
+      services.
+    fix: "Enforce segmentation at network level (Kubernete Network Policies, Cilium, security groups)"
+    severity: high
+    related_pattern: micro_segmentation
+
+checklist:
+  - id: ZT-01
+    category: security
+    description: "mTLS strict mode enforced for all service communication"
+    severity: critical
+    verified_by: mtls_everywhere
+  - id: ZT-02
+    category: security
+    description: "Authorization policies defined per service pair"
+    severity: critical
+    verified_by: mtls_everywhere
+  - id: ZT-03
+    category: security
+    description: "No VPN-based access — identity-aware proxy in place"
+    severity: high
+    verified_by: beyondcorp_zero_trust
+  - id: ZT-04
+    category: security
+    description: "Network policies deny-all with explicit allows"
+    severity: high
+    verified_by: micro_segmentation
+  - id: ZT-05
+    category: security
+    description: "Short-lived certificates with automated rotation"
+    severity: high
+    verified_by: mtls_everywhere
+  - id: ZT-06
+    category: observability
+    description: "All access decisions logged to SIEM"
+    severity: high
+    verified_by: identity_aware_proxy
+  - id: ZT-07
+    category: security
+    description: "Device posture checks for remote access"
+    severity: medium
+    verified_by: beyondcorp_zero_trust
+  - id: ZT-08
+    category: reliability
+    description: "IAP deployed in HA across multiple regions"
+    severity: medium
+    verified_by: identity_aware_proxy

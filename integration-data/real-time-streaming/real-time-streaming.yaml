@@ -1,0 +1,781 @@
+# =============================================================================
+# AI Architecture Cookbook — Real-Time Streaming
+# Schema: v3 | Domain: real-time-streaming
+# =============================================================================
+
+meta:
+  schema_version: 3
+  domain: real-time-streaming
+  version: "1.0.0"
+  last_updated: "2026-06-04"
+  description: >
+    Real-time data streaming patterns covering event streaming with
+    Kafka, stream processing with Flink, Kappa architecture for unified
+    batch and stream, and exactly-once semantics. Provides context-aware
+    recommendations based on throughput, ordering, state, and latency
+    requirements.
+
+  tags:
+    - streaming
+    - kafka
+    - flink
+    - pulsar
+    - event-time
+    - exactly-once
+    - watermarks
+
+  categories:
+    - integration-data
+
+  prerequisites:
+    - messaging-events
+    - data-transformation
+    - performance-optimization
+
+  related_standards:
+    - id: messaging-events
+      relationship: complementary
+      context: "Streaming platforms extend messaging with durable logs and replay"
+    - id: data-transformation
+      relationship: complementary
+      context: "Stream processing is real-time data transformation"
+    - id: performance-optimization
+      relationship: complementary
+      context: "Streaming performance depends on partitioning, batching, and serialization"
+    - id: data-persistence
+      relationship: complementary
+      context: "Streaming data is often persisted for replay and analytics"
+
+context_inputs:
+  - name: throughput_requirement
+    type: enum
+    description: "Expected message throughput"
+    required: true
+    default: moderate
+    enum_values:
+      - low
+      - moderate
+      - high
+      - massive
+
+  - name: event_ordering_need
+    type: enum
+    description: "Required ordering guarantees for event processing"
+    required: true
+    default: per_partition
+    enum_values:
+      - none
+      - per_partition
+      - global
+
+  - name: stateful_processing
+    type: enum
+    description: "Does processing require maintaining state across events"
+    required: true
+    default: stateless
+    enum_values:
+      - stateless
+      - stateful
+      - stateful_large
+
+  - name: exactly_once_required
+    type: boolean
+    description: "Is exactly-once processing semantics required"
+    required: true
+    default: false
+
+  - name: latency_sla
+    type: enum
+    description: "Required end-to-end processing latency"
+    required: true
+    default: seconds
+    enum_values:
+      - milliseconds
+      - seconds
+      - minutes
+
+decision_tree:
+  - id: exactly_once_needs_idempotent_producer
+    priority: 1
+    if:
+      - exactly_once_required == true
+    then:
+      pattern: exactly_once_semantics
+      standards:
+        - "Exactly-Once Semantics"
+      notes: "Exactly-once requires idempotent producers, transactional streaming, and idempotent sinks"
+
+  - id: stateful_processing_needs_stream_processor
+    priority: 2
+    if:
+      - stateful_processing in [stateful, stateful_large]
+    then:
+      pattern: stream_processing_flink
+      standards:
+        - "Apache Flink"
+      notes: "Stateful processing with windows, joins, and aggregations requires a stream processor with managed state"
+
+  - id: massive_throughput_needs_kafka
+    priority: 3
+    if:
+      - throughput_requirement in [high, massive]
+      - latency_sla in [seconds, minutes]
+    then:
+      pattern: event_streaming_kafka
+      standards:
+        - "Apache Kafka Protocol"
+      notes: "High-throughput durable streaming with Kafka; partition for parallelism, batch for throughput"
+
+  - id: low_latency_needs_lightweight_streaming
+    priority: 4
+    if:
+      - latency_sla == milliseconds
+      - throughput_requirement in [low, moderate]
+    then:
+      pattern: event_streaming_kafka
+      standards:
+        - "Apache Kafka / Apache Pulsar"
+      notes: "Millisecond latency with moderate throughput — use Kafka with optimized configs or Pulsar for lower latency"
+
+  - id: unified_batch_stream_uses_kappa
+    priority: 5
+    if:
+      - throughput_requirement in [moderate, high]
+      - stateful_processing in [stateless, stateful]
+    then:
+      pattern: kappa_architecture
+      standards:
+        - "Kappa Architecture"
+      notes: "Kappa architecture unifies batch and stream processing in a single pipeline — simpler than Lambda"
+
+  - id: global_ordering_uses_single_partition
+    priority: 6
+    if:
+      - event_ordering_need == global
+      - throughput_requirement in [low, moderate]
+    then:
+      pattern: event_streaming_kafka
+      standards:
+        - "Single-Partition Ordering"
+      notes: "Global ordering requires a single partition — limits parallelism and throughput"
+
+decision_metadata:
+  confidence: high
+  risk_if_wrong: high
+  fallback:
+    pattern: event_streaming_kafka
+    description: "Apache Kafka with at-least-once delivery and per-partition ordering"
+
+patterns:
+  - id: event_streaming_kafka
+    name: Event Streaming with Kafka
+    description: >
+      Durable, partitioned, replayable event log using Apache Kafka or
+      compatible platforms. Producers write to topics partitioned by
+      key for ordering. Consumers read at their own pace, with offset
+      tracking. Events are retained for configurable periods, enabling
+      replay and new consumer catch-up.
+
+    use_when:
+      - "High-throughput event ingestion (100K+ msgs/sec)"
+      - "Event replay needed — new consumers process historical events"
+      - "Ordered processing within partitions required"
+      - "Multiple consumer groups with independent processing"
+      - "Durable log with configurable retention"
+
+    avoid_when:
+      - "Simple point-to-point messaging with low throughput (use queue)"
+      - "Global ordering across all events needed with high throughput"
+      - "Sub-millisecond end-to-end latency required"
+      - "Team cannot operate Kafka cluster (use managed service)"
+
+    tradeoffs:
+      pros:
+        - "Durable, append-only log with configurable retention"
+        - "High throughput via partitioning (linear scaling)"
+        - "Multiple consumer groups with independent offset tracking"
+        - "Replay from any point — rebuild state, catch up, audit"
+        - "Ecosystem: Kafka Connect, Kafka Streams, KSQL, Schema Registry"
+      cons:
+        - "Operational complexity (ZooKeeper/KRaft, brokers, partitions)"
+        - "Latency: typically 10-100ms end-to-end (not sub-millisecond)"
+        - "Global ordering impossible with multiple partitions"
+        - "Schema evolution requires Schema Registry discipline"
+
+    implementation:
+      guidelines:
+        - "Choose partition key for even distribution and meaningful ordering"
+        - "Use Schema Registry with backward-compatible evolution"
+        - "Set retention based on replay needs and storage budget"
+        - "Monitor consumer lag — primary health metric for streaming"
+        - "Use idempotent producers to prevent duplicate events"
+        - "Configure acks=all for durability; tune min.insync.replicas"
+        - "Size broker number based on partition count and throughput"
+
+      common_errors:
+        - error: "Bad partition key causing hot partitions"
+          impact: "One partition handles 90% of traffic; rest idle; ordering benefits lost"
+          fix: "Use high-cardinality keys (entity ID, not status); test distribution with real data"
+        - error: "No Schema Registry — evolving event formats manually"
+          impact: "Producer changes break consumers silently; data corruption"
+          fix: "Use Schema Registry with compatibility checks; version all event schemas"
+        - error: "Infinite retention without cleanup policy"
+          impact: "Disk fills; brokers crash; data loss on restart"
+          fix: "Set retention.ms, retention.bytes, or use cleanup.policy=delete/compact"
+
+    maturity:
+      level: standard
+
+    standards:
+      - name: Apache Kafka Protocol
+        type: protocol
+        role: "Distributed event streaming platform"
+        status: recommended
+        reference: "https://kafka.apache.org/documentation/"
+      - name: Schema Registry
+        type: tool
+        role: "Event schema management and compatibility checking"
+        status: recommended
+
+  - id: stream_processing_flink
+    name: Stream Processing with Flink
+    description: >
+      Stateful stream processing engine providing event-time semantics,
+      exactly-once state consistency, and complex operations (windows,
+      joins, aggregations, CEP). Suitable for real-time analytics,
+      anomaly detection, and stateful transformations on streaming data.
+
+    use_when:
+      - "Stateful stream processing (windows, joins, aggregations)"
+      - "Event-time processing with watermarks and late data handling"
+      - "Exactly-once state consistency required"
+      - "Complex event processing (CEP) patterns"
+      - "Real-time analytics with sub-second latency"
+
+    avoid_when:
+      - "Simple stateless transformations (Kafka Streams is simpler)"
+      - "Batch processing only (use Spark or similar)"
+      - "Very large state that exceeds Flink's managed state capacity"
+      - "Team lacks stream processing expertise (steep learning curve)"
+
+    tradeoffs:
+      pros:
+        - "True event-time processing with watermarks and out-of-order handling"
+        - "Exactly-once state consistency with checkpointing"
+        - "Managed state with scale-out and rebalancing"
+        - "Rich API: DataStream, Table API, SQL, CEP"
+        - "High throughput with low latency (milliseconds)"
+      cons:
+        - "Operational complexity (JobManager, TaskManagers, checkpoints)"
+        - "State management requires careful sizing (state backend, memory)"
+        - "Checkpointing adds overhead for large state"
+        - "Learning curve for non-trivial stateful pipelines"
+
+    implementation:
+      guidelines:
+        - "Use event-time processing with watermarks for out-of-order events"
+        - "Configure checkpoint interval based on recovery time requirements"
+        - "Choose state backend (RocksDB for large state, Heap for low latency)"
+        - "Size state TTL to avoid unbounded state growth"
+        - "Use incremental checkpoints for jobs with large state"
+        - "Monitor checkpoint duration and size — key health metric"
+        - "Handle late data with side output or allowed lateness"
+
+      common_errors:
+        - error: "Processing-time instead of event-time"
+          impact: "Results are non-deterministic; behavior changes on replay"
+          fix: "Use event-time processing with watermarks; extract event timestamp"
+        - error: "No checkpointing configured"
+          impact: "Job failure loses all state; restart from beginning"
+          fix: "Enable checkpointing with reasonable interval (5-30s)"
+        - error: "Unbounded state growth — no state TTL"
+          impact: "Memory exhaustion; checkpoint size grows forever"
+          fix: "Configure state TTL (time-to-live) for all state descriptors"
+
+    maturity:
+      level: advanced
+
+    standards:
+      - name: Apache Flink
+        type: framework
+        role: "Distributed stream processing engine"
+        status: recommended
+        reference: "https://flink.apache.org/"
+      - name: Event-Time Processing
+        type: spec
+        role: "Processing based on event timestamps not arrival time"
+        status: recommended
+
+  - id: kappa_architecture
+    name: Kappa Architecture
+    description: >
+      Unified architecture where all data — both real-time and historical —
+      is processed through a single streaming pipeline. Batch views are
+      treated as streaming replay from the beginning of time. Eliminates
+      the complexity of maintaining separate batch and stream systems
+      (Lambda architecture).
+
+    use_when:
+      - "Need both real-time and historical data processing"
+      - "Want to avoid maintaining separate batch and stream systems"
+      - "Streaming engine supports sufficient throughput for both paths"
+      - "Event replay from the beginning of the log is feasible"
+
+    avoid_when:
+      - "Batch processing requires full data scans at petabyte scale"
+      - "Streaming engine cannot handle the data retention volume"
+      - "Existing batch infrastructure is well-functioning and cost-effective"
+      - "Storage costs for full event retention exceed budget"
+
+    tradeoffs:
+      pros:
+        - "Single codebase — no batch vs. stream divergence"
+        - "Simpler architecture than Lambda (one system to operate)"
+        - "Reproducible — replay from start produces same results"
+        - "Unified operational tooling and monitoring"
+        - "No batch backfill needed — just reprocess the stream"
+      cons:
+        - "Requires streaming engine capable of high-throughput replay"
+        - "Historical reprocessing can be slow for very large datasets"
+        - "Storage costs for full event retention"
+        - "Less mature ecosystem for batch-specific optimizations"
+
+    implementation:
+      guidelines:
+        - "Use Kafka for durable event log with unlimited retention (if needed)"
+        - "Use Flink or Kafka Streams as the unified processing engine"
+        - "Design data model for efficient stream processing: compact topics for snapshots"
+        - "Use log compaction for keyed state to reduce replay data volume"
+        - "Version schemas to handle schema changes across stream lifetime"
+        - "Benchmark replay speed to ensure your use case works end-to-end"
+
+      common_errors:
+        - error: "Event log retention shorter than reprocessing window"
+          impact: "Cannot replay from beginning; consistency broken; Kappa promise broken"
+          fix: "Set retention based on longest expected reprocessing; use compacted topics for keyed data"
+        - error: "Not using log compaction for keyed state"
+          impact: "Replay processes every event ever — slow, wasteful for known state"
+          fix: "Use log compaction (cleanup.policy=compact) for keyed topics; disk-efficient"
+        - error: "Schema evolution breaks historical replay"
+          impact: "Old events cannot be deserialized by current processing logic"
+          fix: "Use Schema Registry with backward/forward compatible schemas; test replay"
+
+    maturity:
+      level: advanced
+
+    standards:
+      - name: Kappa Architecture
+        type: pattern
+        role: "Unified batch-stream processing architecture"
+        status: recommended
+        reference: "https://www.oreilly.com/radar/questioning-the-lambda-architecture/"
+
+  - id: exactly_once_semantics
+    name: Exactly-Once Semantics
+    description: >
+      End-to-end exactly-once processing ensures each event is processed
+      exactly one time across the pipeline. Achieved through idempotent
+      producers, transactional writes, and idempotent sinks. Not a single
+      feature but a system property requiring coordination across all
+      pipeline stages.
+
+    use_when:
+      - "Financial transactions (payments, accounting, billing)"
+      - "Inventory and stock level updates"
+      - "Counters and metrics where duplicates distort results"
+      - "Regulatory compliance requiring audit-proof processing"
+
+    avoid_when:
+      - "Idempotent consumers are sufficient for the use case"
+      - "Duplicate-tolerant applications (analytics, monitoring)"
+      - "Throughput is more important than absolute correctness"
+      - "Sink systems do not support idempotent writes"
+
+    tradeoffs:
+      pros:
+        - "Mathematical guarantee — each event processed exactly once"
+        - "No duplicate payments, charges, or counts"
+        - "Simpler application logic (no dedup handling)"
+        - "Audit trail is exact and verifiable"
+      cons:
+        - "Higher latency (coordinated transaction overhead)"
+        - "Lower throughput (transaction commit overhead)"
+        - "Sink must support idempotent or transactional writes"
+        - "Operational complexity (transaction timeouts, zombie fencing)"
+
+    implementation:
+      guidelines:
+        - "Enable idempotent producer (Kafka: enable.idempotence=true)"
+        - "Use transactional streaming for atomic writes to multiple topics"
+        - "Implement idempotent sink — transaction ID in the target system"
+        - "Set transaction timeout appropriately (default may be too short)"
+        - "Use Kafka exactly-once semantics to external systems via Connect with idempotent writes"
+        - "Monitor transaction abort rate — high rate indicates issues"
+        - "Fence zombie producers with unique transactional IDs"
+
+      common_errors:
+        - error: "Confusing producer idempotence with end-to-end exactly-once"
+          impact: "Kafka side is exactly-once but downstream system still sees duplicates"
+          fix: "End-to-end exactly-once requires: idempotent producer + transactional streaming + idempotent sink"
+        - error: "Downstream system not idempotent"
+          impact: "Sink processes duplicate events even with idempotent Kafka delivery"
+          fix: "Make sink idempotent (upsert, dedup key); or use transactional sink connectors"
+        - error: "Transaction timeout too short for peak load"
+          impact: "Transactions abort during peak; events stuck in limbo"
+          fix: "Set transaction.timeout.ms based on peak processing time; monitor abort rate"
+
+    maturity:
+      level: enterprise
+
+    standards:
+      - name: Exactly-Once Semantics
+        type: spec
+        role: "End-to-end exactly-once processing guarantee"
+        status: recommended
+        reference: "https://www.confluent.io/blog/exactly-once-semantics-are-possible-heres-how-apache-kafka-does-it/"
+
+examples:
+  - id: kafka_partitioned_producer
+    title: "Kafka Partitioned Producer with Schema Registry"
+    context: "Producing order events with key-based partitioning"
+    correct: |
+      # Producer configuration
+      producer = KafkaProducer(
+          bootstrap_servers="broker:9092",
+          key_serializer=StringSerializer(),
+          value_serializer=AvroSerializer(schema_registry_url="http://schema-registry:8081"),
+          acks="all",                          # Wait for all replicas
+          enable_idempotence=True,             # No duplicate events
+          linger_ms=10,                        # Batch for throughput
+          batch_size=65536,                    # 64KB batches
+          compression_type="snappy"            # Compress for throughput
+      )
+
+      # Producing event with customer_id as partition key
+      # All events for same customer go to same partition (ordered)
+      producer.send(
+          topic="orders",
+          key=str(order.customer_id),
+          value={
+              "order_id": str(order.id),
+              "customer_id": str(order.customer_id),
+              "total_cents": order.total_cents,
+              "timestamp": order.created_at.isoformat()
+          }
+      )
+    incorrect: |
+      # WRONG: No key, no schema, no durability
+      producer = KafkaProducer(bootstrap_servers="broker:9092")
+      producer.send("orders", value=b"some JSON")  # No key = round-robin
+      # No acks=all — data loss on broker crash
+      # No schema — consumer doesn't know the format
+      # No compression — wasted bandwidth
+    explanation: >
+      The correct version uses customer_id as partition key (ordering per
+      customer), Schema Registry for contract validation, idempotent producer
+      for data integrity, and batching for throughput. The incorrect version
+      has no ordering, no schema, no durability.
+
+  - id: flink_event_time_window
+    title: "Flink Event-Time Window with Watermarks"
+    context: "5-minute tumbling window counting orders"
+    correct: |
+      DataStream<Order> orders = env
+          .addSource(kafkaConsumer)
+          .assignTimestampsAndWatermarks(
+              WatermarkStrategy
+                  .<Order>forBoundedOutOfOrderness(Duration.ofSeconds(10))
+                  .withTimestampAssigner((event, ts) -> event.getTimestamp())
+          );
+
+      orders
+          .keyBy(Order::getCustomerId)
+          .window(TumblingEventTimeWindows.of(Time.minutes(5)))
+          .allowedLateness(Duration.ofSeconds(30))
+          .sideOutputLateData(lateTag)
+          .aggregate(new OrderCountAggregator())
+          .addSink(kafkaSink);
+    incorrect: |
+      # WRONG: Processing time instead of event time
+      orders
+          .keyBy(Order::getCustomerId)
+          .window(TumblingProcessingTimeWindows.of(Time.minutes(5)))
+          .aggregate(new OrderCountAggregator())
+          .addSink(kafkaSink);
+      # Processing time windows: inconsistent results on replay
+      # No watermark: no out-of-order handling
+    explanation: >
+      Event-time processing with watermarks handles out-of-order events
+      correctly and produces deterministic results on replay. Processing-time
+      windows change results each time the pipeline is re-run.
+
+security_hardening:
+  transport:
+    requirements:
+      - "Kafka/Pulsar broker connections encrypted with TLS"
+      - "Inter-broker replication traffic encrypted"
+      - "Schema Registry and REST proxy use HTTPS"
+  data_protection:
+    requirements:
+      - "Sensitive data in event payloads encrypted at application level"
+      - "PII minimized in events — use references (IDs) over full data"
+      - "Event retention subject to data retention policies"
+  access_control:
+    requirements:
+      - "Kafka ACLs enforced per topic: producer, consumer, admin"
+      - "Schema Registry access controlled per subject"
+      - "Stream processing jobs run with dedicated service accounts"
+  input_output:
+    requirements:
+      - "Event schemas validated on produce and consume (Schema Registry)"
+      - "Event size limits enforced to prevent broker resource exhaustion"
+  secrets:
+    requirements:
+      - "Broker credentials stored in secrets manager, not in code"
+      - "Schema Registry API keys managed with least privilege"
+  monitoring:
+    requirements:
+      - "Consumer lag monitored with alerting"
+      - "Checkpoint failures and aborted transactions alerted"
+      - "Broker disk usage, network I/O, partition counts monitored"
+      - "Schema Registry compatibility errors alerted"
+
+compliance:
+  standards:
+    - name: "Apache Kafka Security Guide"
+      relevance: "Enterprise security configuration for Kafka deployments"
+      reference: "https://kafka.apache.org/documentation/#security"
+    - name: "PCI DSS"
+      relevance: "Cardholder data in event streams must be encrypted"
+      reference: "PCI DSS v4.0 Requirement 3"
+    - name: "GDPR"
+      relevance: "Right-to-erasure requires deleting events for specific entities"
+      reference: "GDPR Article 17"
+
+  requirements_mapping:
+    - control: stream_encryption
+      description: "Event data encrypted in transit and sensitive fields at rest"
+      maps_to:
+        - "PCI DSS Requirement 3.5"
+    - control: event_retention
+      description: "Event retention respects data retention policies"
+      maps_to:
+        - "GDPR Article 5"
+    - control: consumer_auth
+      description: "Consumers authenticated and authorized per topic"
+      maps_to:
+        - "Kafka Security Best Practices"
+
+prompt_recipes:
+  - id: greenfield_streaming
+    scenario: greenfield
+    description: "Design real-time streaming architecture for a new pipeline"
+    prompt: |
+      Design a real-time streaming architecture for a new pipeline.
+
+      Context:
+      - Throughput requirement: [low/moderate/high/massive]
+      - Event ordering: [none/per_partition/global]
+      - Stateful processing: [stateless/stateful/stateful_large]
+      - Exactly-once required: [true/false]
+      - Latency SLA: [milliseconds/seconds/minutes]
+
+      Requirements:
+      1. Choose streaming platform (Kafka, Pulsar, Kinesis)
+      2. Choose stream processor (Flink, Kafka Streams, Spark Streaming)
+      3. Design topic/partition strategy
+      4. Define schema and serialization (Avro, Protobuf, JSON)
+      5. Plan consumer group and scaling strategy
+      6. Set retention and compaction policies
+      7. Implement monitoring (consumer lag, checkpoint health)
+
+  - id: audit_streaming
+    scenario: audit
+    description: "Audit existing streaming implementation"
+    prompt: |
+      Audit the streaming implementation:
+
+      1. Are broker connections encrypted with TLS?
+      2. Are Kafka ACLs enforced (no anonymous access)?
+      3. Is Schema Registry used with compatibility checks?
+      4. Is consumer lag monitored with alerting?
+      5. Are checkpoint/offsets committed after processing?
+      6. Is the partition key distributing events evenly?
+      7. Are event schemas versioned?
+      8. Is exactly-once configured where needed?
+      9. Is event_time used instead of processing_time for windows?
+      10. Are producers idempotent (no duplicate events)?
+
+  - id: migration_streaming
+    scenario: migration
+    description: "Migrate from batch ETL to real-time streaming"
+    prompt: |
+      Plan migration from batch ETL to real-time streaming.
+
+      Current: Daily batch ETL jobs on {current_platform}
+      Target: Real-time streaming with {streaming_platform}
+
+      Migration plan:
+      1. Identify and prioritize streaming use cases
+      2. Set up streaming platform and Schema Registry
+      3. Build parallel pipeline: run batch + stream simultaneously
+      4. Validate stream output matches batch results
+      5. Implement exactly-once where financial correctness needed
+      6. Cut over from batch to stream for each use case
+      7. Decommission batch pipelines
+
+  - id: debugging_consumer_lag
+    scenario: debugging
+    description: "Debug increasing consumer lag in streaming pipeline"
+    prompt: |
+      Debug increasing consumer lag.
+
+      Symptoms: Consumer lag growing continuously; not recovering
+      during off-peak. Processing latency increasing.
+
+      Investigation:
+      1. Check consumer throughput vs. producer throughput
+      2. Check if consumer is blocked (slow downstream, DB contention)
+      3. Check partition count — is parallelism adequate?
+      4. Check for rebalancing events causing repeated processing
+      5. Check for poison messages (deserialization failures)
+
+      Fixes:
+      - Scale consumers (increase partition count)
+      - Optimize consumer processing (batch, async writes)
+      - Fix bottleneck in downstream system
+      - Add dead-letter topic for poison messages
+
+  - id: high_security_streaming
+    scenario: architecture
+    description: "Design secure streaming for regulated financial data"
+    prompt: |
+      Design secure streaming for regulated financial data.
+
+      Requirements:
+      - PCI data streaming with encryption at rest and in transit
+      - Exactly-once processing for payment events
+      - Audit trail of all event access
+      - Data retention policies enforced per event type
+      - Access control per topic (producer, consumer, admin)
+
+      Design:
+      1. TLS for client-broker and inter-broker encryption
+      2. Field-level encryption for sensitive payload fields
+      3. Exactly-once semantics for payment event topics
+      4. Schema Registry with compatibility enforcement
+      5. Kafka ACLs with dedicated service accounts per application
+      6. Retention policies aligned with regulatory requirements
+      7. Audit logging of all admin operations on topics
+
+anti_patterns:
+  - name: "Processing-Time Windows for Event-Time Workloads"
+    description: >
+      Using processing-time windows when events have their own timestamps.
+      Results are non-deterministic: replaying the same events produces
+      different window assignments based on wall-clock time. Outages or
+      backpressure shift event boundaries.
+    fix: "Use event-time processing with watermarks for all timestamped event streams"
+    severity: critical
+    related_pattern: stream_processing_flink
+
+  - name: "No Schema Registry"
+    description: >
+      Producers and consumers agree on event formats outside of the
+      platform (documentation, Slack, shared config). Schema changes
+      break consumers silently; there is no compatibility checking;
+      historical data becomes unreadable.
+    fix: "Use Schema Registry (Confluent, Apicurio) with backward-compatible evolution rules"
+    severity: critical
+    related_pattern: event_streaming_kafka
+
+  - name: "Single Partition for High Throughput"
+    description: >
+      Using a single topic partition, which limits throughput to a
+      single consumer thread and a single broker. All other consumers
+      are idle; no horizontal scaling possible.
+    fix: "Partition across multiple partitions (3x-5x expected consumer count); choose good partition key"
+    severity: high
+    related_pattern: event_streaming_kafka
+
+  - name: "No End-to-End Exactly-Once When Needed"
+    description: >
+      Enabling idempotent producer but not making the downstream sink
+      idempotent. Events are delivered exactly-once by Kafka but the
+      sink processes them multiple times — duplicates in the database.
+    fix: "End-to-end exactly-once: idempotent producer + transactional streaming + idempotent sink"
+    severity: high
+    related_pattern: exactly_once_semantics
+
+checklist:
+  - id: STR-01
+    category: reliability
+    description: "Consumer lag monitored with alerting"
+    severity: critical
+    verified_by: event_streaming_kafka
+
+  - id: STR-02
+    category: reliability
+    description: "Idempotent producer configured (enable.idempotence=true)"
+    severity: high
+    verified_by: exactly_once_semantics
+
+  - id: STR-03
+    category: design
+    description: "Schema Registry used with compatibility checks"
+    severity: critical
+    verified_by: event_streaming_kafka
+
+  - id: STR-04
+    category: security
+    description: "Broker connections use TLS encryption"
+    severity: critical
+    verified_by: event_streaming_kafka
+
+  - id: STR-05
+    category: security
+    description: "Kafka ACLs enforced per topic (no anonymous access)"
+    severity: high
+    verified_by: event_streaming_kafka
+
+  - id: STR-06
+    category: design
+    description: "Event-time processing with watermarks for time-windowed operations"
+    severity: high
+    verified_by: stream_processing_flink
+
+  - id: STR-07
+    category: reliability
+    description: "Exactly-once processing used for financial/critical paths"
+    severity: critical
+    verified_by: exactly_once_semantics
+
+  - id: STR-08
+    category: performance
+    description: "Partition key chosen for even distribution"
+    severity: high
+    verified_by: event_streaming_kafka
+
+  - id: STR-09
+    category: reliability
+    description: "Checkpointing configured and monitored in stream processors"
+    severity: high
+    verified_by: stream_processing_flink
+
+  - id: STR-10
+    category: design
+    description: "Event retention policy configured per topic (time and size)"
+    severity: high
+    verified_by: event_streaming_kafka
+
+  - id: STR-11
+    category: observability
+    description: "Consumer lag alerting with paging threshold"
+    severity: high
+    verified_by: event_streaming_kafka
+
+  - id: STR-12
+    category: reliability
+    description: "Poison message handling via dead-letter topic"
+    severity: medium
+    verified_by: event_streaming_kafka

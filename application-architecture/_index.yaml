@@ -84,3 +84,147 @@ entries:
     prerequisites: ["configuration-management", "logging-observability"]
     pattern_count: 4
     anti_pattern_count: 3
+
+  - domain: frontend-component-architecture
+    version: "1.0.0"
+    description: "Frontend component patterns: atomic design, compound components, composition, headless UI, component libraries"
+    tags: ["frontend", "components", "react", "vue", "angular", "composition", "design-system"]
+    prerequisites: ["api-design", "input-validation", "accessibility"]
+    pattern_count: 5
+    anti_pattern_count: 4
+
+  - domain: micro-frontends
+    version: "1.0.0"
+    description: "Micro-frontend patterns: module federation, Web Components, iframe, server composition, Single SPA"
+    tags: ["micro-frontends", "module-federation", "web-components", "single-spa", "frontend", "decomposition", "composition"]
+    prerequisites: ["api-design", "ci-cd", "frontend-component-architecture"]
+    pattern_count: 5
+    anti_pattern_count: 4
+
+  - domain: form-handling-patterns
+    version: "1.0.0"
+    description: "Form handling patterns: reactive forms, validation UX, multi-step wizards, autosave, form state libraries"
+    tags: ["forms", "validation", "frontend", "react-hook-form", "formkit", "accessibility"]
+    prerequisites: ["input-validation", "frontend-component-architecture", "frontend-state-management"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: frontend-build-performance
+    version: "1.0.0"
+    description: "Frontend build and performance optimization: bundling, code splitting, tree shaking, Core Web Vitals"
+    tags: ["build", "performance", "bundler", "vite", "webpack", "code-splitting", "core-web-vitals"]
+    prerequisites: ["performance-optimization", "ci-cd"]
+    pattern_count: 5
+    anti_pattern_count: 3
+
+  - domain: frontend-state-management
+    version: "1.0.0"
+    description: "Frontend state management patterns: server state, client stores, URL state, form state, derived state"
+    tags: ["state-management", "frontend", "react", "vue", "redux", "zustand", "query"]
+    prerequisites: ["api-design", "error-handling", "frontend-component-architecture"]
+    pattern_count: 5
+    anti_pattern_count: 4
+
+  - domain: internationalization-i18n
+    version: "1.0.0"
+    description: "Internationalization patterns: framework integration, locale negotiation, RTL support, translation management"
+    tags: ["i18n", "internationalization", "localization", "rtl", "translation", "locale"]
+    prerequisites: ["frontend-component-architecture", "frontend-state-management"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: pwa-offline-first
+    version: "1.0.0"
+    description: "PWA and offline-first patterns: service workers, caching strategies, background sync, app shell"
+    tags: ["pwa", "offline", "service-worker", "caching", "progressive-web-app", "background-sync"]
+    prerequisites: ["frontend-build-performance", "responsive-mobile-first"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: real-time-frontend
+    version: "1.0.0"
+    description: "Real-time frontend patterns: WebSockets, SSE, polling, reconnection, message buffering, state sync"
+    tags: ["real-time", "websocket", "sse", "polling", "collaboration", "live-updates"]
+    prerequisites: ["messaging-events", "frontend-state-management", "error-handling"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: responsive-mobile-first
+    version: "1.0.0"
+    description: "Responsive and mobile-first design: breakpoints, fluid layouts, touch targets, adaptive vs responsive"
+    tags: ["responsive", "mobile-first", "css", "layout", "pwa", "touch", "breakpoints"]
+    prerequisites: ["accessibility", "styling-design-systems", "frontend-component-architecture"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: styling-design-systems
+    version: "1.0.0"
+    description: "Styling architecture and design systems: CSS methodology, design tokens, theming, component libraries"
+    tags: ["styling", "css", "design-system", "tailwind", "css-in-js", "theming", "design-tokens"]
+    prerequisites: ["accessibility", "frontend-component-architecture", "frontend-build-performance"]
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: webassembly-frontend
+    version: "1.0.0"
+    description: "WebAssembly frontend patterns: Wasm boundaries, async loading, memory management, JS-Wasm interop"
+    tags: ["webassembly", "wasm", "performance", "rust", "assemblyscript", "compilation"]
+    prerequisites: ["frontend-build-performance", "performance-optimization"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: native-mobile-architecture
+    version: "1.0.0"
+    description: "Native mobile architecture: React Native, Flutter, native bridges, OTA updates, push notifications, deep links"
+    tags: ["mobile", "react-native", "flutter", "native", "push-notifications", "deep-links"]
+    prerequisites: ["frontend-component-architecture", "api-design", "responsive-mobile-first"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: desktop-application-architecture
+    version: "1.0.0"
+    description: "Desktop application architecture: Electron, Tauri, native modules/FFI, auto-update, system tray"
+    tags: ["desktop", "electron", "tauri", "native", "auto-updater", "system-tray"]
+    prerequisites: ["frontend-component-architecture"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: prompt-engineering-patterns
+    version: "1.0.0"
+    description: "Prompt engineering patterns for AI interactions: chain-of-thought, few-shot, RAG, tool-use, structured output, agentic loops"
+    tags: ["prompt-engineering", "ai", "llm", "chain-of-thought", "few-shot", "structured-output", "agentic"]
+    prerequisites: ["llm-integration", "ai-agent-architecture"]
+    pattern_count: 5
+    anti_pattern_count: 4
+
+  - domain: multi-tenancy
+    version: "1.0.0"
+    description: "Multi-tenancy patterns: tenant isolation strategies, data partitioning, tenant-aware routing, and billing tiering"
+    tags: ["multi-tenancy", "saas", "isolation", "tenant", "data-partitioning", "silo"]
+    prerequisites: ["api-design", "data-persistence", "authentication"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: workflow-orchestration
+    version: "1.0.0"
+    description: "Workflow orchestration patterns: sagas, state machines, BPMN, DAG-based workflows, long-running processes, compensation"
+    tags: ["orchestration", "workflow", "saga", "state-machine", "bpmn", "dag", "compensation"]
+    prerequisites: ["messaging-events", "error-handling", "data-persistence"]
+    pattern_count: 4
+    anti_pattern_count: 3
+
+  - domain: event-sourcing-cqrs
+    version: "1.0.0"
+    description: "Event sourcing and CQRS patterns: event stores, projections, event versioning, snapshotting, and eventual consistency"
+    tags: ["event-sourcing", "cqrs", "events", "projection", "event-store", "eventual-consistency"]
+    prerequisites: ["messaging-events", "data-persistence", "domain-driven-design"]
+    pattern_count: 4
+    anti_pattern_count: 4
+
+  - domain: monorepo-architecture
+    version: "1.0.0"
+    description: "Monorepo architecture: build tooling, dependency management, workspace isolation, and CI optimization for monorepos"
+    tags: ["monorepo", "build-tooling", "workspace", "dependency-management", "turborepo", "nx", "lerna"]
+    prerequisites: ["ci-cd", "service-architecture"]
+    pattern_count: 4
+    anti_pattern_count: 3
