@@ -642,3 +642,11 @@ checklist:
     description: "Alerts configured when deprecated version usage exceeds threshold"
     severity: medium
     verified_by: url_path_versioning
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: url_path_versioning
+  implementation_ref: '#tech-redis-url_path_versioning'
+  priority: 5

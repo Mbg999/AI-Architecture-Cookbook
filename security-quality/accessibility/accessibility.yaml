@@ -676,3 +676,11 @@ checklist:
     description: "Manual screen reader testing performed (NVDA or VoiceOver)"
     severity: high
     verified_by: aria_patterns
+
+tech_stack_mappings:
+- tech:
+    name: express
+    layer: backend
+  pattern_id: aria_patterns
+  implementation_ref: '#tech-express-aria_patterns'
+  priority: 5

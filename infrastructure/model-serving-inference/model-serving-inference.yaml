@@ -724,3 +724,17 @@ checklist:
     description: "Quantization accuracy validated on held-out test set"
     severity: high
     verified_by: edge_optimized_inference
+
+tech_stack_mappings:
+- tech:
+    name: bullmq
+    layer: queue
+  pattern_id: batch_inference_pipeline
+  implementation_ref: '#tech-bullmq-batch_inference_pipeline'
+  priority: 5
+- tech:
+    name: openai
+    layer: ai
+  pattern_id: standard_model_serving
+  implementation_ref: '#tech-openai-standard_model_serving'
+  priority: 5

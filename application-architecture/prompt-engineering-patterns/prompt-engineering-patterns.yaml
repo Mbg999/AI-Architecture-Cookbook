@@ -669,3 +669,17 @@ checklist:
     description: "Secrets never appear in prompt examples or system messages"
     severity: critical
     verified_by: prompt_injection_defense
+
+tech_stack_mappings:
+- tech:
+    name: react
+    layer: frontend
+  pattern_id: react_pattern
+  implementation_ref: '#tech-react-react_pattern'
+  priority: 5
+- tech:
+    name: openai
+    layer: ai
+  pattern_id: structured_output
+  implementation_ref: '#tech-openai-structured_output'
+  priority: 5

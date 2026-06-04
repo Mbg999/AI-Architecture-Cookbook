@@ -1,0 +1,99 @@
+# =============================================================================
+# AI Architecture Cookbook — Pattern Conflict Matrix
+# Schema: v1
+# =============================================================================
+# Externalized conflict rules between patterns from different domains.
+# Loaded by cross-domain-resolver.ts at MCP server startup.
+#
+# Each rule maps a domain + pattern to patterns in other domains that
+# are architecturally incompatible. The resolver emits ConflictWarning[]
+# with severity and resolution guidance.
+#
+# To add a rule:
+#   1. Add an entry under `rules`
+#   2. Set domain, pattern (the "source" pattern)
+#   3. Add one or more conflicts_with entries
+#   4. severity: info | warning | critical
+# =============================================================================
+
+schema_version: 1
+last_updated: 2026-06-04
+
+rules:
+  # ── Authentication vs Session Management ──────────────────────────────
+  - domain: authentication
+    pattern: token_based_auth
+    conflicts_with:
+      - domain: session-management
+        pattern: server_side_sessions
+        severity: warning
+        description: "Token-based auth (stateless JWT) conflicts with server-side sessions (stateful). Mixing both creates unnecessary complexity."
+        resolution: "Choose one unified session strategy: stateless JWT with refresh rotation, or server-side sessions with sticky sessions / distributed session store."
+
+  - domain: session-management
+    pattern: server_side_sessions
+    conflicts_with:
+      - domain: authentication
+        pattern: token_based_auth
+        severity: warning
+        description: "Server-side sessions (stateful) conflicts with token-based auth (stateless JWT)."
+        resolution: "Choose one unified session strategy."
+
+  # ── Service Architecture Mutual Exclusion ─────────────────────────────
+  - domain: service-architecture
+    pattern: modular_monolith
+    conflicts_with:
+      - domain: service-architecture
+        pattern: microservices
+        severity: critical
+        description: "Modular monolith and microservices are fundamentally different deployment topologies. They are mutually exclusive."
+        resolution: "If you start with a monolith, plan extraction boundaries and strangler-fig migration. If going microservices, accept the operational complexity and infrastructure costs."
+
+  - domain: service-architecture
+    pattern: microservices
+    conflicts_with:
+      - domain: service-architecture
+        pattern: modular_monolith
+        severity: critical
+        description: "Microservices and modular monolith are mutually exclusive deployment topologies."
+        resolution: "See modular_monolith entry for migration guidance."
+
+  # ── State Management vs Authentication ────────────────────────────────
+  - domain: state-management
+    pattern: server_side_session
+    conflicts_with:
+      - domain: authentication
+        pattern: token_based_auth
+        severity: warning
+        description: "Server-side sessions consume server memory and require session affinity or distributed session stores."
+        resolution: "Use stateless JWT tokens, or implement distributed session store (Redis, Memcached, DynamoDB)."
+
+  # ── CQRS / Event Sourcing vs Simple CRUD ──────────────────────────────
+  - domain: event-sourcing-cqrs
+    pattern: event_sourcing
+    conflicts_with:
+      - domain: data-persistence
+        pattern: simple_crud
+        severity: info
+        description: "Event sourcing and simple CRUD represent fundamentally different data models. Event sourcing captures every state change as an event; CRUD overwrites the current state."
+        resolution: "Consider a hybrid approach: use event sourcing for the audit trail and CQRS for read models, while keeping simple CRUD for reference data."
+
+  # ── Micro-frontends vs Monolithic Frontend ────────────────────────────
+  - domain: micro-frontends
+    pattern: module_federation
+    conflicts_with:
+      - domain: frontend-component-architecture
+        pattern: monolithic_spa
+        severity: info
+        description: "Module federation (micro-frontends) and monolithic SPAs represent opposite ends of the frontend decomposition spectrum."
+        resolution: "Start with a well-structured monolith and extract micro-frontends only when team scaling demands it."
+
+  # ── Real-time vs Polling ──────────────────────────────────────────────
+  - domain: real-time-frontend
+    pattern: websocket_realtime
+    conflicts_with:
+      - domain: real-time-frontend
+        pattern: http_polling
+        severity: info
+        description: "WebSocket and HTTP polling are alternative strategies for real-time updates."
+        resolution: "WebSocket is preferred for bidirectional, low-latency updates. Polling is simpler but less efficient. Use SSE as a middle ground if only server-to-client is needed."

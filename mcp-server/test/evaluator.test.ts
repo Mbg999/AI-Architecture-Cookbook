@@ -66,10 +66,16 @@ export default {
     assert.ok(rec.checklist_summary.total > 0, "Should have checklist items");
   },
 
-  "buildRecommendation fallback has description-based rationale": async () => {
+  "buildRecommendation with empty context returns scored match (not fallback)": async () => {
     const auth = loader.getEntry("authentication")!;
     const rec = buildRecommendation(auth, {});
-    assert.equal(rec.matched_node, "fallback");
-    assert.ok(!rec.rationale.includes("Matched decision node"), "Fallback rationale should differ");
+    // Even with empty context, scoring finds the best partial match
+    assert.ok(rec.pattern, "Should have a pattern");
+    assert.ok(typeof rec.coverage_ratio === "number", "Should have coverage_ratio");
+    assert.equal(rec.coverage_ratio, 0, "coverage_ratio should be 0 with empty context");
+    assert.ok(Array.isArray(rec.inputs_used_defaults), "Should report inputs using defaults");
+    assert.ok(rec.inputs_used_defaults!.length > 0, "Should have at least one defaulted input");
+    assert.ok(rec.decision_rationale, "Should have decision_rationale");
+    assert.ok(rec.alternatives_considered === undefined || Array.isArray(rec.alternatives_considered), "alternatives_considered should be array or undefined");
   },
 };

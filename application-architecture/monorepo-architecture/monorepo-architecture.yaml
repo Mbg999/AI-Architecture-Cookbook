@@ -432,3 +432,11 @@ checklist:
     description: "CI secrets in vault, not in repo files"
     severity: critical
     verified_by: nx_monorepo
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: nx_monorepo
+  implementation_ref: '#tech-redis-nx_monorepo'
+  priority: 5

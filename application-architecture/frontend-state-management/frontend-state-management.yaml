@@ -620,3 +620,35 @@ checklist:
     description: "Devtools disabled in production builds"
     severity: medium
     verified_by: global_client_state
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: server_state_query
+  implementation_ref: '#tech-redis-server_state_query'
+  priority: 5
+- tech:
+    name: react
+    layer: frontend
+  pattern_id: atomic_state
+  implementation_ref: '#tech-react-atomic_state'
+  priority: 5
+- tech:
+    name: vue
+    layer: frontend
+  pattern_id: global_client_state
+  implementation_ref: '#tech-vue-global_client_state'
+  priority: 5
+- tech:
+    name: zustand
+    layer: frontend
+  pattern_id: global_client_state
+  implementation_ref: '#tech-zustand-global_client_state'
+  priority: 5
+- tech:
+    name: redux
+    layer: frontend
+  pattern_id: global_client_state
+  implementation_ref: '#tech-redux-global_client_state'
+  priority: 5

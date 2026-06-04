@@ -660,3 +660,17 @@ checklist:
     description: "CDN and caching layers deployed for public-facing content"
     severity: medium
     verified_by: managed_services_first
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: managed_services_first
+  implementation_ref: '#tech-redis-managed_services_first'
+  priority: 5
+- tech:
+    name: bullmq
+    layer: queue
+  pattern_id: managed_services_first
+  implementation_ref: '#tech-bullmq-managed_services_first'
+  priority: 5

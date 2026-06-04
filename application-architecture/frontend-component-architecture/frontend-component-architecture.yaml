@@ -877,3 +877,17 @@ checklist:
     description: "Unused component imports flagged by lint rules"
     severity: medium
     verified_by: component_library_architecture
+
+tech_stack_mappings:
+- tech:
+    name: react
+    layer: frontend
+  pattern_id: atomic_compound_components
+  implementation_ref: '#tech-react-atomic_compound_components'
+  priority: 5
+- tech:
+    name: vue
+    layer: frontend
+  pattern_id: atomic_compound_components
+  implementation_ref: '#tech-vue-atomic_compound_components'
+  priority: 5

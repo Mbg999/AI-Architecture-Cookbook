@@ -404,3 +404,17 @@ checklist:
     description: "Caching strategies differ by content type"
     severity: medium
     verified_by: standard_pwa_setup
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: cache_first_static
+  implementation_ref: '#tech-redis-cache_first_static'
+  priority: 5
+- tech:
+    name: bullmq
+    layer: queue
+  pattern_id: standard_pwa_setup
+  implementation_ref: '#tech-bullmq-standard_pwa_setup'
+  priority: 5

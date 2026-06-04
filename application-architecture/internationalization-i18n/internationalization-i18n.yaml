@@ -383,3 +383,17 @@ checklist:
     description: "Pluralization uses ICU syntax, not string concatenation"
     severity: high
     verified_by: standard_i18n_framework
+
+tech_stack_mappings:
+- tech:
+    name: react
+    layer: frontend
+  pattern_id: standard_i18n_framework
+  implementation_ref: '#tech-react-standard_i18n_framework'
+  priority: 5
+- tech:
+    name: vue
+    layer: frontend
+  pattern_id: standard_i18n_framework
+  implementation_ref: '#tech-vue-standard_i18n_framework'
+  priority: 5

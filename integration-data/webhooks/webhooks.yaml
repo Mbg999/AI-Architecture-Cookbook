@@ -707,3 +707,11 @@ checklist:
     description: "Signature verification failures alerted"
     severity: high
     verified_by: webhook_consumer
+
+tech_stack_mappings:
+- tech:
+    name: bullmq
+    layer: queue
+  pattern_id: async_webhook_processing
+  implementation_ref: '#tech-bullmq-async_webhook_processing'
+  priority: 5

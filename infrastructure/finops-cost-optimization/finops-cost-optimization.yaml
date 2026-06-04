@@ -706,3 +706,11 @@ checklist:
     description: "Billing API access restricted and audited"
     severity: high
     verified_by: tagging_chargeback_showback
+
+tech_stack_mappings:
+- tech:
+    name: bullmq
+    layer: queue
+  pattern_id: spot_preemptible_usage
+  implementation_ref: '#tech-bullmq-spot_preemptible_usage'
+  priority: 5

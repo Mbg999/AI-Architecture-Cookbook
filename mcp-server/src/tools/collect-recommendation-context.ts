@@ -33,6 +33,14 @@ export const RecommendationContextSchema = z.object({
   budgetPerMonth: z.string().optional(),
   timelineWeeks: z.number().optional(),
   teamExpertise: z.array(z.string()).optional(),
+  techStack: z
+    .array(z.object({
+      layer: z.enum(['frontend', 'backend', 'database', 'cache', 'queue', 'infra', 'mobile', 'desktop', 'ai']),
+      name: z.string(),
+      version: z.string().optional(),
+    }))
+    .optional()
+    .describe("Technology stack of the project for pattern filtering"),
 });
 
 // Input schema for the tool: accept partial inputs (we validate more strictly inside)

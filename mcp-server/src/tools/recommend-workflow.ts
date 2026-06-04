@@ -4,11 +4,18 @@ import { recommendPattern } from './recommend-pattern.js';
 import { validateRecommendationContext } from './collect-recommendation-context.js';
 import { getChecklist } from './get-checklist.js';
 import { promptRecipes } from './prompt-recipes.js';
+import { resolveCrossDomain, type ConflictWarning, type DomainOrder } from '../cross-domain-resolver.js';
 
 type PatternResult = ReturnType<typeof recommendPattern> & {
   decision_traces?: Record<string, unknown>;
   checklists?: Record<string, unknown>;
   scaffold?: Record<string, unknown>;
+  cross_domain?: {
+    domain_order: DomainOrder[];
+    conflicts: ConflictWarning[];
+    evaluation_order: string[];
+    consistency_score: number;
+  };
 };
 
 export const recommendWorkflowSchema = z.object({
@@ -75,6 +82,18 @@ export function recommendWorkflow(loader: CookbookLoader, args: z.infer<typeof r
       }
     }
     rec.scaffold = scaffolds;
+  }
+
+  // Cross-domain consistency check (Phase 4)
+  // Run when mode=audit or when multiple domains are involved
+  if (args.mode === 'audit' || (rec.recommendations.length > 1)) {
+    try {
+      const crossDomainResult = resolveCrossDomain(rec.recommendations, loader);
+      rec.cross_domain = crossDomainResult;
+    } catch (e) {
+      // Don't let cross-domain errors break the workflow
+      console.error('Cross-domain resolution failed:', e);
+    }
   }
 
   return {

@@ -471,3 +471,11 @@ checklist:
     description: "Form submit button disabled while submitting"
     severity: medium
     verified_by: complex_form_management
+
+tech_stack_mappings:
+- tech:
+    name: react
+    layer: frontend
+  pattern_id: complex_form_management
+  implementation_ref: '#tech-react-complex_form_management'
+  priority: 5

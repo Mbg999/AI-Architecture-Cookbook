@@ -644,3 +644,11 @@ checklist:
     description: "File storage abstracted behind interface for portability"
     severity: medium
     verified_by: presigned_upload
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: cdn_delivery
+  implementation_ref: '#tech-redis-cdn_delivery'
+  priority: 5

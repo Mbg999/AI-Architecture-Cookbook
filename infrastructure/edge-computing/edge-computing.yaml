@@ -404,3 +404,11 @@ checklist:
     description: "Edge function error rates monitored and alerted"
     severity: high
     verified_by: edge_functions
+
+tech_stack_mappings:
+- tech:
+    name: bullmq
+    layer: queue
+  pattern_id: edge_functions
+  implementation_ref: '#tech-bullmq-edge_functions'
+  priority: 5

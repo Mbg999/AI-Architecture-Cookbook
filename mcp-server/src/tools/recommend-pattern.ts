@@ -17,6 +17,8 @@ export const recommendPatternSchema = z.object({
   include_trace: z.boolean().optional().describe("If true, include decision tree trace details"),
 });
 
+const CONFIDENCE_ORDER: Record<string, number> = { high: 3, medium: 2, low: 1 };
+
 export function recommendPattern(
   loader: CookbookLoader,
   args: z.infer<typeof recommendPatternSchema>
@@ -57,20 +59,21 @@ export function recommendPattern(
 
   return {
     recommendations: recommendations.sort((a, b) => {
-      // Sort: high confidence first, then by critical checklist items
-      const confOrder = { high: 0, medium: 1, low: 2 };
-      const aConf = confOrder[a.confidence as keyof typeof confOrder] ?? 1;
-      const bConf = confOrder[b.confidence as keyof typeof confOrder] ?? 1;
-      if (aConf !== bConf) return aConf - bConf;
+      // Sort: dynamic confidence first, then coverage_ratio, then critical items
+      const aConf = CONFIDENCE_ORDER[a.confidence] ?? 1;
+      const bConf = CONFIDENCE_ORDER[b.confidence] ?? 1;
+      if (aConf !== bConf) return bConf - aConf;
+      // Secondary: coverage ratio (higher is better)
+      const aCov = a.coverage_ratio ?? 0;
+      const bCov = b.coverage_ratio ?? 0;
+      if (aCov !== bCov) return bCov - aCov;
       return b.checklist_summary.critical - a.checklist_summary.critical;
     }),
     unmatched_domains: unmatchedDomains,
     fallbacks_used: fallbacksUsed,
-    // tooling-friendly invocation snippets
     tool_invocation_snippet: {
       machine: { name: "recommend_pattern", input: { context: args.context, domains: args.domains } },
       human: `Call the tool recommend_pattern with input: ${JSON.stringify({ context: args.context, domains: args.domains }, null, 2)}`,
     },
-    // optional traces will be attached by callers when requested
   };
 }

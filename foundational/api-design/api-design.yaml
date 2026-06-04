@@ -801,3 +801,11 @@ checklist:
     description: "GraphQL query complexity limits enforced (if using GraphQL)"
     severity: critical
     verified_by: graphql_api
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: rest_api
+  implementation_ref: '#tech-redis-rest_api'
+  priority: 5

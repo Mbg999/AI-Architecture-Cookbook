@@ -688,3 +688,11 @@ checklist:
     description: "Image pull from private registry with authentication"
     severity: high
     verified_by: kubernetes_manifests
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: stateful_orchestration
+  implementation_ref: '#tech-redis-stateful_orchestration'
+  priority: 5

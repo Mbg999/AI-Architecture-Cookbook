@@ -789,3 +789,17 @@ checklist:
     description: "Cache latency (p99) monitored with alerting"
     severity: medium
     verified_by: distributed_cache
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: write_through_write_behind
+  implementation_ref: '#tech-redis-write_through_write_behind'
+  priority: 5
+- tech:
+    name: memcached
+    layer: cache
+  pattern_id: distributed_cache
+  implementation_ref: '#tech-memcached-distributed_cache'
+  priority: 5

@@ -755,3 +755,17 @@ checklist:
     description: "Patterns applied only when complexity warrants — no premature abstraction"
     severity: medium
     verified_by: solid_principles
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: decorator_pattern
+  implementation_ref: '#tech-redis-decorator_pattern'
+  priority: 5
+- tech:
+    name: react
+    layer: frontend
+  pattern_id: observer_pattern
+  implementation_ref: '#tech-react-observer_pattern'
+  priority: 5

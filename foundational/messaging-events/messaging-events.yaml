@@ -714,3 +714,17 @@ checklist:
     description: "Partition key chosen for even distribution (streaming)"
     severity: high
     verified_by: event_streaming
+
+tech_stack_mappings:
+- tech:
+    name: bullmq
+    layer: queue
+  pattern_id: message_queue
+  implementation_ref: '#tech-bullmq-message_queue'
+  priority: 5
+- tech:
+    name: react
+    layer: frontend
+  pattern_id: pub_sub
+  implementation_ref: '#tech-react-pub_sub'
+  priority: 5

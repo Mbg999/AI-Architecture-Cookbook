@@ -1021,3 +1021,17 @@ checklist:
     description: "Self-hosted models properly isolated from external network"
     severity: critical
     verified_by: self_hosted_inference
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: managed_with_caching
+  implementation_ref: '#tech-redis-managed_with_caching'
+  priority: 5
+- tech:
+    name: openai
+    layer: ai
+  pattern_id: standard_api_integration
+  implementation_ref: '#tech-openai-standard_api_integration'
+  priority: 5

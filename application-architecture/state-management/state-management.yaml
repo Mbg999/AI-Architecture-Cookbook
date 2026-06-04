@@ -682,3 +682,17 @@ checklist:
     description: "State store health included in application readiness probes"
     severity: medium
     verified_by: distributed_cache
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: distributed_cache
+  implementation_ref: '#tech-redis-distributed_cache'
+  priority: 5
+- tech:
+    name: memcached
+    layer: cache
+  pattern_id: stateless_with_external_store
+  implementation_ref: '#tech-memcached-stateless_with_external_store'
+  priority: 5

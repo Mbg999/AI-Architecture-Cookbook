@@ -440,3 +440,23 @@ checklist:
     description: "Build cache enabled for faster CI/dev builds"
     severity: medium
     verified_by: build_tool_optimization
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: build_tool_optimization
+  implementation_ref: '#tech-redis-build_tool_optimization'
+  priority: 5
+- tech:
+    name: react
+    layer: frontend
+  pattern_id: route_based_splitting
+  implementation_ref: '#tech-react-route_based_splitting'
+  priority: 5
+- tech:
+    name: vue
+    layer: frontend
+  pattern_id: route_based_splitting
+  implementation_ref: '#tech-vue-route_based_splitting'
+  priority: 5

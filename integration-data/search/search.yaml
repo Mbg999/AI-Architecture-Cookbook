@@ -685,3 +685,11 @@ checklist:
     description: "Dead-letter handling for failed indexing events"
     severity: high
     verified_by: event_driven_indexing
+
+tech_stack_mappings:
+- tech:
+    name: react
+    layer: frontend
+  pattern_id: event_driven_indexing
+  implementation_ref: '#tech-react-event_driven_indexing'
+  priority: 5

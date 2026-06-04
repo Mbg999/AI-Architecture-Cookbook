@@ -640,3 +640,11 @@ checklist:
     description: "Consent withdrawal propagates to all downstream processors"
     severity: critical
     verified_by: consent_lifecycle
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: data_retention_deletion
+  implementation_ref: '#tech-redis-data_retention_deletion'
+  priority: 5

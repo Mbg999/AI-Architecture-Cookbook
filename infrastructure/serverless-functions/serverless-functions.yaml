@@ -721,3 +721,23 @@ checklist:
     description: "Function timeouts set to appropriate values"
     severity: medium
     verified_by: single_purpose_lambda
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: lambda_api_gateway
+  implementation_ref: '#tech-redis-lambda_api_gateway'
+  priority: 5
+- tech:
+    name: bullmq
+    layer: queue
+  pattern_id: single_purpose_lambda
+  implementation_ref: '#tech-bullmq-single_purpose_lambda'
+  priority: 5
+- tech:
+    name: openai
+    layer: ai
+  pattern_id: serverless_orchestration_step_functions
+  implementation_ref: '#tech-openai-serverless_orchestration_step_functions'
+  priority: 5

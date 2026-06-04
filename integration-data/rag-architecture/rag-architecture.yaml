@@ -1132,3 +1132,17 @@ checklist:
     description: "Embedding inference batched during ingestion (not one document at a time)"
     severity: medium
     verified_by: streaming_rag
+
+tech_stack_mappings:
+- tech:
+    name: bullmq
+    layer: queue
+  pattern_id: streaming_rag
+  implementation_ref: '#tech-bullmq-streaming_rag'
+  priority: 5
+- tech:
+    name: openai
+    layer: ai
+  pattern_id: standard_rag
+  implementation_ref: '#tech-openai-standard_rag'
+  priority: 5

@@ -50,6 +50,13 @@ export interface ChecklistItem {
   verified_by: string;
 }
 
+export interface TechStackMapping {
+  tech: { name: string; layer: string };
+  pattern_id: string;
+  implementation_ref?: string;
+  priority?: number;
+}
+
 export interface CookbookEntry {
   meta: EntryMeta;
   context_inputs: ContextInput[];
@@ -62,6 +69,7 @@ export interface CookbookEntry {
   prompt_recipes: Array<{ id: string; [key: string]: unknown }>;
   anti_patterns: Array<{ id: string; [key: string]: unknown }>;
   checklist: ChecklistItem[];
+  tech_stack_mappings?: TechStackMapping[];
 }
 
 export interface IndexEntry {

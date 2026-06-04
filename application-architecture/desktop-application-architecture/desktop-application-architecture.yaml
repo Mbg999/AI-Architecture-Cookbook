@@ -674,3 +674,11 @@ checklist:
     description: "Update deferral and user save prompt implemented"
     severity: medium
     verified_by: auto_update
+
+tech_stack_mappings:
+- tech:
+    name: express
+    layer: backend
+  pattern_id: electron_architecture
+  implementation_ref: '#tech-express-electron_architecture'
+  priority: 5

@@ -727,3 +727,11 @@ checklist:
     description: "Distributed tracing spans cover external API calls"
     severity: medium
     verified_by: circuit_breaker
+
+tech_stack_mappings:
+- tech:
+    name: bullmq
+    layer: queue
+  pattern_id: async_integration
+  implementation_ref: '#tech-bullmq-async_integration'
+  priority: 5

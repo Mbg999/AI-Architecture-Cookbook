@@ -13,6 +13,7 @@ import { recommendPatternNl, recommendPatternNlSchema } from "./tools/recommend-
 import { promptRecipes, promptRecipesSchema } from "./tools/prompt-recipes.js";
 import { recommendationContextInputSchema, validateRecommendationContext } from "./tools/collect-recommendation-context.js";
 import { recommendWorkflow, recommendWorkflowSchema } from "./tools/recommend-workflow.js";
+import { explainDecision, explainDecisionSchema } from "./tools/explain-decision.js";
 
 const loader = new CookbookLoader();
 
@@ -257,6 +258,30 @@ server.registerTool(
       console.error('TOOL_ERROR: recommend_workflow', e);
       // Return structured error as JSON text so clients can parse and handle gracefully
       return { content: [{ type: 'text', text: safeStringify({ valid: false, error: String(e) }) }] };
+    }
+  }
+);
+
+// Explain decision tool (Part 1 + 5: explainability)
+server.registerTool(
+  "explain_decision",
+  {
+    description: "Explain why a pattern was recommended or not, including tradeoff analysis and alternatives.",
+    inputSchema: explainDecisionSchema,
+    annotations: { readOnlyHint: true },
+  },
+  async (args) => {
+    console.error('TOOL_INVOKED: explain_decision', JSON.stringify(args));
+    try {
+      console.error('TOOL_COMPLETE: explain_decision');
+      return {
+        content: [
+          { type: "text", text: JSON.stringify(explainDecision(loader, args), null, 2) },
+        ],
+      };
+    } catch (e: any) {
+      console.error('TOOL_ERROR: explain_decision', e);
+      return { content: [{ type: "text", text: JSON.stringify({ error: String(e) }) }] };
     }
   }
 );

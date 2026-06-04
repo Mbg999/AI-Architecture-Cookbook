@@ -612,3 +612,11 @@ checklist:
     description: "Container handles SIGTERM gracefully for zero-downtime deploys"
     severity: medium
     verified_by: multi_stage_builds
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: layer_optimization
+  implementation_ref: '#tech-redis-layer_optimization'
+  priority: 5

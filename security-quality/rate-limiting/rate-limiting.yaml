@@ -670,3 +670,11 @@ checklist:
     description: "DDoS mitigation layer present (WAF, CDN, or edge rate limiting)"
     severity: high
     verified_by: gateway_rate_limiting
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: distributed_rate_limiting
+  implementation_ref: '#tech-redis-distributed_rate_limiting'
+  priority: 5

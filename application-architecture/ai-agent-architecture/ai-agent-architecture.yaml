@@ -954,3 +954,17 @@ checklist:
     description: "Inter-agent delegation depth limited (max 5)"
     severity: high
     verified_by: multi_agent_orchestration
+
+tech_stack_mappings:
+- tech:
+    name: bullmq
+    layer: queue
+  pattern_id: multi_agent_orchestration
+  implementation_ref: '#tech-bullmq-multi_agent_orchestration'
+  priority: 5
+- tech:
+    name: react
+    layer: frontend
+  pattern_id: simple_reactive_agent
+  implementation_ref: '#tech-react-simple_reactive_agent'
+  priority: 5

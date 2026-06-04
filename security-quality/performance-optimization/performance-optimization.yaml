@@ -682,3 +682,17 @@ checklist:
     description: "Sensitive data never cached without encryption"
     severity: critical
     verified_by: caching_strategies
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: caching_strategies
+  implementation_ref: '#tech-redis-caching_strategies'
+  priority: 5
+- tech:
+    name: memcached
+    layer: cache
+  pattern_id: caching_strategies
+  implementation_ref: '#tech-memcached-caching_strategies'
+  priority: 5

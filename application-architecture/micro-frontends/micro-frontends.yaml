@@ -730,3 +730,17 @@ checklist:
     description: "MF bundles analyzed for duplicate dependencies"
     severity: medium
     verified_by: module_federation
+
+tech_stack_mappings:
+- tech:
+    name: react
+    layer: frontend
+  pattern_id: web_components_composition
+  implementation_ref: '#tech-react-web_components_composition'
+  priority: 5
+- tech:
+    name: vue
+    layer: frontend
+  pattern_id: web_components_composition
+  implementation_ref: '#tech-vue-web_components_composition'
+  priority: 5

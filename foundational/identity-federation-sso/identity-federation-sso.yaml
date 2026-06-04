@@ -453,3 +453,11 @@ checklist:
     description: "SAML/OIDC signing keys in HSM/secret manager"
     severity: critical
     verified_by: saml_federation
+
+tech_stack_mappings:
+- tech:
+    name: keycloak
+    layer: backend
+  pattern_id: multi_idp_strategy
+  implementation_ref: '#tech-keycloak-multi_idp_strategy'
+  priority: 10

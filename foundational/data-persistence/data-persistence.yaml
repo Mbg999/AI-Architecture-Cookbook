@@ -807,3 +807,11 @@ checklist:
     description: "Backups tested for restore; encrypted at rest"
     severity: critical
     verified_by: relational_database
+
+tech_stack_mappings:
+- tech:
+    name: redis
+    layer: cache
+  pattern_id: caching_layer
+  implementation_ref: '#tech-redis-caching_layer'
+  priority: 5

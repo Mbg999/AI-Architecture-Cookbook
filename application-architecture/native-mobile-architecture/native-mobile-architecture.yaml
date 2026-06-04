@@ -661,3 +661,11 @@ checklist:
     description: "Platform-specific code separated via extension files"
     severity: medium
     verified_by: cross_platform_react_native
+
+tech_stack_mappings:
+- tech:
+    name: react
+    layer: frontend
+  pattern_id: cross_platform_react_native
+  implementation_ref: '#tech-react-cross_platform_react_native'
+  priority: 5
