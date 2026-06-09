@@ -25,7 +25,7 @@ In short: machine-readable standards turn subjective "best practice" advice into
 
 ## Quick Start
 
-Clone and run the setup script — it builds the MCP server and optionally installs a pre-commit validation hook:
+Clone and run the setup script — it optionally installs a pre-commit validation hook:
 
 ```bash
 # macOS / Linux
@@ -64,28 +64,26 @@ Choose an integration method for more detail:
 
 ### Option 1: MCP Server (richest experience)
 
-Build first:
+The server is published on npm. Use via **npx** — no local build needed:
+
 ```bash
-cd mcp-server && npm install && npm run build
+npx -y @ai-architecture-cookbook/mcp-server
 ```
+
+All client configurations below use `npx -y @ai-architecture-cookbook/mcp-server` as the command.
+If you prefer to build from source, see [mcp-server/README.md](mcp-server/README.md).
 
 Then configure your AI assistant:
 
 #### Smoke test (quick verification)
 
-After building, run a quick smoke test that spawns the server and calls a couple of tools. From the repository root:
+Run the server to verify it starts:
 
 ```bash
-cd mcp-server
-# install (if not already)
-npm install
-# build TypeScript
-npm run build
-# run the programmatic stdio smoke client (it spawns the server and calls tools)
-node --input-type=module dist/examples/stdio-client.mjs || node dist/examples/stdio-client.mjs
+npx -y @ai-architecture-cookbook/mcp-server
 ```
 
-Expected output: two JSON-like responses printed for `search_standards` and `recommend_pattern`.
+The server prints `MCP server running` to stderr and waits for MCP stdio messages.
 
 #### Environment and requirements
 
@@ -139,8 +137,8 @@ Create `.vscode/mcp.json` in your project root:
 {
   "servers": {
     "ai-architecture-cookbook": {
-      "command": "node",
-      "args": ["${workspaceFolder}/mcp-server/dist/server.js"]
+      "command": "npx",
+      "args": ["-y", "@ai-architecture-cookbook/mcp-server"]
     }
   }
 }
@@ -155,7 +153,7 @@ Use **Copilot Chat in Agent mode** to call the tools automatically.
 
 Run from the repo root:
 ```bash
-claude mcp add ai-architecture-cookbook node mcp-server/dist/server.js
+claude mcp add ai-architecture-cookbook npx -y @ai-architecture-cookbook/mcp-server
 ```
 
 Or add manually to `.mcp.json` in your project root:
@@ -163,14 +161,14 @@ Or add manually to `.mcp.json` in your project root:
 {
   "mcpServers": {
     "ai-architecture-cookbook": {
-      "command": "node",
-      "args": ["./mcp-server/dist/server.js"]
+      "command": "npx",
+      "args": ["-y", "@ai-architecture-cookbook/mcp-server"]
     }
   }
 }
 ```
 
-For global access across all projects, add to `~/.claude/mcp.json` using the absolute path.
+For global access across all projects, add to `~/.claude/mcp.json`.
 
 </details>
 
@@ -182,8 +180,8 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 {
   "mcpServers": {
     "ai-architecture-cookbook": {
-      "command": "node",
-      "args": ["/absolute/path/to/AI-Architecture-Cookbook/mcp-server/dist/server.js"]
+      "command": "npx",
+      "args": ["-y", "@ai-architecture-cookbook/mcp-server"]
     }
   }
 }
@@ -200,8 +198,8 @@ Create `.cursor/mcp.json` in your project root:
 {
   "mcpServers": {
     "ai-architecture-cookbook": {
-      "command": "node",
-      "args": ["./mcp-server/dist/server.js"]
+      "command": "npx",
+      "args": ["-y", "@ai-architecture-cookbook/mcp-server"]
     }
   }
 }
@@ -218,8 +216,8 @@ Add to `~/.codeium/windsurf/mcp_config.json`:
 {
   "mcpServers": {
     "ai-architecture-cookbook": {
-      "command": "node",
-      "args": ["/absolute/path/to/AI-Architecture-Cookbook/mcp-server/dist/server.js"]
+      "command": "npx",
+      "args": ["-y", "@ai-architecture-cookbook/mcp-server"]
     }
   }
 }
@@ -232,8 +230,8 @@ Add to `~/.codeium/windsurf/mcp_config.json`:
 
 Open Cline settings → **MCP Servers** → **Add** and use:
 - **Name**: `ai-architecture-cookbook`
-- **Command**: `node`
-- **Args**: `/absolute/path/to/AI-Architecture-Cookbook/mcp-server/dist/server.js`
+- **Command**: `npx`
+- **Args**: `-y @ai-architecture-cookbook/mcp-server`
 
 Or edit `cline_mcp_settings.json` directly with the same `mcpServers` format as Claude.
 
@@ -247,8 +245,8 @@ Any MCP-compatible client can connect via stdio. The general config pattern:
 {
   "mcpServers": {
     "ai-architecture-cookbook": {
-      "command": "node",
-      "args": ["/absolute/path/to/AI-Architecture-Cookbook/mcp-server/dist/server.js"]
+      "command": "npx",
+      "args": ["-y", "@ai-architecture-cookbook/mcp-server"]
     }
   }
 }

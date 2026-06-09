@@ -1,0 +1,45 @@
+{
+  "name": "@ai-architecture-cookbook/mcp-server",
+  "version": "1.0.1",
+  "description": "MCP server exposing AI Architecture Cookbook standards via 10+ MCP tools",
+  "license": "MIT",
+  "type": "module",
+  "main": "mcp-server/dist/server.js",
+  "bin": {
+    "cookbook-mcp": "mcp-server/dist/server.js"
+  },
+  "files": [
+    "mcp-server/dist/",
+    "index.yaml",
+    "base-template.yaml",
+    "pattern-conflicts.yaml",
+    "foundational/",
+    "application-architecture/",
+    "infrastructure/",
+    "security-quality/",
+    "integration-data/"
+  ],
+  "scripts": {
+    "build": "tsc -p mcp-server/tsconfig.build.json",
+    "start": "node mcp-server/dist/server.js",
+    "dev": "tsx mcp-server/src/server.ts",
+    "test": "tsx mcp-server/test/runner.ts",
+    "test:tsc": "tsc -p mcp-server/tsconfig.test.json",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "js-yaml": "^4.1.0",
+    "zod": "^3.24.4"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.19.17",
+    "rimraf": "^6.0.1",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
