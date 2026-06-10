@@ -149,7 +149,7 @@ server.registerTool(
       const enriched = res as typeof res & { decision_traces?: Record<string, unknown> };
       if (args.include_trace) {
         const traces: Record<string, unknown> = {};
-        for (const r of res.recommendations) {
+        for (const r of (res.recommendations || [])) {
           try {
             const e = loader.getEntry(r.domain);
             if (!e) continue;

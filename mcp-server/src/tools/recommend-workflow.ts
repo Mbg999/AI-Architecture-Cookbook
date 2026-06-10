@@ -30,22 +30,15 @@ export function recommendWorkflow(loader: CookbookLoader, args: z.infer<typeof r
   const inputContext = args.context || {};
 
   const validation = validateRecommendationContext(inputContext as unknown);
-  if (!validation.valid) {
-    return {
-      valid: false,
-      missingFields: validation.missingFields,
-      nextQuestion: validation.nextQuestion,
-      normalizedContext: validation.normalizedContext,
-    };
-  }
-
   const normalizedContext = validation.normalizedContext as Record<string, unknown>;
 
   const rec = recommendPattern(loader, { context: normalizedContext, domains: args.domains }) as PatternResult;
 
+  const recs = rec.recommendations || [];
+
   if (args.include_trace || args.mode === 'audit') {
     const traces: Record<string, unknown> = {};
-    for (const r of rec.recommendations) {
+    for (const r of recs) {
       try {
         const e = loader.getEntry(r.domain);
         if (!e) continue;
@@ -60,7 +53,7 @@ export function recommendWorkflow(loader: CookbookLoader, args: z.infer<typeof r
 
   if (args.include_checklist || args.mode === 'audit') {
     const checklists: Record<string, unknown> = {};
-    for (const r of rec.recommendations) {
+    for (const r of recs) {
       try {
         const cl = getChecklist(loader, { domain: r.domain });
         checklists[r.domain] = cl;
@@ -73,7 +66,7 @@ export function recommendWorkflow(loader: CookbookLoader, args: z.infer<typeof r
 
   if (args.mode === 'scaffold') {
     const scaffolds: Record<string, unknown> = {};
-    for (const r of rec.recommendations) {
+    for (const r of recs) {
       try {
         const pr = promptRecipes(loader, { domain: r.domain, format: 'machine' });
         scaffolds[r.domain] = pr.recipes || pr;
@@ -86,9 +79,9 @@ export function recommendWorkflow(loader: CookbookLoader, args: z.infer<typeof r
 
   // Cross-domain consistency check (Phase 4)
   // Run when mode=audit or when multiple domains are involved
-  if (args.mode === 'audit' || (rec.recommendations.length > 1)) {
+  if (args.mode === 'audit' || (recs.length > 1)) {
     try {
-      const crossDomainResult = resolveCrossDomain(rec.recommendations, loader);
+      const crossDomainResult = resolveCrossDomain(recs, loader);
       rec.cross_domain = crossDomainResult;
     } catch (e) {
       // Don't let cross-domain errors break the workflow
@@ -96,11 +89,29 @@ export function recommendWorkflow(loader: CookbookLoader, args: z.infer<typeof r
     }
   }
 
-  return {
-    valid: true,
+  // Build a unified response that always includes both validation status
+  // and the recommendation/discovery result so agents can see what is missing
+  // AND what the cookbook can offer.
+  const result: Record<string, unknown> = {
+    valid: validation.valid,
     normalizedContext,
+    validation: {
+      valid: validation.valid,
+      missingFields: validation.missingFields,
+      nextQuestion: validation.nextQuestion,
+      suggestions: validation.suggestions,
+    },
     ...rec,
   };
+
+  // When we are in discovery mode and context is incomplete, append guidance
+  if (rec.mode === "discovery" && !validation.valid) {
+    result.guidance =
+      "Context is incomplete. The cookbook can recommend patterns once you provide the missing fields above. " +
+      "Alternatively, call search_standards or query_standard directly for the relevant domain.";
+  }
+
+  return result;
 }
 
 export default recommendWorkflow;
